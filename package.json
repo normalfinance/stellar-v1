@@ -1,0 +1,29 @@
+{
+  "name": "@normalfinance/lsp",
+  "description": "Normal is a synthetic asset protocol enabling investors to trade any crypto asset or real-world asset (RWA) from a single DEX",
+  "version": "0.1.0",
+  "scripts": {
+    "env": "cp .env.example .env.testnet",
+    "test": "pnpm run test:integration && pnpm run test:unit",
+    "lint": "prettier --check . && eslint .",
+    "format": "prettier --write .",
+    "scout": "cargo scout-audit --output-format html --output-path audits/scout/report.html",
+    "contracts:bindings": "./scripts/generate-bindings.sh",
+    "contracts:deploy": "./scripts/deploy.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/normalfinance/lsp.git"
+  },
+  "author": "Normal",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/normalfinance/lsp/issues"
+  },
+  "homepage": "https://github.com/normalfinance/lsp",
+  "devDependencies": {
+    "glob": "^11.0.2"
+  },
+  "type": "module",
+  "dependencies": {}
+}

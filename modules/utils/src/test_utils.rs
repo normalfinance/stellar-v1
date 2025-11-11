@@ -1,0 +1,49 @@
+#![cfg(any(test, feature = "testutils"))]
+
+use soroban_sdk::testutils::{Ledger, LedgerInfo};
+use soroban_sdk::{BytesN, Env, U256};
+
+pub fn jump(e: &Env, time: u64) {
+    e.ledger().set(LedgerInfo {
+        timestamp: e.ledger().timestamp().saturating_add(time),
+        protocol_version: e.ledger().protocol_version(),
+        sequence_number: e.ledger().sequence(),
+        network_id: Default::default(),
+        base_reserve: 10,
+        min_temp_entry_ttl: 999999,
+        min_persistent_entry_ttl: 999999,
+        max_entry_ttl: u32::MAX,
+    });
+}
+
+pub fn time_warp(e: &Env, time: u64) {
+    assert!(e.ledger().timestamp() <= time, "Cannot warp to the past");
+    e.ledger().set(LedgerInfo {
+        timestamp: time,
+        protocol_version: e.ledger().protocol_version(),
+        sequence_number: e.ledger().sequence(),
+        network_id: Default::default(),
+        base_reserve: 10,
+        min_temp_entry_ttl: 999999,
+        min_persistent_entry_ttl: 999999,
+        max_entry_ttl: u32::MAX,
+    });
+}
+
+pub fn jump_sequence(e: &Env, sequence: u32) {
+    e.ledger().set(LedgerInfo {
+        timestamp: e.ledger().timestamp(),
+        protocol_version: e.ledger().protocol_version(),
+        sequence_number: e.ledger().sequence().saturating_add(sequence),
+        network_id: Default::default(),
+        base_reserve: 10,
+        min_temp_entry_ttl: 999999,
+        min_persistent_entry_ttl: 999999,
+        max_entry_ttl: u32::MAX,
+    });
+}
+
+// pub fn install_dummy_wasm<'a>(e: &Env) -> BytesN<32> {
+//     soroban_sdk::contractimport!(file = "../../wasm/dummy_contract.wasm");
+//     e.deployer().upload_contract_wasm(WASM)
+// }
