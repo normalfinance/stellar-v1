@@ -7,4 +7,5 @@ pub enum CalculatorError {
     AlreadyInitialized = 201,
     InvalidBounds = 202,
     ParamsAlreadySet = 203,
+    ParamsNotSetForCallingLSP = 204,
 }

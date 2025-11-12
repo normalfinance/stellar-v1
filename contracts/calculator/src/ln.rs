@@ -40,3 +40,96 @@ pub fn flog(x: i128) -> i128 {
 
     ln_v + LN2_1E7 * (k as i128)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper to pretty-print scaled values as f64
+    fn as_f64(x: i128) -> f64 {
+        (x as f64) / (ONE as f64)
+    }
+
+    #[test]
+    fn test_ln_of_one_is_zero() {
+        let result = flog(ONE);
+        assert!(
+            result.abs() < 10, // within 1e-6 absolute error
+            "ln(1) should be 0, got {} (~{})",
+            result,
+            as_f64(result)
+        );
+    }
+
+    #[test]
+    fn test_ln_of_two_is_ln2() {
+        let result = flog(2 * ONE);
+        let expected = LN2_1E7;
+        let diff = (result - expected).abs();
+        assert!(
+            diff < 500, // <5e-5 tolerance
+            "ln(2) expected {}, got {}, diff {}",
+            expected,
+            result,
+            diff
+        );
+    }
+
+    #[test]
+    fn test_ln_of_half_is_negative_ln2() {
+        let result = flog(ONE / 2);
+        let expected = -LN2_1E7;
+        let diff = (result - expected).abs();
+        assert!(
+            diff < 500,
+            "ln(0.5) expected {}, got {}, diff {}",
+            expected,
+            result,
+            diff
+        );
+    }
+
+    #[test]
+    fn test_monotonic_increase() {
+        let a = flog((7 * ONE) / 10); // ln(0.7)
+        let b = flog(ONE); // ln(1.0)
+        let c = flog((15 * ONE) / 10); // ln(1.5)
+        assert!(a < b && b < c, "ln(x) must increase with x");
+    }
+
+    #[test]
+    fn test_scaling_accuracy() {
+        // ln(1.1) ≈ 0.09531, scaled 0.09531 * 1e7 = 953100
+        let result = flog((11 * ONE) / 10);
+        let expected = 953_100;
+        let diff = (result - expected).abs();
+        assert!(
+            diff < 10_000,
+            "ln(1.1) expected ~{}, got {}, diff {}",
+            expected,
+            result,
+            diff
+        );
+    }
+
+    #[test]
+    fn test_large_range_clamping() {
+        // 8.0 -> 3*ln(2)
+        let result = flog(8 * ONE);
+        let expected = LN2_1E7 * 3;
+        let diff = (result - expected).abs();
+        assert!(
+            diff < 10_000,
+            "ln(8) expected ~{}, got {}, diff {}",
+            expected,
+            result,
+            diff
+        );
+    }
+
+    #[test]
+    fn test_non_positive_input_returns_zero() {
+        assert_eq!(flog(0), 0);
+        assert_eq!(flog(-1), 0);
+    }
+}

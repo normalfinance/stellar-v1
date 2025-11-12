@@ -26,7 +26,7 @@ impl CalculatorTrait for Calculator {
 
         let params = get_params(&e, long_short_pair.clone());
 
-        if params.upper_bound == 0 && params.lower_bound == 0 {
+        if params.upper_bound != 0 || params.lower_bound != 0 {
             panic_with_error!(&e, CalculatorError::ParamsAlreadySet);
         }
 
@@ -46,8 +46,8 @@ impl CalculatorTrait for Calculator {
     fn pct_long_colat_at_expiry(e: Env, caller: Address, price: u128) -> u128 {
         let params = get_params(&e, caller); // user is the calling LongShortPair contract
 
-        if params.upper_bound == 0 || params.lower_bound == 0 {
-            panic_with_error!(&e, CalculatorError::ParamsAlreadySet);
+        if params.upper_bound == 0 && params.lower_bound == 0 {
+            panic_with_error!(&e, CalculatorError::ParamsNotSetForCallingLSP);
         }
 
         // clamp
