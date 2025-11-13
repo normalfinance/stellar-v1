@@ -66,25 +66,6 @@ pub fn create_liquidity_calculator_contract<'a>(e: &Env) -> liquidity_calculator
     liquidity_calculator::Client::new(e, &e.register(liquidity_calculator::WASM, ()))
 }
 
-mod reward_boost_feed {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_locker_feed_contract.wasm");
-}
-
-pub(crate) fn create_reward_boost_feed_contract<'a>(
-    e: &Env,
-    admin: &Address,
-    operations_admin: &Address,
-    emergency_admin: &Address,
-) -> reward_boost_feed::Client<'a> {
-    reward_boost_feed::Client::new(
-        e,
-        &e.register(
-            reward_boost_feed::WASM,
-            reward_boost_feed::Args::__constructor(admin, operations_admin, emergency_admin),
-        ),
-    )
-}
-
 pub(crate) mod rewards_gauge {
     soroban_sdk::contractimport!(file = "../contracts/soroban_rewards_gauge_contract.wasm");
 }

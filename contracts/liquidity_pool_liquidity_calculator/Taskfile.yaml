@@ -12,9 +12,9 @@ tasks:
   build:
     cmds:
       - task -d ../liquidity_pool_plane build || exit 1
-      - soroban contract build --package soroban-liquidity-pool-liquidity-calculator-contract
-      - soroban contract optimize --wasm ../target/wasm32v1-none/release/soroban_liquidity_pool_liquidity_calculator_contract.wasm --wasm-out ../contracts/soroban_liquidity_pool_liquidity_calculator_contract.wasm
-      - ls -l ../contracts/*.wasm
+      - soroban contract build --package liquidity_pool_liquidity_calculator
+      - soroban contract optimize --wasm ../../target/wasm32v1-none/release/liquidity_pool_liquidity_calculator.wasm --wasm-out ../../target/wasm32v1-none/release/liquidity_pool_liquidity_calculator.wasm
+      - cp ../../target/wasm32v1-none/release/liquidity_pool_liquidity_calculator.wasm ../../wasm/liquidity_pool_liquidity_calculator.wasm
 
   test:
     deps:

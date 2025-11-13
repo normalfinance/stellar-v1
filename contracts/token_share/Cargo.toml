@@ -1,5 +1,5 @@
 [package]
-name = "soroban-token-contract"
+name = "token_share"
 description = "Soroban standard token contract"
 version.workspace = true
 edition = "2021"

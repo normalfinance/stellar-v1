@@ -104,10 +104,7 @@ impl Setup<'_> {
         } else {
             create_token_contract(&e, &admin)
         };
-        let reward_boost_token = create_token_contract(&e, &admin);
-        let reward_boost_feed =
-            create_reward_boost_feed_contract(&e, &admin, &operations_admin, &emergency_admin);
-
+    
         let plane = create_plane_contract(&e);
 
         let token1_admin_client = get_token_admin_client(&e, &token1.address.clone());
@@ -124,8 +121,6 @@ impl Setup<'_> {
             &install_token_wasm(&e),
             &Vec::from_array(&e, [token1.address.clone(), token2.address.clone()]),
             &reward_token.address,
-            &reward_boost_token.address,
-            &reward_boost_feed.address,
             config.liq_pool_fee,
             &plane.address,
             &config_storage.address,
@@ -228,25 +223,6 @@ pub(crate) fn create_plane_contract<'a>(e: &Env) -> PoolPlaneClient<'a> {
     PoolPlaneClient::new(e, &e.register(pool_plane::WASM, ()))
 }
 
-mod reward_boost_feed {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_locker_feed_contract.wasm");
-}
-
-pub(crate) fn create_reward_boost_feed_contract<'a>(
-    e: &Env,
-    admin: &Address,
-    operations_admin: &Address,
-    emergency_admin: &Address,
-) -> reward_boost_feed::Client<'a> {
-    reward_boost_feed::Client::new(
-        e,
-        &e.register(
-            reward_boost_feed::WASM,
-            reward_boost_feed::Args::__constructor(admin, operations_admin, emergency_admin),
-        ),
-    )
-}
-
 pub fn create_liqpool_contract<'a>(
     e: &Env,
     admin: &Address,
@@ -254,8 +230,6 @@ pub fn create_liqpool_contract<'a>(
     token_wasm_hash: &BytesN<32>,
     tokens: &Vec<Address>,
     reward_token: &Address,
-    reward_boost_token: &Address,
-    reward_boost_feed: &Address,
     fee_fraction: u32,
     plane: &Address,
     config_storage: &Address,
@@ -280,8 +254,6 @@ pub fn create_liqpool_contract<'a>(
         ),
         &(
             reward_token.clone(),
-            reward_boost_token.clone(),
-            reward_boost_feed.clone(),
         ),
         plane,
         config_storage,

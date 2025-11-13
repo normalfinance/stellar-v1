@@ -1,5 +1,5 @@
 [package]
-name = "soroban-liquidity-pool-liquidity-calculator-contract"
+name = "liquidity_pool_liquidity_calculator"
 version.workspace = true
 edition = "2021"
 publish = false

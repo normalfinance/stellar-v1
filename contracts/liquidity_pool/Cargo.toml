@@ -1,5 +1,5 @@
 [package]
-name = "soroban-liquidity-pool-contract"
+name = "liquidity_pool"
 version.workspace = true
 edition = "2021"
 publish = false
@@ -17,7 +17,7 @@ access_control = { workspace = true }
 utils = { workspace = true }
 liquidity-pool-validation-errors = { workspace = true }
 liquidity-pool-events = { workspace = true }
-liqidity-pool-rewards-gauge = { workspace = true }
+liquidity-pool-rewards-gauge = { workspace = true }
 liquidity-pool-config-storage = { workspace = true }
 soroban-fixed-point-math = { workspace = true }
 paste = { workspace = true }

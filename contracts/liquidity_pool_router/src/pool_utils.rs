@@ -11,7 +11,7 @@ use access_control::access::AccessControl;
 use access_control::management::{MultipleAddressesManagementTrait, SingleAddressManagementTrait};
 use access_control::role::Role;
 use liquidity_pool_config_storage::operations::get_config_storage;
-use rewards::storage::{BoostFeedStorageTrait, BoostTokenStorageTrait, RewardTokenStorageTrait};
+use rewards::storage::{RewardTokenStorageTrait};
 use soroban_sdk::token::Client as SorobanTokenClient;
 use soroban_sdk::{
     panic_with_error, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol,
@@ -138,8 +138,6 @@ fn init_standard_pool(
     let token_wasm_hash = get_token_hash(e);
     let rewards = get_rewards_manager(e);
     let reward_token = rewards.storage().get_reward_token();
-    let reward_boost_token = rewards.storage().get_reward_boost_token();
-    let reward_boost_feed = rewards.storage().get_reward_boost_feed();
     let access_control = AccessControl::new(e);
 
     // privileged users
@@ -192,8 +190,6 @@ fn init_standard_pool(
                     .into_val(e),
                 (
                     reward_token.to_val(),
-                    reward_boost_token.to_val(),
-                    reward_boost_feed.to_val(),
                 )
                     .into_val(e),
                 plane.into_val(e),
@@ -213,8 +209,6 @@ fn init_stableswap_pool(
     let token_wasm_hash = get_token_hash(e);
     let rewards = get_rewards_manager(e);
     let reward_token = rewards.storage().get_reward_token();
-    let reward_boost_token = rewards.storage().get_reward_boost_token();
-    let reward_boost_feed = rewards.storage().get_reward_boost_feed();
     let access_control = AccessControl::new(e);
 
     // privileged users
@@ -268,8 +262,6 @@ fn init_stableswap_pool(
                     .into_val(e),
                 (
                     reward_token.to_val(),
-                    reward_boost_token.to_val(),
-                    reward_boost_feed.to_val(),
                 )
                     .into_val(e),
                 plane.into_val(e),
