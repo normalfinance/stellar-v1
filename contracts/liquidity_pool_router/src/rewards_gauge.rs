@@ -8,7 +8,7 @@ use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
     panic_with_error, Address, Bytes, BytesN, Env, IntoVal, Symbol, TryFromVal, Vec,
 };
-use utils::storage_errors::StorageError;
+use utils::errors::storage_errors::StorageError;
 
 pub(crate) fn gauge_set_reward_per_day_threshold(
     e: &Env,

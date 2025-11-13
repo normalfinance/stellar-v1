@@ -25,10 +25,10 @@ fn check_nonnegative_amount(e: &Env, amount: i128) {
 }
 
 #[contract]
-pub struct TokenShare;
+pub struct TokenPool;
 
 #[contractimpl]
-impl TokenShare {
+impl TokenPool {
     pub fn initialize(e: Env, admin: Address, decimal: u32, name: String, symbol: String) {
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
@@ -62,7 +62,7 @@ impl TokenShare {
 }
 
 #[contractimpl]
-impl token::Interface for TokenShare {
+impl token::Interface for TokenPool {
     fn allowance(e: Env, from: Address, spender: Address) -> i128 {
         bump_instance(&e);
         read_allowance(&e, from, spender).amount
@@ -164,7 +164,7 @@ impl token::Interface for TokenShare {
 // The `UpgradeableContract` trait provides the interface for upgrading the contract.
 // This contract has no delayed upgrade. Liquidity Pool contract handles the upgrade delay.
 #[contractimpl]
-impl UpgradeableContract for TokenShare {
+impl UpgradeableContract for TokenPool {
     // Returns the version of the contract.
     //
     // # Returns
@@ -176,7 +176,7 @@ impl UpgradeableContract for TokenShare {
 
     // Get contract type symbolic name
     fn contract_name(e: Env) -> Symbol {
-        Symbol::new(&e, "TokenShare")
+        Symbol::new(&e, "TokenPool")
     }
 
     fn upgrade(e: Env, admin: Address, new_wasm_hash: BytesN<32>) {
@@ -189,7 +189,7 @@ impl UpgradeableContract for TokenShare {
 
 // The `TransferableContract` trait provides the interface for transferring ownership of the contract.
 #[contractimpl]
-impl TransferableContract for TokenShare {
+impl TransferableContract for TokenPool {
     // Commits an ownership transfer.
     //
     // # Arguments

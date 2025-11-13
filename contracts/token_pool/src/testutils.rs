@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 #![cfg(test)]
 
-use crate::TokenClient;
+use crate::TokenPoolClient;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal};
 
-pub fn create_token<'a>(e: &Env, admin: &Address) -> TokenClient<'a> {
-    let token = TokenClient::new(e, &e.register(crate::contract::Token {}, ()));
+pub fn create_token<'a>(e: &Env, admin: &Address) -> TokenPoolClient<'a> {
+    let token = TokenPoolClient::new(e, &e.register(crate::contract::TokenPool {}, ()));
     token.initialize(admin, &7, &"name".into_val(e), &"symbol".into_val(e));
     token
 }
@@ -38,7 +38,7 @@ pub(crate) struct Setup<'a> {
     pub(crate) env: Env,
 
     pub(crate) admin: Address,
-    pub(crate) token: TokenClient<'a>,
+    pub(crate) token: TokenPoolClient<'a>,
 }
 
 impl Default for Setup<'_> {

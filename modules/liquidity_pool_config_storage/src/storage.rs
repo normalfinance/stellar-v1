@@ -1,8 +1,8 @@
 use paste::paste;
 use soroban_sdk::panic_with_error;
 use soroban_sdk::{contracttype, Address, Env};
+use utils::errors::storage_errors::StorageError;
 use utils::generate_instance_storage_getter;
-use utils::storage_errors::StorageError;
 
 use utils::bump::bump_instance;
 use utils::{generate_instance_storage_getter_and_setter, generate_instance_storage_setter};

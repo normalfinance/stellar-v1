@@ -1,5 +1,5 @@
 mod pool_plane_client {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_liquidity_pool_plane_contract.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/liquidity_pool_plane.wasm");
 }
 
 pub use crate::plane::pool_plane_client::Client as PoolPlaneClient;

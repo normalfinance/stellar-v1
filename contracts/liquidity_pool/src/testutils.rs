@@ -48,8 +48,6 @@ pub(crate) struct Setup<'a> {
     pub(crate) token2_admin_client: SorobanTokenAdminClient<'a>,
     pub(crate) token_reward: SorobanTokenClient<'a>,
     pub(crate) token_reward_admin_client: SorobanTokenAdminClient<'a>,
-    pub(crate) reward_boost_token: SorobanTokenClient<'a>,
-    pub(crate) reward_boost_feed: reward_boost_feed::Client<'a>,
     pub(crate) token_share: ShareTokenClient<'a>,
     pub(crate) liq_pool: LiquidityPoolClient<'a>,
     pub(crate) plane: PoolPlaneClient<'a>,
@@ -170,8 +168,6 @@ impl Setup<'_> {
             pause_admin,
             emergency_pause_admin,
             system_fee_admin,
-            reward_boost_token,
-            reward_boost_feed,
         }
     }
 
@@ -252,7 +248,7 @@ pub fn create_liqpool_contract<'a>(
             fee_fraction,
             5000, // 50% protocol fee fraction
         ),
-        &(reward_token.clone(),),
+        reward_token,
         plane,
         config_storage,
     );
@@ -264,7 +260,7 @@ pub fn install_token_wasm(e: &Env) -> BytesN<32> {
 }
 
 mod rewards_gauge {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_rewards_gauge_contract.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/rewards_gauge.wasm");
 }
 
 pub(crate) fn deploy_rewards_gauge<'a>(

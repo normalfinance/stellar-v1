@@ -10,7 +10,7 @@ pub trait LiquidityPoolCrunch {
         lp_token_wasm_hash: BytesN<32>,
         tokens: Vec<Address>,
         fees_config: (u32, u32),
-        reward_config: (Address, Address, Address),
+        reward_token: Address,
         plane: Address,
         config_storage: Address,
     );

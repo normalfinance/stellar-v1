@@ -43,7 +43,7 @@ use access_control::transfer::TransferOwnershipTrait;
 use access_control::utils::{require_operations_admin_or_owner, require_rewards_admin_or_owner};
 use liquidity_pool_config_storage as config_storage;
 use liquidity_pool_config_storage::interface::ConfigStorageInterface;
-use rewards::storage::{BoostFeedStorageTrait, BoostTokenStorageTrait, RewardTokenStorageTrait};
+use rewards::storage::RewardTokenStorageTrait;
 use soroban_sdk::auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation};
 use soroban_sdk::token::Client as SorobanTokenClient;
 use soroban_sdk::{
@@ -53,7 +53,7 @@ use soroban_sdk::{
 use upgrade::events::Events as UpgradeEvents;
 use upgrade::interface::UpgradeableContract;
 use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
-use utils::storage_errors::StorageError;
+use utils::errors::storage_errors::StorageError;
 
 #[contract]
 pub struct LiquidityPoolRouter;
@@ -675,20 +675,6 @@ impl AdminInterface for LiquidityPoolRouter {
         get_rewards_manager(&e)
             .storage()
             .put_reward_token(reward_token);
-    }
-
-    fn set_reward_boost_config(
-        e: Env,
-        admin: Address,
-        reward_boost_token: Address,
-        reward_boost_feed: Address,
-    ) {
-        admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
-
-        let rewards_storage = get_rewards_manager(&e).storage();
-        rewards_storage.put_reward_boost_token(reward_boost_token);
-        rewards_storage.put_reward_boost_feed(reward_boost_feed);
     }
 
     // Sets the protocol fraction of total fee for the pool.

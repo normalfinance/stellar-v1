@@ -1,6 +1,6 @@
 use crate::storage;
 use soroban_sdk::{panic_with_error, Address, Env, Symbol, Val, Vec};
-use utils::storage_errors::StorageError;
+use utils::errors::storage_errors::StorageError;
 
 pub fn init_config_storage(e: &Env, value: &Address) {
     if storage::has_config_storage(e) {

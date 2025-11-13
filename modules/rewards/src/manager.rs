@@ -40,7 +40,7 @@ impl Manager {
     ) -> u128 {
         // b_u = 2.5 * min(0.4 * b_u + 0.6 * S * w_i / W, b_u)
         let lock_balance = 0;
-        let total_locked = self.get_total_locked();
+        let total_locked = 0;
 
         let mut adjusted_balance = share_balance;
         if total_locked > 0 {

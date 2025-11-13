@@ -26,12 +26,12 @@ pub fn create_liqpool_router_contract<'a>(e: &Env) -> LiquidityPoolRouterClient<
 }
 
 pub fn install_token_wasm(e: &Env) -> BytesN<32> {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_token_contract.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/token_contract.wasm");
     e.deployer().upload_contract_wasm(WASM)
 }
 
 pub mod standard_pool {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_liquidity_pool_contract.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/liquidity_pool.wasm");
 }
 
 pub fn install_liq_pool_hash(e: &Env) -> BytesN<32> {
@@ -39,9 +39,7 @@ pub fn install_liq_pool_hash(e: &Env) -> BytesN<32> {
 }
 
 pub mod stableswap_pool {
-    soroban_sdk::contractimport!(
-        file = "../contracts/soroban_liquidity_pool_stableswap_contract.wasm"
-    );
+    soroban_sdk::contractimport!(file = "../contracts/liquidity_pool_stableswap.wasm");
 }
 
 pub fn install_stableswap_liq_pool_hash(e: &Env) -> BytesN<32> {
@@ -49,7 +47,7 @@ pub fn install_stableswap_liq_pool_hash(e: &Env) -> BytesN<32> {
 }
 
 mod pool_plane {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_liquidity_pool_plane_contract.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/liquidity_pool_plane.wasm");
 }
 
 pub fn create_plane_contract<'a>(e: &Env) -> pool_plane::Client<'a> {
@@ -58,7 +56,7 @@ pub fn create_plane_contract<'a>(e: &Env) -> pool_plane::Client<'a> {
 
 mod liquidity_calculator {
     soroban_sdk::contractimport!(
-        file = "../contracts/soroban_liquidity_pool_liquidity_calculator_contract.wasm"
+        file = "../contracts/soroban_liquidity_pool_liquidity_calculator.wasm"
     );
 }
 
@@ -67,11 +65,11 @@ pub fn create_liquidity_calculator_contract<'a>(e: &Env) -> liquidity_calculator
 }
 
 pub(crate) mod rewards_gauge {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_rewards_gauge_contract.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/rewards_gauge.wasm");
 }
 
 pub(crate) mod config_storage {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_config_storage_contract.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/config_storage.wasm");
 }
 
 pub(crate) struct Setup<'a> {
@@ -81,8 +79,6 @@ pub(crate) struct Setup<'a> {
 
     pub(crate) tokens: [test_token::Client<'a>; 4],
     pub(crate) reward_token: test_token::Client<'a>,
-    pub(crate) reward_boost_token: test_token::Client<'a>,
-    pub(crate) reward_boost_feed: reward_boost_feed::Client<'a>,
 
     pub(crate) router: LiquidityPoolRouterClient<'a>,
 
@@ -123,7 +119,6 @@ impl Default for Setup<'_> {
         let payment_for_creation_address = Address::generate(&env);
 
         let reward_token = create_token_contract(&env, &reward_admin);
-        let reward_boost_token = create_token_contract(&env, &reward_admin);
 
         let pool_hash = install_liq_pool_hash(&env);
         let token_hash = install_token_wasm(&env);
@@ -162,11 +157,6 @@ impl Default for Setup<'_> {
             &1_0000000,
             &1_0000000,
             &payment_for_creation_address,
-        );
-        router.set_reward_boost_config(
-            &admin,
-            &reward_boost_token.address,
-            &reward_boost_feed.address,
         );
         router.set_protocol_fee_fraction(&admin, &5000);
         // min equivalent amount of 10 reward token per day. min tps is ~1157
@@ -207,8 +197,6 @@ impl Default for Setup<'_> {
             pause_admin,
             emergency_pause_admin,
             system_fee_admin,
-            reward_boost_token,
-            reward_boost_feed,
         }
     }
 }

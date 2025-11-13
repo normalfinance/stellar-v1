@@ -12,11 +12,19 @@ use std::vec;
 use utils::test_utils::jump;
 
 mod calculator {
-    soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/calculator.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/calculator.wasm");
 }
 
 pub fn create_calculator_contract<'a>(e: &Env) -> calculator::Client<'a> {
     calculator::Client::new(e, &e.register(calculator::WASM, ()))
+}
+
+mod liquidity_pool {
+    soroban_sdk::contractimport!(file = "../../wasm/liquidity_pool.wasm");
+}
+
+pub fn create_liq_pool_contract<'a>(e: &Env) -> liquidity_pool::Client<'a> {
+    liquidity_pool::Client::new(e, &e.register(liquidity_pool::WASM, ()))
 }
 
 pub(crate) struct TestConfig {
@@ -124,6 +132,7 @@ impl Setup<'_> {
         let calculator = create_calculator_contract(&e);
 
         // TODO: mock pool
+        let pool = create_liq_pool_contract(&e);
 
         let pair = create_pair_contract(
             &e,

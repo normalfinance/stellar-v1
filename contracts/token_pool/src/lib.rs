@@ -11,4 +11,5 @@ mod test;
 mod test_permissions;
 mod testutils;
 
-pub use crate::contract::TokenPoolClient;
+// pub use crate::contract::TokenPoolClient;
+pub use crate::contract::{TokenPool, TokenPoolClient};

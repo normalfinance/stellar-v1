@@ -32,12 +32,12 @@ use access_control::utils::{
     require_pause_or_emergency_pause_admin_or_owner, require_rewards_admin_or_owner,
     require_system_fee_admin_or_owner,
 };
-use liqidity_pool_rewards_gauge as rewards_gauge;
-use liqidity_pool_rewards_gauge::interface::RewardsGaugeInterface;
 use liquidity_pool_config_storage as config_storage;
 use liquidity_pool_config_storage::interface::ConfigStorageInterface;
 use liquidity_pool_events::Events as PoolEvents;
 use liquidity_pool_events::LiquidityPoolEvents;
+use liquidity_pool_rewards_gauge as rewards_gauge;
+use liquidity_pool_rewards_gauge::interface::RewardsGaugeInterface;
 use liquidity_pool_validation_errors::LiquidityPoolValidationError;
 use rewards::events::Events as RewardEvents;
 use rewards::storage::{PoolRewardsStorageTrait, RewardTokenStorageTrait};
@@ -53,7 +53,7 @@ use token_share::{
 };
 use upgrade::events::Events as UpgradeEvents;
 use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
-use utils::u256_math::ExtraMath;
+use utils::math::u256_math::ExtraMath;
 
 // Metadata that is added on to the WASM custom section
 contractmeta!(
@@ -86,9 +86,7 @@ impl LiquidityPoolCrunch for LiquidityPool {
     //      `fee_fraction` - The fee fraction for the pool.
     //      `protocol_fee_fraction` - The protocol fee fraction for the pool.
     //  )
-    // * `reward_config` - (
-    // *    `reward_token` - The address of the reward token.
-    // * )
+    // * `reward_token` - The address of the reward token.
     // * `plane` - The address of the plane.
     // * `config_storage` - The address of the configuration storage.
     fn initialize_all(
@@ -99,12 +97,10 @@ impl LiquidityPoolCrunch for LiquidityPool {
         lp_token_wasm_hash: BytesN<32>,
         tokens: Vec<Address>,
         fees_config: (u32, u32),
-        reward_config: (Address),
+        reward_token: Address,
         plane: Address,
         config_storage: Address,
     ) {
-        let (reward_token) = reward_config;
-
         // merge whole initialize process into one because lack of caching of VM components
         // https://github.com/stellar/rs-soroban-env/issues/827
         config_storage::operations::init_config_storage(&e, &config_storage);
