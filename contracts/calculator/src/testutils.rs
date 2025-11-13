@@ -39,9 +39,6 @@ impl Setup<'_> {
         setup
     }
 
-    // Create users, token1, token2, reward token, lp token
-    //
-    // Mint reward token (1_000_000_0000000) & approve for liquidity_pool token
     pub(crate) fn setup(config: &TestConfig) -> Self {
         let e: Env = Env::default();
         e.mock_all_auths();

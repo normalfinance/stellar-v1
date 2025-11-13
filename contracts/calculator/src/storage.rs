@@ -26,7 +26,10 @@ pub fn get_params(e: &Env, pair: Address) -> LinearLongShortPairParameters {
             bump_persistent(e, &key);
             params
         }
-        None => panic_with_error!(e, StorageError::ValueNotInitialized),
+        None => LinearLongShortPairParameters {
+            upper_bound: 0,
+            lower_bound: 0,
+        },
     }
 }
 
