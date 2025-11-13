@@ -1,6 +1,6 @@
-use soroban_sdk::{ Address, BytesN, Env, Vec };
+use soroban_sdk::{Address, BytesN, Env, Vec};
 
-use crate::contract::{ CreatorParams, FactoryConfig };
+use crate::contract::{CreatorParams, FactoryConfig};
 
 pub trait LongShortPairFactoryTrait {
     fn deploy_lsp_contract(e: Env, params: CreatorParams) -> Address;

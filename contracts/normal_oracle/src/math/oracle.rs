@@ -1,13 +1,17 @@
-use sep_40_oracle::{ Asset, PriceFeedClient };
-use soroban_sdk::{ panic_with_error, Env, Symbol };
+use sep_40_oracle::{Asset, PriceFeedClient};
+use soroban_sdk::{panic_with_error, Env, Symbol};
 use utils::{
-    constant::{ FIVE_MINUTE, PERCENTAGE_PRECISION, PERCENTAGE_PRECISION_U64, PRICE_PRECISION }, errors::oracle_error::OracleError, math::{
-        oracle::{ calculate_new_twap, sanitize_new_price },
-        safe_math::{ PrecisionMath, SafeConversion, SafeMath },
-    }, state::oracle::{ HistoricalOracleData, OraclePriceData, OracleValidity }, temporal::Delay
+    constant::{FIVE_MINUTE, PERCENTAGE_PRECISION, PERCENTAGE_PRECISION_U64, PRICE_PRECISION},
+    errors::oracle_error::OracleError,
+    math::{
+        oracle::{calculate_new_twap, sanitize_new_price},
+        safe_math::{PrecisionMath, SafeConversion, SafeMath},
+    },
+    state::oracle::{HistoricalOracleData, OraclePriceData, OracleValidity},
+    temporal::Delay,
 };
 
-use crate::{ storage::get_reflector_oracle };
+use crate::storage::get_reflector_oracle;
 
 // Fetches the latest oracle price and timestamp for a given asset.
 //
@@ -40,7 +44,7 @@ pub fn get_oracle_price(e: &Env, asset: &Symbol, now: u64) -> OraclePriceData {
     let oracle_delay = Delay::from_timestamp_diff_expect(
         now,
         published_ts,
-        "Oracle published timestamp exceeds allowed clock drift tolerance"
+        "Oracle published timestamp exceeds allowed clock drift tolerance",
     );
 
     OraclePriceData {
@@ -66,13 +70,13 @@ pub fn update_twap(
     historical_oracle_data: &HistoricalOracleData,
     oracle_price_data: &OraclePriceData,
     sanitize_clamp_denominator: u64,
-    now: u64
+    now: u64,
 ) {
     let capped_oracle_update_price = sanitize_new_price(
         e,
         oracle_price_data.price,
         historical_oracle_data.last_price_twap,
-        sanitize_clamp_denominator
+        sanitize_clamp_denominator,
     );
 
     let oracle_price_twap = calculate_new_twap(
@@ -81,7 +85,7 @@ pub fn update_twap(
         now,
         historical_oracle_data.last_price_twap,
         historical_oracle_data.last_update_ts,
-        FIVE_MINUTE as u64
+        FIVE_MINUTE as u64,
     );
 
     put_historical_oracle_data(
@@ -91,7 +95,7 @@ pub fn update_twap(
             last_price_twap: oracle_price_twap,
             last_price: oracle_price_data.price,
             last_update_ts: now,
-        })
+        }),
     );
 }
 
@@ -112,9 +116,12 @@ pub fn update_twap(
 pub fn oracle_validity(
     e: &Env,
     last_oracle_twap: u128,
-    oracle_price_data: &OraclePriceData
+    oracle_price_data: &OraclePriceData,
 ) -> OracleValidity {
-    let OraclePriceData { price: oracle_price, delay: oracle_delay } = *oracle_price_data;
+    let OraclePriceData {
+        price: oracle_price,
+        delay: oracle_delay,
+    } = *oracle_price_data;
 
     let oracle_guard_rails = get_oracle_guard_rails(e);
 
@@ -123,15 +130,13 @@ pub fn oracle_validity(
 
     // Volatility
     // if Δprice <= 0.80 or 1.20 <= Δprice → too volatile
-    let lower_bound = PERCENTAGE_PRECISION_U64.safe_sub(
-        e,
-        oracle_guard_rails.validity.too_volatile_ratio
-    );
+    let lower_bound =
+        PERCENTAGE_PRECISION_U64.safe_sub(e, oracle_guard_rails.validity.too_volatile_ratio);
 
-    let upper_bound = oracle_guard_rails.validity.too_volatile_ratio.safe_add(
-        e,
-        PERCENTAGE_PRECISION_U64
-    );
+    let upper_bound = oracle_guard_rails
+        .validity
+        .too_volatile_ratio
+        .safe_add(e, PERCENTAGE_PRECISION_U64);
 
     // Use round-to-nearest for volatility calculation (fair assessment)
     let price_delta = oracle_price
@@ -161,7 +166,7 @@ pub fn oracle_validity(
 pub fn get_oracle_price_with_validity(
     e: &Env,
     asset: &Symbol,
-    current_time: u64
+    current_time: u64,
 ) -> HistoricalOracleData {
     let oracle_price_data = get_oracle_price(&e, &asset, current_time);
 
@@ -170,14 +175,21 @@ pub fn get_oracle_price_with_validity(
     let oracle_validity = oracle_validity(
         &e,
         historical_oracle_data.last_price_twap,
-        &oracle_price_data
+        &oracle_price_data,
     );
 
     if oracle_validity != OracleValidity::Valid {
         panic_with_error!(e, OracleError::InvalidOracle);
     }
 
-    update_twap(e, asset, &historical_oracle_data, &oracle_price_data, 1, current_time);
+    update_twap(
+        e,
+        asset,
+        &historical_oracle_data,
+        &oracle_price_data,
+        1,
+        current_time,
+    );
 
     get_historical_oracle_data(e, asset)
 }

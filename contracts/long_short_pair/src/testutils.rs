@@ -5,10 +5,9 @@ use crate::LongShortPairClient;
 use access_control::constants::ADMIN_ACTIONS_DELAY;
 
 use soroban_sdk::token::{
-    StellarAssetClient as SorobanTokenAdminClient,
-    TokenClient as SorobanTokenClient,
+    StellarAssetClient as SorobanTokenAdminClient, TokenClient as SorobanTokenClient,
 };
-use soroban_sdk::{ testutils::Address as _, Address, BytesN, Env, Symbol, Vec };
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Symbol, Vec};
 use std::vec;
 use utils::test_utils::jump;
 
@@ -98,10 +97,8 @@ impl Setup<'_> {
 
         let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
         let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
-        let token_collateral_admin_client = get_token_admin_client(
-            &e,
-            &token_collateral.address.clone()
-        );
+        let token_collateral_admin_client =
+            get_token_admin_client(&e, &token_collateral.address.clone());
 
         // Setup oracle
         let sol_symbol = Symbol::new(&e, "SOL");
@@ -118,7 +115,7 @@ impl Setup<'_> {
             &usd_asset,
             &Vec::from_array(&e, [sol_asset.clone(), usdc_asset.clone()]),
             14,
-            300
+            300,
         );
 
         let prices_1: Vec<i128> = Vec::from_array(&e, [230_00000000000000, 1_00000000000000]);
@@ -131,13 +128,16 @@ impl Setup<'_> {
         let pair = create_pair_contract(
             &e,
             &admin,
-            &Vec::from_array(&e, [
-                token1.address.clone(),
-                token2.address.clone(),
-                token2.address.clone(),
-            ]),
+            &Vec::from_array(
+                &e,
+                [
+                    token1.address.clone(),
+                    token2.address.clone(),
+                    token2.address.clone(),
+                ],
+            ),
             &oracle_addr,
-            &calculator.address
+            &calculator.address,
         );
 
         Self {
@@ -184,12 +184,16 @@ impl Setup<'_> {
 }
 
 pub(crate) fn create_token_contract<'a>(e: &Env, admin: &Address) -> SorobanTokenClient<'a> {
-    SorobanTokenClient::new(e, &e.register_stellar_asset_contract_v2(admin.clone()).address())
+    SorobanTokenClient::new(
+        e,
+        &e.register_stellar_asset_contract_v2(admin.clone())
+            .address(),
+    )
 }
 
 pub(crate) fn get_token_admin_client<'a>(
     e: &Env,
-    address: &Address
+    address: &Address,
 ) -> SorobanTokenAdminClient<'a> {
     SorobanTokenAdminClient::new(e, address)
 }
@@ -203,7 +207,7 @@ pub fn create_pair_contract<'a>(
     admin: &Address,
     tokens: &Vec<Address>,
     oracle: &Address,
-    calculator: &Address
+    calculator: &Address,
 ) -> LongShortPairClient<'a> {
     let pair = LongShortPairClient::new(e, &e.register(crate::LongShortPair {}, ()));
     pair.initialize(
@@ -218,7 +222,7 @@ pub fn create_pair_contract<'a>(
         ),
         tokens,
         oracle,
-        calculator
+        calculator,
     );
     pair
 }
@@ -233,7 +237,7 @@ pub fn setup_price_feed_oracle<'a>(
     base: &MockAsset,
     assets: &Vec<MockAsset>,
     decimals: u32,
-    resolution: u32
+    resolution: u32,
 ) -> (Address, MockPriceOracleClient<'a>) {
     let oracle_addr = env.register(MockPriceOracleWASM, ());
     let oracle_client = MockPriceOracleClient::new(env, &oracle_addr);

@@ -1,9 +1,9 @@
 use crate::constants::REWARD_PRECISION;
 use crate::errors::RewardsError;
 use crate::storage::{
-    PoolRewardConfig, PoolRewardData,
-    PoolRewardsStorageTrait, RewardInvDataStorageTrait, RewardTokenStorageTrait, Storage,
-    UserRewardData, UserRewardsStorageTrait, WorkingBalancesStorageTrait,
+    PoolRewardConfig, PoolRewardData, PoolRewardsStorageTrait, RewardInvDataStorageTrait,
+    RewardTokenStorageTrait, Storage, UserRewardData, UserRewardsStorageTrait,
+    WorkingBalancesStorageTrait,
 };
 use crate::RewardsConfig;
 use soroban_fixed_point_math::SorobanFixedPoint;
@@ -39,7 +39,7 @@ impl Manager {
         total_share: u128,
     ) -> u128 {
         // b_u = 2.5 * min(0.4 * b_u + 0.6 * S * w_i / W, b_u)
-        let lock_balance = 0
+        let lock_balance = 0;
         let total_locked = self.get_total_locked();
 
         let mut adjusted_balance = share_balance;

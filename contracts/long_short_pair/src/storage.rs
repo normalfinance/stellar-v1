@@ -1,5 +1,5 @@
 use paste::paste;
-use soroban_sdk::{ contracttype, panic_with_error, Address, Env, Symbol };
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
 pub use utils::bump::bump_instance;
 use utils::bump::bump_persistent;
 use utils::constant::ONE_HOUR;
@@ -8,11 +8,10 @@ use utils::generate_instance_storage_getter;
 use utils::{
     generate_instance_storage_getter_and_setter,
     generate_instance_storage_getter_and_setter_with_default,
-    generate_instance_storage_getter_with_default,
-    generate_instance_storage_setter,
+    generate_instance_storage_getter_with_default, generate_instance_storage_setter,
 };
 
-use utils::state::oracle::{ HistoricalOracleData, OracleGuardRails };
+use utils::state::oracle::{HistoricalOracleData, OracleGuardRails};
 
 use crate::funding::FundingCheckpoint;
 
@@ -193,7 +192,7 @@ pub(crate) fn get_historical_oracle_data(e: &Env, asset: &Symbol) -> HistoricalO
 pub(crate) fn put_historical_oracle_data(
     e: &Env,
     asset: &Symbol,
-    oracle_data: &HistoricalOracleData
+    oracle_data: &HistoricalOracleData,
 ) {
     let key = DataKey::HistoricalOracleData(asset.clone());
     e.storage().persistent().set(&key, oracle_data);
@@ -252,5 +251,7 @@ pub fn put_token_short(e: &Env, contract: Address) {
 
 pub fn put_token_collateral(e: &Env, contract: Address) {
     bump_instance(e);
-    e.storage().instance().set(&DataKey::TokenCollateral, &contract)
+    e.storage()
+        .instance()
+        .set(&DataKey::TokenCollateral, &contract)
 }

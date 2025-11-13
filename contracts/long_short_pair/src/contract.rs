@@ -1,72 +1,41 @@
 use crate::errors::LongShortPairError;
-use crate::events::{ Events, LongShortPairEvents };
-use crate::interface::{ AdminInterfaceTrait, LongShortPairTrait, UpgradeableContract };
+use crate::events::{Events, LongShortPairEvents};
+use crate::interface::{AdminInterfaceTrait, LongShortPairTrait, UpgradeableContract};
 use crate::oracle::get_oracle_price;
 use crate::storage::{
-    CollateralInfo,
-    FundingInfo,
-    get_calculator,
-    get_collateral_per_pair,
-    get_collateral_percent_long,
-    get_cumulative_funding_index_long,
-    get_cumulative_funding_index_short,
-    get_funding_period,
-    get_is_killed_create,
-    get_is_killed_redeem,
-    get_is_killed_update_funding,
-    get_last_24h_avg_funding_rate,
-    get_last_funding_rate,
-    get_last_funding_rate_ts,
-    get_sanitize_clamp_denominator,
-    get_user_funding_checkpoint,
-    set_calculator,
-    set_collateral_percent_long,
-    set_funding_period,
-    set_is_killed_create,
-    set_is_killed_redeem,
-    set_is_killed_update_funding,
-    set_normal_oracle,
+    get_calculator, get_collateral_per_pair, get_collateral_percent_long,
+    get_cumulative_funding_index_long, get_cumulative_funding_index_short, get_funding_period,
+    get_is_killed_create, get_is_killed_redeem, get_is_killed_update_funding,
+    get_last_24h_avg_funding_rate, get_last_funding_rate, get_last_funding_rate_ts,
+    get_sanitize_clamp_denominator, get_user_funding_checkpoint, set_calculator,
+    set_collateral_percent_long, set_funding_period, set_is_killed_create, set_is_killed_redeem,
+    set_is_killed_update_funding, set_normal_oracle, CollateralInfo, FundingInfo,
 };
 use crate::storage::{
-    get_token_long,
-    get_token_short,
-    put_token_collateral,
-    put_token_long,
-    put_token_short,
+    get_token_long, get_token_short, put_token_collateral, put_token_long, put_token_short,
 };
 use crate::token::burn_token_short_from;
-use crate::token::{ mint_token_long, mint_token_short, transfer_token_collateral };
-use crate::token::{ burn_token_long_from, get_token_long_balance_of, get_token_short_balance_of };
-use access_control::access::{ AccessControl, AccessControlTrait };
-use access_control::emergency::{ get_emergency_mode, set_emergency_mode };
+use crate::token::{burn_token_long_from, get_token_long_balance_of, get_token_short_balance_of};
+use crate::token::{mint_token_long, mint_token_short, transfer_token_collateral};
+use access_control::access::{AccessControl, AccessControlTrait};
+use access_control::emergency::{get_emergency_mode, set_emergency_mode};
 use access_control::errors::AccessControlError;
 use access_control::events::Events as AccessControlEvents;
 use access_control::interface::TransferableContract;
-use access_control::management::{ MultipleAddressesManagementTrait, SingleAddressManagementTrait };
+use access_control::management::{MultipleAddressesManagementTrait, SingleAddressManagementTrait};
 use access_control::role::Role;
 use access_control::role::SymbolRepresentation;
 use access_control::transfer::TransferOwnershipTrait;
 use access_control::utils::{
-    require_operations_admin_or_owner,
-    require_pause_admin_or_owner,
+    require_operations_admin_or_owner, require_pause_admin_or_owner,
     require_pause_or_emergency_pause_admin_or_owner,
 };
 use soroban_sdk::{
-    contract,
-    contractimpl,
-    contractmeta,
-    log,
-    panic_with_error,
-    Address,
-    BytesN,
-    Env,
-    IntoVal,
-    Map,
-    Symbol,
-    Vec,
+    contract, contractimpl, contractmeta, log, panic_with_error, Address, BytesN, Env, IntoVal,
+    Map, Symbol, Vec,
 };
 use upgrade::events::Events as UpgradeEvents;
-use upgrade::{ apply_upgrade, commit_upgrade, revert_upgrade };
+use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
 use utils::constant::ONE;
 use utils::math::safe_math::SafeMath;
 
@@ -100,7 +69,7 @@ impl LongShortPairTrait for LongShortPair {
         privileged_addrs: (Address, Address, Address, Address, Vec<Address>, Address),
         tokens: Vec<Address>,
         oracle: Address,
-        calculator: Address
+        calculator: Address,
     ) {
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
@@ -185,21 +154,24 @@ impl LongShortPairTrait for LongShortPair {
         let net_funding_delta = checkpoint.net_funding_delta(&e);
 
         let collateral = tokens_to_redeem.safe_mul(&e, get_collateral_per_pair(&e));
-        let collateral_adjusted = collateral.safe_mul(
-            &e,
-            ONE.safe_add(&e, net_funding_delta) as u128
-        );
+        let collateral_adjusted =
+            collateral.safe_mul(&e, ONE.safe_add(&e, net_funding_delta) as u128);
 
         checkpoint.redeem(&e, tokens_to_redeem);
 
-        transfer_token_collateral(&e, &user, &e.current_contract_address(), collateral_adjusted);
+        transfer_token_collateral(
+            &e,
+            &user,
+            &e.current_contract_address(),
+            collateral_adjusted,
+        );
 
         Events::new(&e).tokens_redeemed(
             current_time,
             user,
             collateral,
             collateral_adjusted,
-            tokens_to_redeem
+            tokens_to_redeem,
         );
 
         collateral_adjusted
@@ -210,7 +182,7 @@ impl LongShortPairTrait for LongShortPair {
         token_contract: Address,
         from: Address,
         to: Address,
-        transfer_amount: u128
+        transfer_amount: u128,
     ) {
         token_contract.require_auth();
 
@@ -226,10 +198,8 @@ impl LongShortPairTrait for LongShortPair {
         if token_contract == token_long {
             let cumulative_funding_index_long = get_cumulative_funding_index_long(&e);
 
-            from_checkpoint.long_balance = from_checkpoint.long_balance.safe_sub(
-                &e,
-                transfer_amount
-            );
+            from_checkpoint.long_balance =
+                from_checkpoint.long_balance.safe_sub(&e, transfer_amount);
             // apply funding PnL on transfer if needed
             from_checkpoint.long_index = cumulative_funding_index_long;
 
@@ -239,10 +209,8 @@ impl LongShortPairTrait for LongShortPair {
         } else {
             let cumulative_funding_index_short = get_cumulative_funding_index_short(&e);
 
-            from_checkpoint.short_balance = from_checkpoint.short_balance.safe_sub(
-                &e,
-                transfer_amount
-            );
+            from_checkpoint.short_balance =
+                from_checkpoint.short_balance.safe_sub(&e, transfer_amount);
             from_checkpoint.short_index = cumulative_funding_index_short;
 
             to_checkpoint.short_index = cumulative_funding_index_short;
@@ -256,16 +224,17 @@ impl LongShortPairTrait for LongShortPair {
     fn update_oracle_price(e: Env) {
         let oracle_price_data = get_oracle_price(&e);
 
-        match
-            e.try_invoke_contract::<u64, soroban_sdk::Error>(
-                &get_calculator(&e),
-                &Symbol::new(&e, "percent_long_collateral"),
-                Vec::from_array(&e, [
+        match e.try_invoke_contract::<u64, soroban_sdk::Error>(
+            &get_calculator(&e),
+            &Symbol::new(&e, "percent_long_collateral"),
+            Vec::from_array(
+                &e,
+                [
                     e.current_contract_address().into_val(&e),
                     oracle_price_data.price.into_val(&e),
-                ])
-            )
-        {
+                ],
+            ),
+        ) {
             Ok(Err(_)) | Err(_) => {
                 panic_with_error!(e, LongShortPairError::FailedToGetCalculatorPercent)
             }
@@ -280,10 +249,13 @@ impl LongShortPairTrait for LongShortPair {
     }
 
     fn get_position_tokens(e: Env, user: Address) -> Vec<u128> {
-        Vec::from_array(&e, [
-            get_token_long_balance_of(&e, &user),
-            get_token_short_balance_of(&e, &user),
-        ])
+        Vec::from_array(
+            &e,
+            [
+                get_token_long_balance_of(&e, &user),
+                get_token_short_balance_of(&e, &user),
+            ],
+        )
     }
 
     fn get_collateral_info(e: Env) -> CollateralInfo {
@@ -336,9 +308,13 @@ impl AdminInterfaceTrait for LongShortPair {
                 &e,
                 current_time,
                 last_update_ts,
-                funding_period
+                funding_period,
             );
-            log!(&e, "time_until_next_update = {:?} seconds", time_until_next_update);
+            log!(
+                &e,
+                "time_until_next_update = {:?} seconds",
+                time_until_next_update
+            );
 
             panic_with_error!(&e, LongShortPairError::FundingWasNotUpdated)
         }
@@ -361,7 +337,7 @@ impl AdminInterfaceTrait for LongShortPair {
         operations_admin: Address,
         pause_admin: Address,
         emergency_pause_admins: Vec<Address>,
-        system_fee_admin: Address
+        system_fee_admin: Address,
     ) {
         admin.require_auth();
         let access_control = AccessControl::new(&e);
@@ -377,7 +353,7 @@ impl AdminInterfaceTrait for LongShortPair {
             operations_admin,
             pause_admin,
             emergency_pause_admins,
-            system_fee_admin
+            system_fee_admin,
         );
     }
 
@@ -397,15 +373,18 @@ impl AdminInterfaceTrait for LongShortPair {
             Role::PauseAdmin,
             Role::SystemFeeAdmin,
         ] {
-            result.set(role.as_symbol(&e), match access_control.get_role_safe(&role) {
-                Some(v) => Vec::from_array(&e, [v]),
-                None => Vec::new(&e),
-            });
+            result.set(
+                role.as_symbol(&e),
+                match access_control.get_role_safe(&role) {
+                    Some(v) => Vec::from_array(&e, [v]),
+                    None => Vec::new(&e),
+                },
+            );
         }
 
         result.set(
             Role::EmergencyPauseAdmin.as_symbol(&e),
-            access_control.get_role_addresses(&Role::EmergencyPauseAdmin)
+            access_control.get_role_addresses(&Role::EmergencyPauseAdmin),
         );
 
         result
@@ -584,11 +563,10 @@ impl TransferableContract for LongShortPair {
         let access_control = AccessControl::new(&e);
         let role = Role::from_symbol(&e, role_name);
         match access_control.get_transfer_ownership_deadline(&role) {
-            0 =>
-                match access_control.get_role_safe(&role) {
-                    Some(address) => address,
-                    None => panic_with_error!(&e, AccessControlError::RoleNotFound),
-                }
+            0 => match access_control.get_role_safe(&role) {
+                Some(address) => address,
+                None => panic_with_error!(&e, AccessControlError::RoleNotFound),
+            },
             _ => access_control.get_future_address(&role),
         }
     }

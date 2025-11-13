@@ -11,7 +11,7 @@ use access_control::access::AccessControl;
 use access_control::management::{MultipleAddressesManagementTrait, SingleAddressManagementTrait};
 use access_control::role::Role;
 use liquidity_pool_config_storage::operations::get_config_storage;
-use rewards::storage::{RewardTokenStorageTrait};
+use rewards::storage::RewardTokenStorageTrait;
 use soroban_sdk::token::Client as SorobanTokenClient;
 use soroban_sdk::{
     panic_with_error, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol,
@@ -188,10 +188,7 @@ fn init_standard_pool(
                     <u32 as IntoVal<Env, u32>>::into_val(&protocol_fee_fraction, e),
                 )
                     .into_val(e),
-                (
-                    reward_token.to_val(),
-                )
-                    .into_val(e),
+                (reward_token.to_val(),).into_val(e),
                 plane.into_val(e),
                 storage_config.into_val(e),
             ],
@@ -260,10 +257,7 @@ fn init_stableswap_pool(
                     <u32 as IntoVal<Env, u32>>::into_val(&protocol_fee_fraction, e),
                 )
                     .into_val(e),
-                (
-                    reward_token.to_val(),
-                )
-                    .into_val(e),
+                (reward_token.to_val(),).into_val(e),
                 plane.into_val(e),
                 storage_config.into_val(e),
             ],

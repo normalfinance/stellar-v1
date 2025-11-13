@@ -1,6 +1,6 @@
-use soroban_sdk::{ Address, Env, Symbol, contracttype, panic_with_error };
-use utils::bump::{ bump_instance };
-use utils::{ errors::storage_errors::StorageError };
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
+use utils::bump::bump_instance;
+use utils::errors::storage_errors::StorageError;
 
 #[derive(Clone)]
 #[contracttype]
@@ -34,5 +34,7 @@ pub fn get_reflector_oracle(e: &Env) -> Address {
 
 pub fn put_reflector_oracle(e: &Env, contract: Address) {
     bump_instance(e);
-    e.storage().instance().set(&DataKey::ReflectorOracle, &contract)
+    e.storage()
+        .instance()
+        .set(&DataKey::ReflectorOracle, &contract)
 }

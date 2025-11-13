@@ -1,7 +1,7 @@
 use crate::interface::NormalOracleTrait;
 use crate::math::oracle::get_oracle_price;
-use crate::storage::{ get_asset, put_asset, put_reflector_oracle };
-use soroban_sdk::{ contract, contractimpl, Address, Env, Symbol };
+use crate::storage::{get_asset, put_asset, put_reflector_oracle};
+use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
 use utils::state::oracle::OraclePriceData;
 
 #[contract]

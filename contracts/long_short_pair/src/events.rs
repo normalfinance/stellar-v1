@@ -1,4 +1,4 @@
-use soroban_sdk::{ Address, Env, Symbol };
+use soroban_sdk::{Address, Env, Symbol};
 
 #[derive(Clone)]
 pub(crate) struct Events(Env);
@@ -32,7 +32,7 @@ pub(crate) trait LongShortPairEvents {
         sponsor: Address,
         collateral: u128,
         collateral_returned: u128,
-        tokens_redeemed: u128
+        tokens_redeemed: u128,
     );
 
     fn funding_rate_record(&self, ts: u64, funding_rate: i64);
@@ -57,20 +57,18 @@ impl LongShortPairEvents for Events {
         ts: u64,
         sponsor: Address,
         collateral_used: u128,
-        tokens_minted: u128
+        tokens_minted: u128,
     ) {
-        self.env()
-            .events()
-            .publish(
-                (
-                    Symbol::new(self.env(), "tokens_created"),
-                    ts,
-                    sponsor,
-                    collateral_used,
-                    tokens_minted,
-                ),
-                ()
-            );
+        self.env().events().publish(
+            (
+                Symbol::new(self.env(), "tokens_created"),
+                ts,
+                sponsor,
+                collateral_used,
+                tokens_minted,
+            ),
+            (),
+        );
     }
 
     fn tokens_redeemed(
@@ -79,27 +77,26 @@ impl LongShortPairEvents for Events {
         sponsor: Address,
         collateral: u128,
         collateral_returned: u128,
-        tokens_redeemed: u128
+        tokens_redeemed: u128,
     ) {
-        self.env()
-            .events()
-            .publish(
-                (
-                    Symbol::new(self.env(), "tokens_redeemed"),
-                    ts,
-                    sponsor,
-                    collateral,
-                    collateral_returned,
-                    tokens_redeemed,
-                ),
-                ()
-            );
+        self.env().events().publish(
+            (
+                Symbol::new(self.env(), "tokens_redeemed"),
+                ts,
+                sponsor,
+                collateral,
+                collateral_returned,
+                tokens_redeemed,
+            ),
+            (),
+        );
     }
 
     fn funding_rate_record(&self, ts: u64, funding_rate: i64) {
-        self.env()
-            .events()
-            .publish((Symbol::new(self.env(), "funding_rate_record"), ts), (funding_rate,));
+        self.env().events().publish(
+            (Symbol::new(self.env(), "funding_rate_record"), ts),
+            (funding_rate,),
+        );
     }
 
     fn kill_create(&self) {

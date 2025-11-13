@@ -1,6 +1,6 @@
-use soroban_sdk::{ Address, BytesN, Env, Map, Symbol, Vec };
+use soroban_sdk::{Address, BytesN, Env, Map, Symbol, Vec};
 
-use crate::storage::{ CollateralInfo, FundingInfo };
+use crate::storage::{CollateralInfo, FundingInfo};
 
 pub trait LongShortPairTrait {
     // Initialize lsp
@@ -10,7 +10,7 @@ pub trait LongShortPairTrait {
         privileged_addrs: (Address, Address, Address, Address, Vec<Address>, Address),
         tokens: Vec<Address>,
         oracle: Address,
-        calculator: Address
+        calculator: Address,
     );
 
     /**
@@ -39,7 +39,7 @@ pub trait LongShortPairTrait {
         token_contract: Address,
         from: Address,
         to: Address,
-        transfer_amount: u128
+        transfer_amount: u128,
     );
 
     fn update_oracle_price(e: Env);
@@ -67,7 +67,7 @@ pub trait AdminInterfaceTrait {
         operations_admin: Address,
         pause_admin: Address,
         emergency_pause_admins: Vec<Address>,
-        system_fee_admin: Address
+        system_fee_admin: Address,
     );
 
     // Get map of privileged roles

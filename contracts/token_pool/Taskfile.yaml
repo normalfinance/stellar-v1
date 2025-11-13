@@ -11,9 +11,9 @@ tasks:
 
   build:
     cmds:
-      - soroban contract build --package token_share
-      - soroban contract optimize --wasm ../../target/wasm32v1-none/release/token_share.wasm --wasm-out ../../target/wasm32v1-none/release/token_share.wasm
-      - cp ../../target/wasm32v1-none/release/token_share.wasm ../../wasm/token_share.wasm
+      - soroban contract build --package token_pool
+      - soroban contract optimize --wasm ../../target/wasm32v1-none/release/token_pool.wasm --wasm-out ../../target/wasm32v1-none/release/token_pool.wasm
+      - cp ../../target/wasm32v1-none/release/token_pool.wasm ../../wasm/token_pool.wasm
 
   test:
     deps:

@@ -3,8 +3,8 @@
 extern crate std;
 
 use crate::NormalOracleClient;
-use sep_40_oracle::testutils::{ Asset as MockAsset, MockPriceOracleClient, MockPriceOracleWASM };
-use soroban_sdk::{ testutils::Address as _, Address, Env, Symbol, Vec };
+use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPriceOracleWASM};
+use soroban_sdk::{testutils::Address as _, Address, Env, Symbol, Vec};
 use std::vec;
 use utils::test_utils::jump;
 
@@ -14,9 +14,7 @@ pub(crate) struct TestConfig {
 
 impl Default for TestConfig {
     fn default() -> Self {
-        TestConfig {
-            users_count: 2,
-        }
+        TestConfig { users_count: 2 }
     }
 }
 
@@ -65,7 +63,7 @@ impl Setup<'_> {
             &usd_asset,
             &Vec::from_array(&e, [sol_asset.clone()]),
             14,
-            300
+            300,
         );
 
         let prices_1: Vec<i128> = Vec::from_array(&e, [230_00000000000000, 1_00000000000000]);
@@ -97,12 +95,10 @@ impl Setup<'_> {
 pub fn create_normal_oracle_contract<'a>(
     e: &Env,
     asset: &Symbol,
-    oracle: &Address
+    oracle: &Address,
 ) -> NormalOracleClient<'a> {
-    let normal_oracle = NormalOracleClient::new(
-        e,
-        &e.register(crate::NormalOracle {}, (asset, oracle))
-    );
+    let normal_oracle =
+        NormalOracleClient::new(e, &e.register(crate::NormalOracle {}, (asset, oracle)));
     normal_oracle
 }
 
@@ -112,7 +108,7 @@ pub fn setup_price_feed_oracle<'a>(
     base: &MockAsset,
     assets: &Vec<MockAsset>,
     decimals: u32,
-    resolution: u32
+    resolution: u32,
 ) -> (Address, MockPriceOracleClient<'a>) {
     let oracle_addr = env.register(MockPriceOracleWASM, ());
     let oracle_client = MockPriceOracleClient::new(env, &oracle_addr);

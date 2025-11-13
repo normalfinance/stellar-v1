@@ -2,34 +2,19 @@
 extern crate std;
 
 use crate::testutils::{
-    create_token_contract,
-    get_token_admin_client,
-    install_token_wasm,
-    Setup,
-    TestConfig,
+    create_token_contract, get_token_admin_client, install_token_wasm, Setup, TestConfig,
 };
 use access_control::constants::ADMIN_ACTIONS_DELAY;
-use utils::constant::ONE_HOUR;
 use core::cmp::min;
-use soroban_sdk::testutils::{ AuthorizedFunction, AuthorizedInvocation, Events };
+use soroban_sdk::testutils::{AuthorizedFunction, AuthorizedInvocation, Events};
 use soroban_sdk::token::{
-    StellarAssetClient as SorobanTokenAdminClient,
-    TokenClient as SorobanTokenClient,
+    StellarAssetClient as SorobanTokenAdminClient, TokenClient as SorobanTokenClient,
 };
 use soroban_sdk::{
-    symbol_short,
-    testutils::Address as _,
-    vec,
-    Address,
-    Env,
-    Error,
-    IntoVal,
-    Map,
-    Symbol,
-    Val,
-    Vec,
+    symbol_short, testutils::Address as _, vec, Address, Env, Error, IntoVal, Map, Symbol, Val, Vec,
 };
-use utils::test_utils::{ install_dummy_wasm, jump };
+use utils::constant::ONE_HOUR;
+use utils::test_utils::{install_dummy_wasm, jump};
 
 #[test]
 #[should_panic(expected = "Error(Contract, #201)")]
@@ -52,7 +37,7 @@ fn initialize_already_initialized() {
         ),
         &Vec::from_array(&setup.env, [token1.address.clone(), token2.address.clone()]),
         &setup.oracle_addr,
-        &setup.calculator
+        &setup.calculator,
     );
 }
 
@@ -62,7 +47,7 @@ fn test_create() {
         &(TestConfig {
             mint_to_user: i128::MAX,
             ..TestConfig::default()
-        })
+        }),
     );
     let user1 = setup.users[0].clone();
     let tokens_to_create = 100_0000000;
@@ -96,7 +81,7 @@ fn test_redeem() {
         &(TestConfig {
             mint_to_user: i128::MAX,
             ..TestConfig::default()
-        })
+        }),
     );
     let user1 = setup.users[0].clone();
     let tokens_to_create = 100_0000000;
@@ -131,7 +116,7 @@ fn test_update_oracle_price() {
         &(TestConfig {
             mint_to_user: i128::MAX,
             ..TestConfig::default()
-        })
+        }),
     );
 }
 
@@ -142,7 +127,9 @@ fn test_update_funding_period() {
     let setup = Setup::default();
     let new_funding_period = 1000000;
 
-    setup.pair.update_funding_period(&setup.admin, &new_funding_period);
+    setup
+        .pair
+        .update_funding_period(&setup.admin, &new_funding_period);
 
     let funding_info = setup.pair.get_funding_info();
     assert_eq!(funding_info.funding_period, new_funding_period);
@@ -164,10 +151,12 @@ fn test_update_funding_rate() {
 
     let funding_info_before = setup.pair.get_funding_info();
 
-    setup.pair.update_funding_period(&setup.admin, &new_funding_period);
+    setup
+        .pair
+        .update_funding_period(&setup.admin, &new_funding_period);
 
     let new_funding_info = setup.pair.get_funding_info();
-    
+
     assert_eq!(funding_info.funding_period, new_funding_period);
 }
 
@@ -181,7 +170,6 @@ fn test_update_funding_rate_again_after_time() {
 
     setup.pair.update_funding_rate(&setup.admin);
 }
-
 
 #[test]
 #[should_panic(expected = "Error(Contract, #205)")]

@@ -1,7 +1,7 @@
 use access_control::access::AccessControl;
 use access_control::management::SingleAddressManagementTrait;
 use access_control::role::Role;
-use soroban_sdk::{ Address, Env, IntoVal, Symbol, Vec };
+use soroban_sdk::{Address, Env, IntoVal, Symbol, Vec};
 
 pub fn checkpoint_user_funding(e: &Env, from: Address, to: Address, amount: i128) {
     let access_control = AccessControl::new(&e);
@@ -16,11 +16,14 @@ pub fn checkpoint_user_funding(e: &Env, from: Address, to: Address, amount: i128
     e.invoke_contract::<()>(
         &pair_address,
         &Symbol::new(&e, "checkpoint_funding"),
-        Vec::from_array(&e, [
-            e.current_contract_address().to_val(),
-            from.clone().to_val(),
-            to.clone().to_val(),
-            (amount as u128).into_val(e),
-        ])
+        Vec::from_array(
+            &e,
+            [
+                e.current_contract_address().to_val(),
+                from.clone().to_val(),
+                to.clone().to_val(),
+                (amount as u128).into_val(e),
+            ],
+        ),
     );
 }

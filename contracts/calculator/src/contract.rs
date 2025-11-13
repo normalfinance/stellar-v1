@@ -1,7 +1,7 @@
 use crate::errors::CalculatorError;
 use crate::interface::CalculatorTrait;
-use crate::storage::{ get_params, set_params, LinearLongShortPairParameters };
-use soroban_sdk::{ contract, contractimpl, contractmeta, panic_with_error, Address, Env };
+use crate::storage::{get_params, set_params, LinearLongShortPairParameters};
+use soroban_sdk::{contract, contractimpl, contractmeta, panic_with_error, Address, Env};
 
 // Metadata that is added on to the WASM custom section
 contractmeta!(key = "Description", val = "");

@@ -104,7 +104,7 @@ impl Setup<'_> {
         } else {
             create_token_contract(&e, &admin)
         };
-    
+
         let plane = create_plane_contract(&e);
 
         let token1_admin_client = get_token_admin_client(&e, &token1.address.clone());
@@ -252,9 +252,7 @@ pub fn create_liqpool_contract<'a>(
             fee_fraction,
             5000, // 50% protocol fee fraction
         ),
-        &(
-            reward_token.clone(),
-        ),
+        &(reward_token.clone(),),
         plane,
         config_storage,
     );

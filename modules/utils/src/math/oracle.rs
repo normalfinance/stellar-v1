@@ -1,10 +1,7 @@
 use core::cmp::max;
 
-use soroban_sdk::{ Env };
-use crate::{
-    constant::{ DEFAULT_MAX_TWAP_UPDATE_PRICE_BAND_DENOMINATOR },
-    math::safe_math::{ SafeMath },
-};
+use crate::{constant::DEFAULT_MAX_TWAP_UPDATE_PRICE_BAND_DENOMINATOR, math::safe_math::SafeMath};
+use soroban_sdk::Env;
 
 /// Sanitizes a new oracle price update by clamping it within a band around the TWAP.
 ///
@@ -67,7 +64,7 @@ pub fn sanitize_new_price(
     e: &Env,
     new_price: u128,
     last_price_twap: u128,
-    sanitize_clamp_denominator: u64
+    sanitize_clamp_denominator: u64,
 ) -> u128 {
     assert!(new_price > 0, "new_price must be positive");
     assert!(last_price_twap >= 0, "last_price_twap must be non-negative");
@@ -119,7 +116,7 @@ pub fn calculate_weighted_average(
     data1: i64,
     data2: i64,
     weight1: i64,
-    weight2: i64
+    weight2: i64,
 ) -> i64 {
     let denominator = weight1.safe_add(e, weight2) as i128;
     let prev_twap_99 = (data1 as i128).safe_mul(e, weight1 as i128);
@@ -145,7 +142,9 @@ pub fn calculate_weighted_average(
         0
     };
 
-    let twap = prev_twap_99.safe_add(e, latest_price_01).safe_div(e, denominator) as i64;
+    let twap = prev_twap_99
+        .safe_add(e, latest_price_01)
+        .safe_div(e, denominator) as i64;
 
     if twap == 0 && bias < 0 {
         return twap;
@@ -160,7 +159,7 @@ pub fn calculate_new_twap(
     current_ts: i64,
     last_twap: i64,
     last_ts: i64,
-    period: i64
+    period: i64,
 ) -> i64 {
     let since_last = max(0_i64, current_ts.safe_sub(&e, last_ts));
     let from_start = max(1_i64, period.safe_sub(&e, since_last));

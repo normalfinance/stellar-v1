@@ -1,5 +1,5 @@
-use crate::events::{ Events, FactoryConfigEvents, FactoryEvents };
-use crate::interface::{ AdminInterface, LongShortPairFactoryTrait };
+use crate::events::{Events, FactoryConfigEvents, FactoryEvents};
+use crate::interface::{AdminInterface, LongShortPairFactoryTrait};
 use crate::pair_utils::get_pair_salt;
 use crate::storage::get_is_killed_create;
 use crate::storage::get_lsp_contract_wasm;
@@ -8,38 +8,27 @@ use crate::storage::set_is_killed_create;
 use crate::storage::set_lsp_contract_wasm;
 use crate::storage::set_token_factory;
 use crate::storage::{
-    add_deployed_pair,
-    get_all_deployed_pairs,
-    get_contract_sequence,
-    get_deployed_pairs,
+    add_deployed_pair, get_all_deployed_pairs, get_contract_sequence, get_deployed_pairs,
     set_contract_sequence,
 };
-use soroban_sdk::token::{ StellarAssetClient as SorobanTokenAdminClient };
-use access_control::access::{ AccessControl, AccessControlTrait };
-use access_control::emergency::{ get_emergency_mode, set_emergency_mode };
+use access_control::access::{AccessControl, AccessControlTrait};
+use access_control::emergency::{get_emergency_mode, set_emergency_mode};
 use access_control::errors::AccessControlError;
 use access_control::events::Events as AccessControlEvents;
 use access_control::interface::TransferableContract;
 use access_control::management::SingleAddressManagementTrait;
-use access_control::role::{ Role, SymbolRepresentation };
+use access_control::role::{Role, SymbolRepresentation};
 use access_control::transfer::TransferOwnershipTrait;
 use access_control::utils::require_pause_or_emergency_pause_admin_or_owner;
+use soroban_sdk::token::StellarAssetClient as SorobanTokenAdminClient;
 use soroban_sdk::Bytes;
 use soroban_sdk::IntoVal;
 use soroban_sdk::{
-    contract,
-    contractimpl,
-    contracttype,
-    panic_with_error,
-    Address,
-    BytesN,
-    Env,
-    Symbol,
-    Vec,
+    contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol, Vec,
 };
 use upgrade::events::Events as UpgradeEvents;
 use upgrade::interface::UpgradeableContract;
-use upgrade::{ apply_upgrade, commit_upgrade, revert_upgrade };
+use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
 
 #[contract]
 pub struct LongShortPairFactory;
@@ -80,7 +69,7 @@ impl LongShortPairFactory {
         admin: Address,
         emergency_admin: Address,
         token_factory: Address,
-        lsp_contract_wasm: BytesN<32>
+        lsp_contract_wasm: BytesN<32>,
     ) {
         let access_control = AccessControl::new(&e);
         access_control.set_role_address(&Role::Admin, &admin);
@@ -114,14 +103,14 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
         let token_long: Address = e.invoke_contract(
             &token_factory,
             &Symbol::new(&e, "create_token"),
-            Vec::from_array(&e, [params.serialized_long_asset.clone().into_val(&e)])
+            Vec::from_array(&e, [params.serialized_long_asset.clone().into_val(&e)]),
         );
 
         // Deploy the Short Token SAC
         let token_short: Address = e.invoke_contract(
             &token_factory,
             &Symbol::new(&e, "create_token"),
-            Vec::from_array(&e, [params.serialized_short_asset.clone().into_val(&e)])
+            Vec::from_array(&e, [params.serialized_short_asset.clone().into_val(&e)]),
         );
 
         // Deploy the LSP contract
@@ -130,10 +119,10 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
 
         let salt = get_pair_salt(&e, &params.admin, &sequence);
 
-        let lsp_address = e
-            .deployer()
-            .with_current_contract(salt)
-            .deploy_v2(get_lsp_contract_wasm(&e), (e.current_contract_address(), params.clone()));
+        let lsp_address = e.deployer().with_current_contract(salt).deploy_v2(
+            get_lsp_contract_wasm(&e),
+            (e.current_contract_address(), params.clone()),
+        );
 
         // Give permissions to new lsp contract and then hand over ownership.
         SorobanTokenAdminClient::new(&e, &token_long).set_admin(&lsp_address);
@@ -148,7 +137,7 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
         Events::new(&e).long_short_pair_deployed(
             current_time,
             params.admin.clone(),
-            lsp_address.clone() // long_short_pair_address
+            lsp_address.clone(), // long_short_pair_address
         );
 
         lsp_address
@@ -229,7 +218,7 @@ impl AdminInterface for LongShortPairFactory {
             admin.clone(),
             old_wasm.clone(),
             lsp_contract_wasm.clone(),
-            1
+            1,
         );
     }
 
@@ -434,11 +423,10 @@ impl TransferableContract for LongShortPairFactory {
         let access_control = AccessControl::new(&e);
         let role = Role::from_symbol(&e, role_name);
         match access_control.get_transfer_ownership_deadline(&role) {
-            0 =>
-                match access_control.get_role_safe(&role) {
-                    Some(address) => address,
-                    None => panic_with_error!(&e, AccessControlError::RoleNotFound),
-                }
+            0 => match access_control.get_role_safe(&role) {
+                Some(address) => address,
+                None => panic_with_error!(&e, AccessControlError::RoleNotFound),
+            },
             _ => access_control.get_future_address(&role),
         }
     }
