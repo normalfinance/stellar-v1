@@ -1,4 +1,6 @@
-use soroban_sdk::{Address, BytesN, Env, Map, Symbol, Vec};
+use soroban_sdk::{ Address, BytesN, Env, Map, Symbol, Vec };
+
+use crate::storage::{ CollateralInfo, FundingInfo };
 
 pub trait LongShortPairTrait {
     // Initialize lsp
@@ -8,7 +10,7 @@ pub trait LongShortPairTrait {
         privileged_addrs: (Address, Address, Address, Address, Vec<Address>, Address),
         tokens: Vec<Address>,
         oracle: Address,
-        calculator: Address,
+        calculator: Address
     );
 
     /**
@@ -32,32 +34,31 @@ pub trait LongShortPairTrait {
      */
     fn redeem(e: Env, user: Address, tokens_to_redeem: u128) -> u128;
 
-    /**
-     * @notice Settle long and/or short tokens in for collateral at a rate informed by the contract settlement.
-     * @dev Uses financialProductLibrary to compute the redemption rate between long and short tokens.
-     * @dev This contract must have the `Burner` role for the `longToken` and `shortToken` in order to call `burnFrom`.
-     * @dev The caller does not need to approve this contract to transfer any amount of `tokensToRedeem` since long
-     * and short tokens are burned, rather than transferred, from the caller.
-     * @dev This function can be called before or after expiration to facilitate early expiration. If a price has
-     * not yet been resolved for either normal or early expiration yet then it will revert.
-     * @param longTokensToRedeem number of long tokens to settle.
-     * @param shortTokensToRedeem number of short tokens to settle.
-     * @return collateralReturned total collateral returned in exchange for the pair of synthetics.
-     */
-    fn settle(e: Env, user: Address, long_to_redeem: u128, short_to_redeem: u128) -> u128;
+    fn checkpoint_funding(
+        e: Env,
+        token_contract: Address,
+        from: Address,
+        to: Address,
+        transfer_amount: u128
+    );
 
-    // fn sync(e: Env, user: Address) -> u128;
-
-    // fn skim(e: Env, user: Address) -> u128;
-
-    fn get_expiration_price(e: Env, user: Address) -> u128;
+    fn update_oracle_price(e: Env);
 
     fn get_tokens(e: Env) -> Vec<Address>;
 
     fn get_position_tokens(e: Env, user: Address) -> Vec<u128>;
+
+    fn get_collateral_info(e: Env) -> CollateralInfo;
+
+    fn get_funding_info(e: Env) -> FundingInfo;
 }
 
 pub trait AdminInterfaceTrait {
+    // Funding
+    fn update_funding_period(e: Env, admin: Address, funding_period: u64);
+
+    fn update_funding_rate(e: Env, admin: Address);
+
     // Set privileged addresses
     fn set_privileged_addrs(
         e: Env,
@@ -66,7 +67,7 @@ pub trait AdminInterfaceTrait {
         operations_admin: Address,
         pause_admin: Address,
         emergency_pause_admins: Vec<Address>,
-        system_fee_admin: Address,
+        system_fee_admin: Address
     );
 
     // Get map of privileged roles
@@ -77,17 +78,17 @@ pub trait AdminInterfaceTrait {
     // Stop LSP instantly
     fn kill_create(e: Env, admin: Address);
     fn kill_redeem(e: Env, admin: Address);
-    fn kill_settle(e: Env, admin: Address);
+    fn kill_update_funding(e: Env, admin: Address);
 
     // Resume LSP
     fn unkill_create(e: Env, admin: Address);
     fn unkill_redeem(e: Env, admin: Address);
-    fn unkill_settle(e: Env, admin: Address);
+    fn unkill_update_funding(e: Env, admin: Address);
 
     // Get killswitch status
     fn get_is_killed_create(e: Env) -> bool;
     fn get_is_killed_redeem(e: Env) -> bool;
-    fn get_is_killed_settle(e: Env) -> bool;
+    fn get_is_killed_update_funding(e: Env) -> bool;
 }
 
 pub trait UpgradeableContract {

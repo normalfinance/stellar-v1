@@ -1,7 +1,7 @@
 #![cfg(any(test, feature = "testutils"))]
 
 use soroban_sdk::testutils::{Ledger, LedgerInfo};
-use soroban_sdk::{BytesN, Env, U256};
+use soroban_sdk::{BytesN, Env};
 
 pub fn jump(e: &Env, time: u64) {
     e.ledger().set(LedgerInfo {
@@ -43,7 +43,7 @@ pub fn jump_sequence(e: &Env, sequence: u32) {
     });
 }
 
-// pub fn install_dummy_wasm<'a>(e: &Env) -> BytesN<32> {
-//     soroban_sdk::contractimport!(file = "../../wasm/dummy_contract.wasm");
-//     e.deployer().upload_contract_wasm(WASM)
-// }
+pub fn install_dummy_wasm<'a>(e: &Env) -> BytesN<32> {
+    soroban_sdk::contractimport!(file = "../../wasm/dummy_contract.wasm");
+    e.deployer().upload_contract_wasm(WASM)
+}

@@ -1,6 +1,6 @@
 [package]
-name = "long-short-pair"
-description = "Soroban contract for a Long Short Pair"
+name = "token-long-short-pair"
+description = "Soroban token contract for Long and Short tokens"
 version.workspace = true
 edition = "2021"
 publish = false
@@ -13,11 +13,9 @@ doctest = false
 [dependencies]
 soroban-sdk = { workspace = true }
 soroban-token-sdk = { workspace = true }
-paste = { workspace = true }
 access_control = { workspace = true }
 utils = { workspace = true }
 upgrade = { workspace = true }
-soroban-fixed-point-math = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

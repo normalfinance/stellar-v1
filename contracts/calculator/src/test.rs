@@ -4,7 +4,7 @@ extern crate std;
 use crate::testutils::Setup;
 
 /// Convenience to read output as f64 percent (0.0–1.0)
-fn as_percent(x: u128) -> f64 {
+fn as_percent(x: u64) -> f64 {
     (x as f64) / 10_000_000.0
 }
 

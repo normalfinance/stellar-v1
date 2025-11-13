@@ -1,37 +1,74 @@
 use crate::errors::LongShortPairError;
-use crate::events::{Events, LongShortPairEvents};
-use crate::interface::{AdminInterfaceTrait, LongShortPairTrait, UpgradeableContract};
-use crate::storage::set_calculator;
-use crate::storage::set_oracle;
+use crate::events::{ Events, LongShortPairEvents };
+use crate::interface::{ AdminInterfaceTrait, LongShortPairTrait, UpgradeableContract };
+use crate::oracle::get_oracle_price;
 use crate::storage::{
-    get_collateral_per_pair, get_expiry_percent_long, get_is_killed_create, get_is_killed_redeem,
-    get_is_killed_settle, set_is_killed_create, set_is_killed_redeem, set_is_killed_settle,
+    CollateralInfo,
+    FundingInfo,
+    get_calculator,
+    get_collateral_per_pair,
+    get_collateral_percent_long,
+    get_cumulative_funding_index_long,
+    get_cumulative_funding_index_short,
+    get_funding_period,
+    get_is_killed_create,
+    get_is_killed_redeem,
+    get_is_killed_update_funding,
+    get_last_24h_avg_funding_rate,
+    get_last_funding_rate,
+    get_last_funding_rate_ts,
+    get_sanitize_clamp_denominator,
+    get_user_funding_checkpoint,
+    set_calculator,
+    set_collateral_percent_long,
+    set_funding_period,
+    set_is_killed_create,
+    set_is_killed_redeem,
+    set_is_killed_update_funding,
+    set_normal_oracle,
 };
 use crate::storage::{
-    get_token_long, get_token_short, put_token_collateral, put_token_long, put_token_short,
+    get_token_long,
+    get_token_short,
+    put_token_collateral,
+    put_token_long,
+    put_token_short,
 };
 use crate::token::burn_token_short_from;
-use crate::token::{
-    burn_token_long, burn_token_short, mint_token_long, mint_token_short, transfer_token_collateral,
-};
-use crate::token::{burn_token_long_from, get_token_long_balance_of, get_token_short_balance_of};
-use access_control::access::{AccessControl, AccessControlTrait};
-use access_control::emergency::{get_emergency_mode, set_emergency_mode};
+use crate::token::{ mint_token_long, mint_token_short, transfer_token_collateral };
+use crate::token::{ burn_token_long_from, get_token_long_balance_of, get_token_short_balance_of };
+use access_control::access::{ AccessControl, AccessControlTrait };
+use access_control::emergency::{ get_emergency_mode, set_emergency_mode };
 use access_control::errors::AccessControlError;
 use access_control::events::Events as AccessControlEvents;
 use access_control::interface::TransferableContract;
-use access_control::management::{MultipleAddressesManagementTrait, SingleAddressManagementTrait};
+use access_control::management::{ MultipleAddressesManagementTrait, SingleAddressManagementTrait };
 use access_control::role::Role;
 use access_control::role::SymbolRepresentation;
 use access_control::transfer::TransferOwnershipTrait;
 use access_control::utils::{
-    require_pause_admin_or_owner, require_pause_or_emergency_pause_admin_or_owner,
+    require_operations_admin_or_owner,
+    require_pause_admin_or_owner,
+    require_pause_or_emergency_pause_admin_or_owner,
 };
 use soroban_sdk::{
-    contract, contractimpl, contractmeta, panic_with_error, Address, BytesN, Env, Map, Symbol, Vec,
+    contract,
+    contractimpl,
+    contractmeta,
+    log,
+    panic_with_error,
+    Address,
+    BytesN,
+    Env,
+    IntoVal,
+    Map,
+    Symbol,
+    Vec,
 };
 use upgrade::events::Events as UpgradeEvents;
-use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
+use upgrade::{ apply_upgrade, commit_upgrade, revert_upgrade };
+use utils::constant::ONE;
+use utils::math::safe_math::SafeMath;
 
 // Metadata that is added on to the WASM custom section
 contractmeta!(key = "Description", val = "");
@@ -63,7 +100,7 @@ impl LongShortPairTrait for LongShortPair {
         privileged_addrs: (Address, Address, Address, Address, Vec<Address>, Address),
         tokens: Vec<Address>,
         oracle: Address,
-        calculator: Address,
+        calculator: Address
     ) {
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
@@ -77,7 +114,7 @@ impl LongShortPairTrait for LongShortPair {
         access_control.set_role_addresses(&Role::EmergencyPauseAdmin, &privileged_addrs.4);
         access_control.set_role_address(&Role::SystemFeeAdmin, &privileged_addrs.5);
 
-        set_oracle(&e, &oracle);
+        set_normal_oracle(&e, &oracle);
         set_calculator(&e, &calculator);
 
         if tokens.len() != 3 {
@@ -105,12 +142,15 @@ impl LongShortPairTrait for LongShortPair {
 
         let current_time = e.ledger().timestamp();
 
-        let collateral_used = tokens_to_create * get_collateral_per_pair(&e);
+        let collateral_used = tokens_to_create.safe_mul(&e, get_collateral_per_pair(&e));
 
         transfer_token_collateral(&e, &user, &e.current_contract_address(), collateral_used);
 
         mint_token_long(&e, &user, &(tokens_to_create as i128));
         mint_token_short(&e, &user, &(tokens_to_create as i128));
+
+        let mut checkpoint = get_user_funding_checkpoint(&e, &user);
+        checkpoint.mint(&e, tokens_to_create);
 
         Events::new(&e).tokens_created(current_time, user, collateral_used, tokens_to_create);
 
@@ -132,119 +172,178 @@ impl LongShortPairTrait for LongShortPair {
 
         let current_time = e.ledger().timestamp();
 
+        // Get the oracle price and store it. Also sets collateral_percent_long to inform settlement. Reverts if either:
+        // a) the price request has not resolved (either a normal expiration call or early expiration call) or b) If the
+        // the contract was attempted to be settled early but the price returned is the ignore oracle price.
+        // Note that we use the bool receivedSettlementPrice over checking for price != 0 as 0 is a valid price.
+        Self::update_oracle_price(e.clone());
+
         burn_token_long_from(&e, &user, &(tokens_to_redeem as i128));
         burn_token_short_from(&e, &user, &(tokens_to_redeem as i128));
 
-        let collateral_returned = tokens_to_redeem * get_collateral_per_pair(&e);
+        let mut checkpoint = get_user_funding_checkpoint(&e, &user);
+        let net_funding_delta = checkpoint.net_funding_delta(&e);
 
-        transfer_token_collateral(
+        let collateral = tokens_to_redeem.safe_mul(&e, get_collateral_per_pair(&e));
+        let collateral_adjusted = collateral.safe_mul(
             &e,
-            &user,
-            &e.current_contract_address(),
-            collateral_returned,
+            ONE.safe_add(&e, net_funding_delta) as u128
         );
 
-        Events::new(&e).tokens_redeemed(current_time, user, collateral_returned, tokens_to_redeem);
+        checkpoint.redeem(&e, tokens_to_redeem);
 
-        collateral_returned
-    }
+        transfer_token_collateral(&e, &user, &e.current_contract_address(), collateral_adjusted);
 
-    /**
-     * @notice Settle long and/or short tokens in for collateral at a rate informed by the contract settlement.
-     * @dev Uses financialProductLibrary to compute the redemption rate between long and short tokens.
-     * @dev This contract must have the `Burner` role for the `longToken` and `shortToken` in order to call `burnFrom`.
-     * @dev The caller does not need to approve this contract to transfer any amount of `tokensToRedeem` since long
-     * and short tokens are burned, rather than transferred, from the caller.
-     * @dev This function can be called before or after expiration to facilitate early expiration. If a price has
-     * not yet been resolved for either normal or early expiration yet then it will revert.
-     * @param long_tokens_to_redeem number of long tokens to settle.
-     * @param short_tokens_to_redeem number of short tokens to settle.
-     * @return collateralReturned total collateral returned in exchange for the pair of synthetics.
-     */
-    fn settle(
-        e: Env,
-        user: Address,
-        long_tokens_to_redeem: u128,
-        short_tokens_to_redeem: u128,
-    ) -> u128 {
-        user.require_auth();
-
-        let current_time = e.ledger().timestamp();
-
-        burn_token_long(&e, &user, &(long_tokens_to_redeem as i128));
-        burn_token_short(&e, &user, &(short_tokens_to_redeem as i128));
-
-        let collateral_per_pair = get_collateral_per_pair(&e);
-        let expiry_percent_long = get_expiry_percent_long(&e);
-
-        // expiry_percent_long is a number between 0 and 1e18. 0 means all collateral goes to short tokens and 1e18 means
-        // all collateral goes to the long token. Total collateral returned is the sum of payouts.
-        let long_collateral_redeemed =
-            long_tokens_to_redeem * collateral_per_pair * expiry_percent_long;
-        let short_collateral_redeemed =
-            short_tokens_to_redeem * collateral_per_pair * (1 - expiry_percent_long);
-
-        let collateral_returned = long_collateral_redeemed + short_collateral_redeemed;
-        transfer_token_collateral(
-            &e,
-            &e.current_contract_address(),
-            &user,
-            collateral_returned,
-        );
-
-        Events::new(&e).position_settled(
+        Events::new(&e).tokens_redeemed(
             current_time,
             user,
-            collateral_returned,
-            long_tokens_to_redeem,
-            short_tokens_to_redeem,
+            collateral,
+            collateral_adjusted,
+            tokens_to_redeem
         );
 
-        collateral_returned
+        collateral_adjusted
     }
 
-    // fn sync(e: Env, user: Address) -> u128 {
-    //     let (balance_long, balance_1) = (
-    //         get_token_long_balance(&e, &e.current_contract_address()),
-    //         get_balance_1(&e),
-    //     );
-    //     update(&e, balance_0, balance_1);
-    // }
+    fn checkpoint_funding(
+        e: Env,
+        token_contract: Address,
+        from: Address,
+        to: Address,
+        transfer_amount: u128
+    ) {
+        token_contract.require_auth();
 
-    // fn skim(e: Env, to: Address) -> u128 {
-    //     let (balance_long, balance_1) = (
-    //         get_token_long_balance(&e, &e.current_contract_address()),
-    //         get_balance_1(&e),
-    //     );
-    //     let (reserve_0, reserve_1) = (get_reserve_0(&e), get_reserve_1(&e));
-    //     let skimmed_0 = balance_0.checked_sub(reserve_0).unwrap();
-    //     let skimmed_1 = balance_1.checked_sub(reserve_1).unwrap();
-    //     transfer_token_0_from_pair(&e, &to, skimmed_0);
-    //     transfer_token_1_from_pair(&e, &to, skimmed_1);
-    //     event::skim(&e, skimmed_0, skimmed_1);
-    // }
+        let token_long = get_token_long(&e);
+        if token_contract != token_long && token_contract != get_token_short(&e) {
+            panic_with_error!(&e, AccessControlError::Unauthorized);
+        }
+
+        // checkpoint users
+        let mut from_checkpoint = get_user_funding_checkpoint(&e, &from);
+        let mut to_checkpoint = get_user_funding_checkpoint(&e, &to);
+
+        if token_contract == token_long {
+            let cumulative_funding_index_long = get_cumulative_funding_index_long(&e);
+
+            from_checkpoint.long_balance = from_checkpoint.long_balance.safe_sub(
+                &e,
+                transfer_amount
+            );
+            // apply funding PnL on transfer if needed
+            from_checkpoint.long_index = cumulative_funding_index_long;
+
+            // receiver inherits current index
+            to_checkpoint.long_index = cumulative_funding_index_long;
+            to_checkpoint.long_balance = to_checkpoint.long_balance.safe_add(&e, transfer_amount);
+        } else {
+            let cumulative_funding_index_short = get_cumulative_funding_index_short(&e);
+
+            from_checkpoint.short_balance = from_checkpoint.short_balance.safe_sub(
+                &e,
+                transfer_amount
+            );
+            from_checkpoint.short_index = cumulative_funding_index_short;
+
+            to_checkpoint.short_index = cumulative_funding_index_short;
+            to_checkpoint.short_balance = to_checkpoint.short_balance.safe_add(&e, transfer_amount);
+        }
+
+        from_checkpoint.save(&e);
+        to_checkpoint.save(&e);
+    }
+
+    fn update_oracle_price(e: Env) {
+        let oracle_price_data = get_oracle_price(&e);
+
+        match
+            e.try_invoke_contract::<u64, soroban_sdk::Error>(
+                &get_calculator(&e),
+                &Symbol::new(&e, "percent_long_collateral"),
+                Vec::from_array(&e, [
+                    e.current_contract_address().into_val(&e),
+                    oracle_price_data.price.into_val(&e),
+                ])
+            )
+        {
+            Ok(Err(_)) | Err(_) => {
+                panic_with_error!(e, LongShortPairError::FailedToGetCalculatorPercent)
+            }
+            Ok(Ok(new_collateral_percent_long)) => {
+                set_collateral_percent_long(&e, &new_collateral_percent_long.min(1_u64));
+            }
+        }
+    }
 
     fn get_tokens(e: Env) -> Vec<Address> {
         Vec::from_array(&e, [get_token_long(&e), get_token_short(&e)])
     }
 
-    fn get_expiration_price(e: Env, user: Address) -> u128 {
-        0
+    fn get_position_tokens(e: Env, user: Address) -> Vec<u128> {
+        Vec::from_array(&e, [
+            get_token_long_balance_of(&e, &user),
+            get_token_short_balance_of(&e, &user),
+        ])
     }
 
-    fn get_position_tokens(e: Env, user: Address) -> Vec<u128> {
-        Vec::from_array(
-            &e,
-            [
-                get_token_long_balance_of(&e, &user),
-                get_token_short_balance_of(&e, &user),
-            ],
-        )
+    fn get_collateral_info(e: Env) -> CollateralInfo {
+        CollateralInfo {
+            collateral_per_pair: get_collateral_per_pair(&e),
+            collateral_percent_long: get_collateral_percent_long(&e),
+        }
+    }
+
+    fn get_funding_info(e: Env) -> FundingInfo {
+        FundingInfo {
+            sanitize_clamp_denominator: get_sanitize_clamp_denominator(&e),
+            cumulative_funding_index_long: get_cumulative_funding_index_long(&e),
+            cumulative_funding_index_short: get_cumulative_funding_index_short(&e),
+            last_funding_rate: get_last_funding_rate(&e),
+            last24h_avg_funding_rate: get_last_24h_avg_funding_rate(&e),
+            last_funding_rate_ts: get_last_funding_rate_ts(&e),
+            funding_period: get_funding_period(&e),
+        }
     }
 }
 
 #[contractimpl]
 impl AdminInterfaceTrait for LongShortPair {
+    fn update_funding_period(e: Env, admin: Address, funding_period: u64) {
+        admin.require_auth();
+        require_operations_admin_or_owner(&e, &admin);
+
+        if funding_period <= 0 {
+            panic_with_error!(&e, LongShortPairError::InvalidInput);
+        }
+
+        set_funding_period(&e, &funding_period);
+    }
+
+    fn update_funding_rate(e: Env, admin: Address) {
+        admin.require_auth();
+        require_operations_admin_or_owner(&e, &admin);
+
+        let current_time = e.ledger().timestamp();
+        let funding_paused = get_is_killed_update_funding(&e);
+
+        let is_updated = crate::funding::update_funding_rate(&e, funding_paused, current_time);
+
+        if !is_updated {
+            let last_update_ts = get_last_funding_rate_ts(&e);
+            let funding_period = get_funding_period(&e);
+
+            let time_until_next_update = crate::funding::on_the_hour_update(
+                &e,
+                current_time,
+                last_update_ts,
+                funding_period
+            );
+            log!(&e, "time_until_next_update = {:?} seconds", time_until_next_update);
+
+            panic_with_error!(&e, LongShortPairError::FundingWasNotUpdated)
+        }
+    }
+
     // Sets the privileged addresses.
     //
     // # Arguments
@@ -262,7 +361,7 @@ impl AdminInterfaceTrait for LongShortPair {
         operations_admin: Address,
         pause_admin: Address,
         emergency_pause_admins: Vec<Address>,
-        system_fee_admin: Address,
+        system_fee_admin: Address
     ) {
         admin.require_auth();
         let access_control = AccessControl::new(&e);
@@ -278,7 +377,7 @@ impl AdminInterfaceTrait for LongShortPair {
             operations_admin,
             pause_admin,
             emergency_pause_admins,
-            system_fee_admin,
+            system_fee_admin
         );
     }
 
@@ -298,18 +397,15 @@ impl AdminInterfaceTrait for LongShortPair {
             Role::PauseAdmin,
             Role::SystemFeeAdmin,
         ] {
-            result.set(
-                role.as_symbol(&e),
-                match access_control.get_role_safe(&role) {
-                    Some(v) => Vec::from_array(&e, [v]),
-                    None => Vec::new(&e),
-                },
-            );
+            result.set(role.as_symbol(&e), match access_control.get_role_safe(&role) {
+                Some(v) => Vec::from_array(&e, [v]),
+                None => Vec::new(&e),
+            });
         }
 
         result.set(
             Role::EmergencyPauseAdmin.as_symbol(&e),
-            access_control.get_role_addresses(&Role::EmergencyPauseAdmin),
+            access_control.get_role_addresses(&Role::EmergencyPauseAdmin)
         );
 
         result
@@ -319,7 +415,7 @@ impl AdminInterfaceTrait for LongShortPair {
         admin.require_auth();
         require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
-        set_oracle(&e, &oracle);
+        set_normal_oracle(&e, &oracle);
     }
 
     // Stops the pool deposits instantly.
@@ -353,12 +449,12 @@ impl AdminInterfaceTrait for LongShortPair {
     // # Arguments
     //
     // * `admin` - The address of the admin.
-    fn kill_settle(e: Env, admin: Address) {
+    fn kill_update_funding(e: Env, admin: Address) {
         admin.require_auth();
         require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
-        set_is_killed_settle(&e, &true);
-        Events::new(&e).kill_settle();
+        set_is_killed_update_funding(&e, &true);
+        Events::new(&e).kill_update_funding();
     }
 
     // Resumes the pool deposits.
@@ -392,12 +488,12 @@ impl AdminInterfaceTrait for LongShortPair {
     // # Arguments
     //
     // * `admin` - The address of the admin.
-    fn unkill_settle(e: Env, admin: Address) {
+    fn unkill_update_funding(e: Env, admin: Address) {
         admin.require_auth();
         require_pause_admin_or_owner(&e, &admin);
 
-        set_is_killed_settle(&e, &false);
-        Events::new(&e).unkill_settle();
+        set_is_killed_update_funding(&e, &false);
+        Events::new(&e).unkill_update_funding();
     }
 
     // Get create killswitch status.
@@ -410,9 +506,9 @@ impl AdminInterfaceTrait for LongShortPair {
         get_is_killed_redeem(&e)
     }
 
-    // Get settle killswitch status.
-    fn get_is_killed_settle(e: Env) -> bool {
-        get_is_killed_settle(&e)
+    // Get update_funding killswitch status.
+    fn get_is_killed_update_funding(e: Env) -> bool {
+        get_is_killed_update_funding(&e)
     }
 }
 
@@ -488,10 +584,11 @@ impl TransferableContract for LongShortPair {
         let access_control = AccessControl::new(&e);
         let role = Role::from_symbol(&e, role_name);
         match access_control.get_transfer_ownership_deadline(&role) {
-            0 => match access_control.get_role_safe(&role) {
-                Some(address) => address,
-                None => panic_with_error!(&e, AccessControlError::RoleNotFound),
-            },
+            0 =>
+                match access_control.get_role_safe(&role) {
+                    Some(address) => address,
+                    None => panic_with_error!(&e, AccessControlError::RoleNotFound),
+                }
             _ => access_control.get_future_address(&role),
         }
     }

@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Env, Symbol};
+use soroban_sdk::{ Address, Env, Symbol };
 
 #[derive(Clone)]
 pub(crate) struct Events(Env);
@@ -30,18 +30,12 @@ pub(crate) trait LongShortPairEvents {
         &self,
         ts: u64,
         sponsor: Address,
+        collateral: u128,
         collateral_returned: u128,
-        tokens_redeemed: u128,
+        tokens_redeemed: u128
     );
 
-    fn position_settled(
-        &self,
-        ts: u64,
-        sponsor: Address,
-        collateral_returned: u128,
-        long_tokens: u128,
-        short_tokens: u128,
-    );
+    fn funding_rate_record(&self, ts: u64, funding_rate: i64);
 
     // Paused Ops
     fn kill_create(&self);
@@ -52,9 +46,9 @@ pub(crate) trait LongShortPairEvents {
 
     fn unkill_redeem(&self);
 
-    fn kill_settle(&self);
+    fn kill_update_funding(&self);
 
-    fn unkill_settle(&self);
+    fn unkill_update_funding(&self);
 }
 
 impl LongShortPairEvents for Events {
@@ -63,58 +57,49 @@ impl LongShortPairEvents for Events {
         ts: u64,
         sponsor: Address,
         collateral_used: u128,
-        tokens_minted: u128,
+        tokens_minted: u128
     ) {
-        self.env().events().publish(
-            (
-                Symbol::new(self.env(), "tokens_created"),
-                ts,
-                sponsor,
-                collateral_used,
-                tokens_minted,
-            ),
-            (),
-        );
+        self.env()
+            .events()
+            .publish(
+                (
+                    Symbol::new(self.env(), "tokens_created"),
+                    ts,
+                    sponsor,
+                    collateral_used,
+                    tokens_minted,
+                ),
+                ()
+            );
     }
 
     fn tokens_redeemed(
         &self,
         ts: u64,
         sponsor: Address,
+        collateral: u128,
         collateral_returned: u128,
-        tokens_redeemed: u128,
+        tokens_redeemed: u128
     ) {
-        self.env().events().publish(
-            (
-                Symbol::new(self.env(), "tokens_redeemed"),
-                ts,
-                sponsor,
-                collateral_returned,
-                tokens_redeemed,
-            ),
-            (),
-        );
+        self.env()
+            .events()
+            .publish(
+                (
+                    Symbol::new(self.env(), "tokens_redeemed"),
+                    ts,
+                    sponsor,
+                    collateral,
+                    collateral_returned,
+                    tokens_redeemed,
+                ),
+                ()
+            );
     }
 
-    fn position_settled(
-        &self,
-        ts: u64,
-        sponsor: Address,
-        collateral_returned: u128,
-        long_tokens: u128,
-        short_tokens: u128,
-    ) {
-        self.env().events().publish(
-            (
-                Symbol::new(self.env(), "position_settled"),
-                ts,
-                sponsor,
-                collateral_returned,
-                long_tokens,
-                short_tokens,
-            ),
-            (),
-        );
+    fn funding_rate_record(&self, ts: u64, funding_rate: i64) {
+        self.env()
+            .events()
+            .publish((Symbol::new(self.env(), "funding_rate_record"), ts), (funding_rate,));
     }
 
     fn kill_create(&self) {
@@ -141,15 +126,15 @@ impl LongShortPairEvents for Events {
             .publish((Symbol::new(self.env(), "unkill_redeem"),), ())
     }
 
-    fn kill_settle(&self) {
+    fn kill_update_funding(&self) {
         self.env()
             .events()
-            .publish((Symbol::new(self.env(), "kill_settle"),), ())
+            .publish((Symbol::new(self.env(), "kill_update_funding"),), ())
     }
 
-    fn unkill_settle(&self) {
+    fn unkill_update_funding(&self) {
         self.env()
             .events()
-            .publish((Symbol::new(self.env(), "unkill_settle"),), ())
+            .publish((Symbol::new(self.env(), "unkill_update_funding"),), ())
     }
 }

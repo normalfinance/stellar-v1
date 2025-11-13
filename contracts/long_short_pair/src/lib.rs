@@ -3,9 +3,9 @@
 mod contract;
 pub mod errors;
 mod events;
+mod funding;
 mod interface;
-mod math;
-mod state;
+mod oracle;
 mod storage;
 mod test;
 mod test_permissions;

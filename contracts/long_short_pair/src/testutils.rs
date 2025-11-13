@@ -4,18 +4,25 @@ extern crate std;
 use crate::LongShortPairClient;
 use access_control::constants::ADMIN_ACTIONS_DELAY;
 
-use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPriceOracleWASM};
 use soroban_sdk::token::{
-    StellarAssetClient as SorobanTokenAdminClient, TokenClient as SorobanTokenClient,
+    StellarAssetClient as SorobanTokenAdminClient,
+    TokenClient as SorobanTokenClient,
 };
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Symbol, Vec};
+use soroban_sdk::{ testutils::Address as _, Address, BytesN, Env, Symbol, Vec };
 use std::vec;
 use utils::test_utils::jump;
+
+mod calculator {
+    soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/calculator.wasm");
+}
+
+pub fn create_calculator_contract<'a>(e: &Env) -> calculator::Client<'a> {
+    calculator::Client::new(e, &e.register(calculator::WASM, ()))
+}
 
 pub(crate) struct TestConfig {
     pub(crate) users_count: u32,
     pub(crate) mint_to_user: i128,
-    pub(crate) liq_pool_fee: u32,
 }
 
 impl Default for TestConfig {
@@ -23,7 +30,6 @@ impl Default for TestConfig {
         TestConfig {
             users_count: 2,
             mint_to_user: 1000,
-            liq_pool_fee: 30,
         }
     }
 }
@@ -39,7 +45,6 @@ pub(crate) struct Setup<'a> {
     pub(crate) token_collateral_admin_client: SorobanTokenAdminClient<'a>,
 
     pub(crate) token_factory: PoolClient<'a>,
-    pub(crate) calculator: CalculatorClient<'a>,
     pub(crate) pair: LongShortPairClient<'a>,
 
     pub(crate) oracle_addr: Address,
@@ -93,8 +98,10 @@ impl Setup<'_> {
 
         let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
         let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
-        let token_collateral_admin_client =
-            get_token_admin_client(&e, &token_collateral.address.clone());
+        let token_collateral_admin_client = get_token_admin_client(
+            &e,
+            &token_collateral.address.clone()
+        );
 
         // Setup oracle
         let sol_symbol = Symbol::new(&e, "SOL");
@@ -111,27 +118,26 @@ impl Setup<'_> {
             &usd_asset,
             &Vec::from_array(&e, [sol_asset.clone(), usdc_asset.clone()]),
             14,
-            300,
+            300
         );
 
         let prices_1: Vec<i128> = Vec::from_array(&e, [230_00000000000000, 1_00000000000000]);
         oracle_client.set_price(&prices_1, &start_time);
 
-        let calculator = Address::generate(&e);
+        let calculator = create_calculator_contract(&e);
+
+        // TODO: mock pool
 
         let pair = create_pair_contract(
             &e,
             &admin,
-            &Vec::from_array(
-                &e,
-                [
-                    token1.address.clone(),
-                    token2.address.clone(),
-                    token2.address.clone(),
-                ],
-            ),
+            &Vec::from_array(&e, [
+                token1.address.clone(),
+                token2.address.clone(),
+                token2.address.clone(),
+            ]),
             &oracle_addr,
-            &calculator,
+            &calculator.address
         );
 
         Self {
@@ -178,21 +184,17 @@ impl Setup<'_> {
 }
 
 pub(crate) fn create_token_contract<'a>(e: &Env, admin: &Address) -> SorobanTokenClient<'a> {
-    SorobanTokenClient::new(
-        e,
-        &e.register_stellar_asset_contract_v2(admin.clone())
-            .address(),
-    )
+    SorobanTokenClient::new(e, &e.register_stellar_asset_contract_v2(admin.clone()).address())
 }
 
 pub(crate) fn get_token_admin_client<'a>(
     e: &Env,
-    address: &Address,
+    address: &Address
 ) -> SorobanTokenAdminClient<'a> {
     SorobanTokenAdminClient::new(e, address)
 }
 
-pub(crate) fn create_plane_contract<'a>(e: &Env) -> PoolPlaneClient<'a> {
+pub(crate) fn create_calculator_contract<'a>(e: &Env) -> Calculat<'a> {
     PoolPlaneClient::new(e, &e.register(pool_plane::WASM, ()))
 }
 
@@ -201,7 +203,7 @@ pub fn create_pair_contract<'a>(
     admin: &Address,
     tokens: &Vec<Address>,
     oracle: &Address,
-    calculator: &Address,
+    calculator: &Address
 ) -> LongShortPairClient<'a> {
     let pair = LongShortPairClient::new(e, &e.register(crate::LongShortPair {}, ()));
     pair.initialize(
@@ -216,7 +218,7 @@ pub fn create_pair_contract<'a>(
         ),
         tokens,
         oracle,
-        calculator,
+        calculator
     );
     pair
 }
@@ -231,7 +233,7 @@ pub fn setup_price_feed_oracle<'a>(
     base: &MockAsset,
     assets: &Vec<MockAsset>,
     decimals: u32,
-    resolution: u32,
+    resolution: u32
 ) -> (Address, MockPriceOracleClient<'a>) {
     let oracle_addr = env.register(MockPriceOracleWASM, ());
     let oracle_client = MockPriceOracleClient::new(env, &oracle_addr);
