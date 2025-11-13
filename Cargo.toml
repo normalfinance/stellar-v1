@@ -11,10 +11,17 @@ soroban-sdk = { version = "22.0.6" }
 soroban-token-sdk = { version = "22.0.6" }
 soroban-fixed-point-math = { version = "=1.3.0" }
 paste = { version = "1.0.15" }
+sep-40-oracle = "=1.2.2"
 utils = { path = "modules/utils" }
+token_share = { path = "modules/token_share" }
+rewards = { path = "modules/rewards" }
 access_control = { path = "modules/access_control" }
 upgrade = { path = "modules/upgrade" }
-sep-40-oracle = "=1.2.2"
+liquidity-pool-validation-errors = { path = "lmodules/iquidity_pool_validation_errors" }
+liquidity-pool-events = { path = "modules/liquidity_pool_events" }
+liqidity-pool-rewards-gauge = { path = "modules/liquidity_pool_reward_gauge" }
+liquidity-pool-config-storage = { path = "modules/liquidity_pool_config_storage" }
+
 
 [profile.release]
 opt-level = "z"
