@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 tasks:
   clean:
     cmd: cargo clean
@@ -11,7 +11,7 @@ tasks:
 
   build:
     cmds:
-      - soroban contract build --package long-short-pair
+      - soroban contract build --package long_short_pair
       - soroban contract optimize --wasm ../../target/wasm32v1-none/release/long_short_pair.wasm --wasm-out ../../target/wasm32v1-none/release/long_short_pair.wasm
       - cp ../../target/wasm32v1-none/release/long_short_pair.wasm ../../wasm/long_short_pair.wasm
 

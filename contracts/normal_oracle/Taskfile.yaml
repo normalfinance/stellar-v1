@@ -11,7 +11,7 @@ tasks:
 
   build:
     cmds:
-      - soroban contract build --package normal-oracle
+      - soroban contract build --package normal_oracle
       - soroban contract optimize --wasm ../../target/wasm32v1-none/release/normal_oracle.wasm --wasm-out ../../target/wasm32v1-none/release/normal_oracle.wasm
       - cp ../../target/wasm32v1-none/release/normal_oracle.wasm ../../wasm/normal_oracle.wasm
 

@@ -1,6 +1,5 @@
-use soroban_sdk::{contracttype, panic_with_error, Address, Env};
+use soroban_sdk::{contracttype, Address, Env};
 use utils::bump::bump_persistent;
-use utils::errors::storage_errors::StorageError;
 
 #[derive(Clone)]
 #[contracttype]

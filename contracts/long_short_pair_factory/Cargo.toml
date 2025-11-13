@@ -1,5 +1,5 @@
 [package]
-name = "long-short-pair-factory"
+name = "long_short_pair_factory"
 description = "Soroban token contract for LP shares"
 version.workspace = true
 edition = "2021"

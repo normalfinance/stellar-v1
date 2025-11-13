@@ -1,5 +1,5 @@
 [package]
-name = "token-factory"
+name = "token_factory"
 description = "Soroban contract for deploying new assets via the Stellar Asset Contract (SAC)"
 version.workspace = true
 edition = "2021"

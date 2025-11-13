@@ -11,6 +11,7 @@ pub trait LongShortPairTrait {
         tokens: Vec<Address>,
         oracle: Address,
         calculator: Address,
+        pool: Address,
     );
 
     /**

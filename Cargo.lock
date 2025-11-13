@@ -894,7 +894,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
-name = "long-short-pair"
+name = "long_short_pair"
 version = "1.0.0"
 dependencies = [
  "access_control",
@@ -907,7 +907,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "long-short-pair-factory"
+name = "long_short_pair_factory"
 version = "1.0.0"
 dependencies = [
  "access_control",
@@ -926,7 +926,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
-name = "normal-oracle"
+name = "normal_oracle"
 version = "1.0.0"
 dependencies = [
  "access_control",
@@ -1694,16 +1694,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "token-factory"
-version = "1.0.0"
-dependencies = [
- "access_control",
- "soroban-sdk",
- "soroban-token-sdk",
- "upgrade",
-]
-
-[[package]]
 name = "token-long-short-pair"
 version = "1.0.0"
 dependencies = [
@@ -1712,6 +1702,16 @@ dependencies = [
  "soroban-token-sdk",
  "upgrade",
  "utils",
+]
+
+[[package]]
+name = "token_factory"
+version = "1.0.0"
+dependencies = [
+ "access_control",
+ "soroban-sdk",
+ "soroban-token-sdk",
+ "upgrade",
 ]
 
 [[package]]

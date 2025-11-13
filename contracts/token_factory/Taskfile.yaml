@@ -11,7 +11,7 @@ tasks:
 
   build:
     cmds:
-      - soroban contract build --package token-factory
+      - soroban contract build --package token_factory
       - soroban contract optimize --wasm ../../target/wasm32v1-none/release/token_factory.wasm --wasm-out ../../target/wasm32v1-none/release/token_factory.wasm
       - cp ../../target/wasm32v1-none/release/token_factory.wasm ../../wasm/token_factory.wasm
 

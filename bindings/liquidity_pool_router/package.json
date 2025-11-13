@@ -1,6 +1,6 @@
 {
   "version": "0.0.0",
-  "name": "soroban_token_contract",
+  "name": "liquidity_pool_router",
   "type": "module",
   "exports": "./dist/index.js",
   "typings": "dist/index.d.ts",

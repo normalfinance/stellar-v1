@@ -66,9 +66,6 @@ pub fn sanitize_new_price(
     last_price_twap: u128,
     sanitize_clamp_denominator: u64,
 ) -> u128 {
-    assert!(new_price > 0, "new_price must be positive");
-    assert!(last_price_twap >= 0, "last_price_twap must be non-negative");
-
     // when/if twap is 0, dont try to normalize new_price
     if last_price_twap == 0 {
         return new_price;

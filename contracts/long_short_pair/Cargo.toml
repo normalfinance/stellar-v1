@@ -1,5 +1,5 @@
 [package]
-name = "long-short-pair"
+name = "long_short_pair"
 description = "Soroban contract for a Long Short Pair"
 version.workspace = true
 edition = "2021"

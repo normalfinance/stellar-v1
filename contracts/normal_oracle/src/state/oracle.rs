@@ -15,13 +15,13 @@ pub struct OraclePriceData {
 #[contracttype]
 #[derive(Copy, Clone, Debug)]
 pub struct PriceDivergenceGuardRails {
-    pub oracle_twap_percent_divergence: u64,
+    pub ratio_percent_divergence: u64,
 }
 
 #[contracttype]
 #[derive(Copy, Clone, Default, Debug)]
 pub struct ValidityGuardRails {
-    pub seconds_before_stale_for_pool: u64,
+    pub seconds_before_stale: u64,
     pub too_volatile_ratio: u64,
 }
 
@@ -36,10 +36,10 @@ impl Default for OracleGuardRails {
     fn default() -> Self {
         OracleGuardRails {
             price_divergence: PriceDivergenceGuardRails {
-                oracle_twap_percent_divergence: PERCENTAGE_PRECISION_U64 / 10, // 10%
+                ratio_percent_divergence: PERCENTAGE_PRECISION_U64 / 10, // 10%
             },
             validity: ValidityGuardRails {
-                seconds_before_stale_for_pool: FIVE_MINUTE as u64,
+                seconds_before_stale: FIVE_MINUTE as u64,
                 too_volatile_ratio: PERCENTAGE_PRECISION_U64 / 5, // ±20%
             },
         }
@@ -47,9 +47,9 @@ impl Default for OracleGuardRails {
 }
 
 impl OracleGuardRails {
-    pub fn max_oracle_twap_percent_divergence(&self) -> u64 {
+    pub fn max_ratio_percent_divergence(&self) -> u64 {
         self.price_divergence
-            .oracle_twap_percent_divergence
+            .ratio_percent_divergence
             .max(PERCENTAGE_PRECISION_U64 / 2)
     }
 }

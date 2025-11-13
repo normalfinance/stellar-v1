@@ -5,11 +5,11 @@ use crate::oracle::get_oracle_price;
 use crate::storage::{
     get_calculator, get_collateral_per_pair, get_collateral_percent_long,
     get_cumulative_funding_index_long, get_cumulative_funding_index_short, get_funding_period,
-    get_is_killed_create, get_is_killed_redeem, get_is_killed_update_funding,
+    get_guard_rails, get_is_killed_create, get_is_killed_redeem, get_is_killed_update_funding,
     get_last_24h_avg_funding_rate, get_last_funding_rate, get_last_funding_rate_ts,
     get_sanitize_clamp_denominator, get_user_funding_checkpoint, set_calculator,
     set_collateral_percent_long, set_funding_period, set_is_killed_create, set_is_killed_redeem,
-    set_is_killed_update_funding, set_normal_oracle, CollateralInfo, FundingInfo,
+    set_is_killed_update_funding, set_normal_oracle, set_pool, CollateralInfo, FundingInfo,
 };
 use crate::storage::{
     get_token_long, get_token_short, put_token_collateral, put_token_long, put_token_short,
@@ -36,7 +36,7 @@ use soroban_sdk::{
 };
 use upgrade::events::Events as UpgradeEvents;
 use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
-use utils::constant::ONE;
+use utils::constant::PRICE_PRECISION_I128;
 use utils::math::safe_math::SafeMath;
 
 // Metadata that is added on to the WASM custom section
@@ -63,6 +63,7 @@ impl LongShortPairTrait for LongShortPair {
     // * `tokens` - The address of the long token, short token, and collateral.
     // * `oracle` - The address of the oracle.
     // * `calculator` - The address of the calculator.
+    // * `pool` - The address of the liquidity pool.
     fn initialize(
         e: Env,
         admin: Address,
@@ -70,6 +71,7 @@ impl LongShortPairTrait for LongShortPair {
         tokens: Vec<Address>,
         oracle: Address,
         calculator: Address,
+        pool: Address,
     ) {
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
@@ -85,6 +87,7 @@ impl LongShortPairTrait for LongShortPair {
 
         set_normal_oracle(&e, &oracle);
         set_calculator(&e, &calculator);
+        set_pool(&e, &pool);
 
         if tokens.len() != 3 {
             panic_with_error!(&e, LongShortPairError::WrongInputVecSize);
@@ -154,8 +157,9 @@ impl LongShortPairTrait for LongShortPair {
         let net_funding_delta = checkpoint.net_funding_delta(&e);
 
         let collateral = tokens_to_redeem.safe_mul(&e, get_collateral_per_pair(&e));
-        let collateral_adjusted =
-            collateral.safe_mul(&e, ONE.safe_add(&e, net_funding_delta) as u128);
+        let multiplier = PRICE_PRECISION_I128.safe_add(&e, net_funding_delta as i128);
+
+        let collateral_adjusted = collateral.safe_mul(&e, multiplier as u128);
 
         checkpoint.redeem(&e, tokens_to_redeem);
 
@@ -297,8 +301,10 @@ impl AdminInterfaceTrait for LongShortPair {
 
         let current_time = e.ledger().timestamp();
         let funding_paused = get_is_killed_update_funding(&e);
+        let guard_rails = get_guard_rails(&e);
 
-        let is_updated = crate::funding::update_funding_rate(&e, funding_paused, current_time);
+        let is_updated =
+            crate::funding::update_funding_rate(&e, &guard_rails, funding_paused, current_time);
 
         if !is_updated {
             let last_update_ts = get_last_funding_rate_ts(&e);

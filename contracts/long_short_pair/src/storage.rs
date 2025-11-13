@@ -52,8 +52,9 @@ pub enum DataKey {
     Calculator,
     NormalOracle,
 
-    OracleGuardRails, // a set of oracle price data validations and protections.
-    HistoricalOracleData(Symbol),
+    // Oracle
+    GuardRails, // a set of oracle price data validations and protections.
+    OracleData,
 
     // Funding
     SanitizeClampDenominator,
@@ -64,6 +65,8 @@ pub enum DataKey {
     Last24hAvgFundingRate, // estimate of last 24h of funding rate perp market (unit is quote per base)
     LastFundingRateTs,
     FundingPeriod,
+
+    LastUpdateTs,
 
     // Paused ops
     IsKilledCreate,
@@ -133,6 +136,13 @@ generate_instance_storage_getter_and_setter_with_default!(
     ONE_HOUR * 8 // 8 hours
 );
 
+generate_instance_storage_getter_and_setter_with_default!(
+    last_update_ts,
+    DataKey::LastUpdateTs,
+    u64,
+    0
+);
+
 // Collateral
 generate_instance_storage_getter_and_setter_with_default!(
     collateral_per_pair,
@@ -169,17 +179,18 @@ generate_instance_storage_getter_and_setter_with_default!(
 
 generate_instance_storage_getter_and_setter!(normal_oracle, DataKey::NormalOracle, Address);
 generate_instance_storage_getter_and_setter!(calculator, DataKey::Calculator, Address);
+generate_instance_storage_getter_and_setter!(pool, DataKey::Pool, Address);
 
 // Oracle
 generate_instance_storage_getter_and_setter_with_default!(
-    oracle_guard_rails,
-    DataKey::OracleGuardRails,
+    guard_rails,
+    DataKey::GuardRails,
     OracleGuardRails,
     OracleGuardRails::default()
 );
 
-pub(crate) fn get_historical_oracle_data(e: &Env, asset: &Symbol) -> HistoricalOracleData {
-    let key = DataKey::HistoricalOracleData(asset.clone());
+pub(crate) fn get_historical_oracle_data(e: &Env) -> HistoricalOracleData {
+    let key = DataKey::OracleData;
     match e.storage().persistent().get(&key) {
         Some(value) => {
             bump_persistent(e, &key);
@@ -189,28 +200,10 @@ pub(crate) fn get_historical_oracle_data(e: &Env, asset: &Symbol) -> HistoricalO
     }
 }
 
-pub(crate) fn put_historical_oracle_data(
-    e: &Env,
-    asset: &Symbol,
-    oracle_data: &HistoricalOracleData,
-) {
-    let key = DataKey::HistoricalOracleData(asset.clone());
+pub(crate) fn put_historical_oracle_data(e: &Env, oracle_data: &HistoricalOracleData) {
+    let key = DataKey::OracleData;
     e.storage().persistent().set(&key, oracle_data);
     bump_persistent(e, &key);
-}
-
-// Pool
-pub fn get_pool(e: &Env) -> Address {
-    bump_instance(e);
-    match e.storage().instance().get(&DataKey::Pool) {
-        Some(v) => v,
-        None => panic_with_error!(e, StorageError::ValueNotInitialized),
-    }
-}
-
-pub fn put_pool(e: &Env, contract: Address) {
-    bump_instance(e);
-    e.storage().instance().set(&DataKey::Pool, &contract)
 }
 
 // Token Getters

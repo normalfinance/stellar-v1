@@ -50,7 +50,9 @@ pub struct CreatorParams {
     pub serialized_long_asset: Bytes,
     pub serialized_short_asset: Bytes,
     pub collateral_token: Address,
+    pub oracle: Address,
     pub calculator: Address,
+    pub pool: Address,
 }
 
 #[contractimpl]

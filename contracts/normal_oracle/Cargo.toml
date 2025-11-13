@@ -1,5 +1,5 @@
 [package]
-name = "normal-oracle"
+name = "normal_oracle"
 description = "Just a normal oracle"
 version.workspace = true
 edition = "2021"
