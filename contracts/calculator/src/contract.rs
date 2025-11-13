@@ -1,7 +1,7 @@
 use crate::errors::CalculatorError;
 use crate::interface::CalculatorTrait;
-use crate::storage::{get_params, set_params, LinearLongShortPairParameters};
-use soroban_sdk::{contract, contractimpl, contractmeta, panic_with_error, Address, Env};
+use crate::storage::{ get_params, set_params, LinearLongShortPairParameters };
+use soroban_sdk::{ contract, contractimpl, contractmeta, panic_with_error, Address, Env };
 
 // Metadata that is added on to the WASM custom section
 contractmeta!(key = "Description", val = "");
@@ -35,7 +35,7 @@ impl CalculatorTrait for Calculator {
      * @param oracle_price price from the optimistic oracle for the LSP price identifier.
      * @return expiryPercentLong to indicate how much collateral should be sent between long and short tokens.
      */
-    fn percent_long_collateral(e: Env, caller: Address, oracle_price: u128) -> u128 {
+    fn percent_long_collateral(e: Env, caller: Address, oracle_price: u128) -> u64 {
         let params = get_params(&e, caller); // user is the calling LongShortPair contract
 
         if params.upper_bound == 0 && params.lower_bound == 0 {
@@ -62,6 +62,6 @@ impl CalculatorTrait for Calculator {
             .checked_div(denominator)
             .unwrap_or(0);
 
-        fraction
+        fraction as u64
     }
 }

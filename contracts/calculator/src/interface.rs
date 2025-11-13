@@ -20,5 +20,5 @@ pub trait CalculatorTrait {
      * @param oracle_price price from a Normal Oracle for the LSP price identifier.
      * @return expiryPercentLong to indicate how much collateral should be sent between long and short tokens.
      */
-    fn percent_long_collateral(e: Env, caller: Address, oracle_price: u128) -> u128;
+    fn percent_long_collateral(e: Env, caller: Address, oracle_price: u128) -> u64;
 }
