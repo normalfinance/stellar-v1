@@ -20,6 +20,10 @@ soroban contract bindings typescript --overwrite --wasm target/wasm32v1-none/rel
 
 soroban contract bindings typescript --overwrite --wasm target/wasm32v1-none/release/liquidity_pool.wasm --output-dir bindings/liquidity_pool
 
+soroban contract bindings typescript --overwrite --wasm target/wasm32v1-none/release/liquidity_pool_stableswap.wasm --output-dir bindings/liquidity_pool_stableswap
+
+soroban contract bindings typescript --overwrite --wasm target/wasm32v1-none/release/liquidity_pool_synthetic.wasm --output-dir bindings/liquidity_pool_synthetic
+
 soroban contract bindings typescript --overwrite --wasm target/wasm32v1-none/release/liquidity_pool_router.wasm --output-dir bindings/liquidity_pool_router
 
 # LSP

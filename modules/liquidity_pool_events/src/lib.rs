@@ -34,6 +34,7 @@ pub trait LiquidityPoolEvents {
         in_amount: u128,
         out_amount: u128,
         fee_amount: u128,
+        tax_amount: u128,
     );
 
     fn update_reserves(&self, reserves: Vec<u128>);
@@ -125,6 +126,7 @@ impl LiquidityPoolEvents for Events {
         in_amount: u128,
         out_amount: u128,
         fee_amount: u128,
+        tax_amount: u128,
     ) {
         // topics
         // [
@@ -143,7 +145,12 @@ impl LiquidityPoolEvents for Events {
         let e = self.env();
         e.events().publish(
             (Symbol::new(e, "trade"), token_in, token_out, user),
-            (in_amount as i128, out_amount as i128, fee_amount as i128),
+            (
+                in_amount as i128,
+                out_amount as i128,
+                fee_amount as i128,
+                tax_amount as i128,
+            ),
         );
     }
 

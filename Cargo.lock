@@ -888,6 +888,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "liquidity_pool_stableswap"
+version = "1.0.0"
+dependencies = [
+ "access_control",
+ "liquidity-pool-config-storage",
+ "liquidity-pool-events",
+ "liquidity-pool-rewards-gauge",
+ "liquidity-pool-validation-errors",
+ "paste",
+ "rewards",
+ "soroban-fixed-point-math",
+ "soroban-sdk",
+ "token_share",
+ "upgrade",
+ "utils",
+]
+
+[[package]]
+name = "liquidity_pool_synthetic"
+version = "1.0.0"
+dependencies = [
+ "access_control",
+ "liquidity-pool-config-storage",
+ "liquidity-pool-events",
+ "liquidity-pool-rewards-gauge",
+ "liquidity-pool-validation-errors",
+ "paste",
+ "rewards",
+ "sep-40-oracle",
+ "soroban-fixed-point-math",
+ "soroban-sdk",
+ "token_share",
+ "upgrade",
+ "utils",
+]
+
+[[package]]
 name = "log"
 version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"

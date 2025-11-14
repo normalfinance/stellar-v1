@@ -224,6 +224,16 @@ pub trait PoolsManagementTrait {
         fee_fraction: u32,
     ) -> (BytesN<32>, Address);
 
+    // Initialize synthetic pool with custom arguments.
+    // fee_fraction should match pre-defined set of values: 0.1%, 0.3%, 1%
+    // 10 = 0.1%, 30 = 0.3%, 100 = 1%
+    fn init_synthetic_pool(
+        e: Env,
+        user: Address,
+        tokens: Vec<Address>,
+        fee_fraction: u32,
+    ) -> (BytesN<32>, Address);
+
     // Get pools for given pair
     fn get_pools(e: Env, tokens: Vec<Address>) -> Map<BytesN<32>, Address>;
 

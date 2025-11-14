@@ -5,7 +5,7 @@ use crate::rewards::get_rewards_manager;
 use crate::storage::{
     add_pool, add_tokens_set, get_constant_product_pool_hash, get_pool_next_counter,
     get_pool_plane, get_pools_plain, get_protocol_fee_fraction, get_stableswap_pool_hash,
-    get_token_hash, LiquidityPoolType,
+    get_synthetic_pool_hash, get_token_hash, LiquidityPoolType,
 };
 use access_control::access::AccessControl;
 use access_control::management::{MultipleAddressesManagementTrait, SingleAddressManagementTrait};
@@ -33,6 +33,15 @@ pub fn get_stableswap_pool_salt(e: &Env) -> BytesN<32> {
     salt.append(&symbol_short!("0x00").to_xdr(e));
     // no constant pool parameters, though hash should be different, so we add pool counter
     salt.append(&get_pool_next_counter(e).to_xdr(e));
+    salt.append(&symbol_short!("0x00").to_xdr(e));
+    e.crypto().sha256(&salt).to_bytes()
+}
+
+pub fn get_synthetic_pool_salt(e: &Env) -> BytesN<32> {
+    let mut salt = Bytes::new(e);
+    salt.append(&symbol_short!("synthetic").to_xdr(e));
+    salt.append(&symbol_short!("0x00").to_xdr(e));
+    // salt.append(&fee_fraction.to_xdr(e));
     salt.append(&symbol_short!("0x00").to_xdr(e));
     e.crypto().sha256(&salt).to_bytes()
 }
@@ -124,6 +133,52 @@ pub fn deploy_stableswap_pool(
         symbol_short!("stable"),
         subpool_salt.clone(),
         Vec::<Val>::from_array(e, [fee_fraction.into_val(e), amp.into_val(e)]),
+    );
+
+    (subpool_salt, pool_contract_id)
+}
+
+pub fn deploy_synthetic_pool(
+    e: &Env,
+    tokens: &Vec<Address>,
+    fee_fraction: u32,
+    oracle: &Address,
+    assets_config: &(Symbol, Symbol),
+) -> (BytesN<32>, Address) {
+    let tokens_salt = get_tokens_salt(e, tokens);
+
+    let liquidity_pool_wasm_hash = get_synthetic_pool_hash(e);
+    let subpool_salt = get_synthetic_pool_salt(e);
+
+    // pools counter already incorporated into subpool_salt - no need to add it again
+    let pool_contract_id = e
+        .deployer()
+        .with_current_contract(merge_salt(e, tokens_salt.clone(), subpool_salt.clone()))
+        .deploy_v2(liquidity_pool_wasm_hash, ());
+    init_synthetic_pool(
+        e,
+        tokens,
+        &pool_contract_id,
+        fee_fraction,
+        oracle,
+        assets_config,
+    );
+
+    add_tokens_set(e, tokens);
+    add_pool(
+        e,
+        tokens_salt,
+        subpool_salt.clone(),
+        LiquidityPoolType::Synthetic,
+        pool_contract_id.clone(),
+    );
+
+    Events::new(e).add_pool(
+        tokens.clone(),
+        pool_contract_id.clone(),
+        symbol_short!("synthetic"),
+        subpool_salt.clone(),
+        Vec::<Val>::from_array(e, [fee_fraction.into_val(e)]),
     );
 
     (subpool_salt, pool_contract_id)
@@ -260,6 +315,75 @@ fn init_stableswap_pool(
                 (reward_token.to_val(),).into_val(e),
                 plane.into_val(e),
                 storage_config.into_val(e),
+            ],
+        ),
+    );
+}
+
+fn init_synthetic_pool(
+    e: &Env,
+    tokens: &Vec<Address>,
+    pool_contract_id: &Address,
+    fee_fraction: u32,
+    oracle: &Address,
+    assets_config: &(Symbol, Symbol),
+) {
+    let token_wasm_hash = get_token_hash(e);
+    let rewards = get_rewards_manager(e);
+    let reward_token = rewards.storage().get_reward_token();
+    let access_control = AccessControl::new(e);
+
+    // privileged users
+    let admin = access_control.get_role(&Role::Admin);
+    let emergency_admin = access_control
+        .get_role_safe(&Role::EmergencyAdmin)
+        .unwrap_or(admin.clone());
+    let rewards_admin = access_control
+        .get_role_safe(&Role::RewardsAdmin)
+        .unwrap_or(admin.clone());
+    let operations_admin = access_control
+        .get_role_safe(&Role::OperationsAdmin)
+        .unwrap_or(admin.clone());
+    let pause_admin = access_control
+        .get_role_safe(&Role::PauseAdmin)
+        .unwrap_or(admin.clone());
+    let system_fee_admin = access_control
+        .get_role_safe(&Role::SystemFeeAdmin)
+        .unwrap_or(admin.clone());
+    let emergency_pause_admins = access_control.get_role_addresses(&Role::EmergencyPauseAdmin);
+
+    let plane = get_pool_plane(e);
+    let storage_config = get_config_storage(e);
+
+    let protocol_fee_fraction = get_protocol_fee_fraction(&e);
+
+    e.invoke_contract::<()>(
+        pool_contract_id,
+        &Symbol::new(e, "initialize_all"),
+        Vec::from_array(
+            e,
+            [
+                admin.into_val(e),
+                (
+                    emergency_admin,
+                    rewards_admin,
+                    operations_admin,
+                    pause_admin,
+                    emergency_pause_admins,
+                    system_fee_admin,
+                )
+                    .into_val(e),
+                e.current_contract_address().to_val(),
+                oracle.to_val(),
+                token_wasm_hash.into_val(e),
+                tokens.clone().into_val(e),
+                (
+                    <u32 as IntoVal<Env, u32>>::into_val(&fee_fraction, e),
+                    <u32 as IntoVal<Env, u32>>::into_val(&protocol_fee_fraction, e),
+                )
+                    .into_val(e),
+                assets_config.into_val(e),
+                (reward_token, plane, storage_config).into_val(e),
             ],
         ),
     );

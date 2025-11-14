@@ -9,8 +9,9 @@ use crate::pool_interface::{
     RewardsInterfaceTrait,
 };
 use crate::pool_utils::{
-    assert_tokens_sorted, deploy_stableswap_pool, deploy_standard_pool, get_stableswap_pool_salt,
-    get_standard_pool_salt, get_tokens_salt, get_total_liquidity, validate_tokens_contracts,
+    assert_tokens_sorted, deploy_stableswap_pool, deploy_standard_pool, deploy_synthetic_pool,
+    get_stableswap_pool_salt, get_standard_pool_salt, get_synthetic_pool_salt, get_tokens_salt,
+    get_total_liquidity, validate_tokens_contracts,
 };
 use crate::rewards::get_rewards_manager;
 use crate::rewards_gauge::{
@@ -28,8 +29,8 @@ use crate::storage::{
     set_gauge_rewards_enabled_for, set_init_pool_payment_address, set_init_pool_payment_token,
     set_init_stable_pool_payment_amount, set_init_standard_pool_payment_amount,
     set_liquidity_calculator, set_pool_plane, set_protocol_fee_fraction, set_reward_tokens,
-    set_reward_tokens_detailed, set_rewards_config, set_stableswap_pool_hash, set_token_hash,
-    DataKey, GlobalRewardsConfig, LiquidityPoolRewardInfo,
+    set_reward_tokens_detailed, set_rewards_config, set_stableswap_pool_hash,
+    set_synthetic_pool_hash, set_token_hash, DataKey, GlobalRewardsConfig, LiquidityPoolRewardInfo,
 };
 use access_control::access::{AccessControl, AccessControlTrait};
 use access_control::emergency::{get_emergency_mode, set_emergency_mode};
@@ -606,6 +607,17 @@ impl AdminInterface for LiquidityPoolRouter {
         set_stableswap_pool_hash(&e, &new_hash);
     }
 
+    // Sets the synthetic pool wasm hash.
+    //
+    // # Arguments
+    //
+    // * `new_hash` - The new synthetic pool wasm hash.
+    fn set_synthetic_pool_hash(e: Env, admin: Address, new_hash: BytesN<32>) {
+        admin.require_auth();
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        set_synthetic_pool_hash(&e, &new_hash);
+    }
+
     // Sets the rewards gauge wasm hash.
     //
     // # Arguments
@@ -797,10 +809,10 @@ impl RewardsInterfaceTrait for LiquidityPoolRouter {
         set_reward_tokens(&e, &tokens_with_liquidity);
         set_rewards_config(
             &e,
-            &GlobalRewardsConfig {
+            &(GlobalRewardsConfig {
                 tps: reward_tps,
                 expired_at,
-            },
+            }),
         )
     }
 
@@ -1290,6 +1302,46 @@ impl PoolsManagementTrait for LiquidityPoolRouter {
         }
     }
 
+    // Initializes an elastic supply pool with custom arguments.
+    //
+    // # Arguments
+    //
+    // * `user` - The address of the user initializing the pool.
+    // * `tokens` - A vector of token addresses that the pool consists of.
+    // * `fee_fraction` - The fee fraction for the pool. Has denominator 10000; 1 = 0.01%, 10 = 0.1%, 100 = 1%.
+    // * `oracle` - The address...
+    //
+    // # Returns
+    //
+    // A tuple containing:
+    // * The pool index hash.
+    // * The address of the pool.
+    fn init_synthetic_pool(
+        e: Env,
+        user: Address,
+        tokens: Vec<Address>,
+        fee_fraction: u32,
+        oracle: Address,
+        assets_config: (Symbol, Symbol),
+    ) -> (BytesN<32>, Address) {
+        user.require_auth();
+        validate_tokens_contracts(&e, &tokens);
+        assert_tokens_sorted(&e, &tokens);
+
+        if fee_fraction > ELASTIC_MAX_FEE {
+            panic_with_error!(&e, PoolRouterError::BadFee);
+        }
+
+        let salt = get_tokens_salt(&e, &tokens);
+        let pools = get_pools_plain(&e, salt);
+        let pool_index = get_synthetic_pool_salt(&e);
+
+        match pools.get(pool_index.clone()) {
+            Some(pool_address) => (pool_index, pool_address),
+            None => deploy_synthetic_pool(&e, &tokens, fee_fraction, &oracle, &assets_config),
+        }
+    }
+
     // Returns a map of pools for given set of tokens.
     //
     // # Arguments
@@ -1367,7 +1419,7 @@ impl PoolsManagementTrait for LiquidityPoolRouter {
         let mut result = Vec::new(&e);
         for index in start..end {
             let tokens = Self::get_tokens(e.clone(), index);
-            result.push_back((tokens.clone(), Self::get_pools(e.clone(), tokens)))
+            result.push_back((tokens.clone(), Self::get_pools(e.clone(), tokens)));
         }
         result
     }

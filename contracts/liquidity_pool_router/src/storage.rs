@@ -20,7 +20,8 @@ pub enum LiquidityPoolType {
     MissingPool = 0,
     ConstantProduct = 1,
     StableSwap = 2,
-    Custom = 3,
+    Synthetic = 3,
+    Custom = 4,
 }
 
 #[contracttype]
@@ -61,6 +62,7 @@ pub(crate) enum DataKey {
     InitPoolsPaymentsAddress,
     ConstantPoolHash,
     StableSwapPoolHash,
+    SyntheticPoolHash,
     PoolCounter,
     PoolPlane,
     LiquidityCalculator,
@@ -215,6 +217,21 @@ pub fn set_stableswap_pool_hash(e: &Env, pool_hash: &BytesN<32>) {
     e.storage()
         .instance()
         .set(&DataKey::StableSwapPoolHash, pool_hash)
+}
+
+pub fn get_synthetic_pool_hash(e: &Env) -> BytesN<32> {
+    bump_instance(e);
+    match e.storage().instance().get(&DataKey::SyntheticPoolHash) {
+        Some(v) => v,
+        None => panic_with_error!(&e, LiquidityPoolRouterError::SyntheticHashMissing),
+    }
+}
+
+pub fn set_synthetic_pool_hash(e: &Env, pool_hash: &BytesN<32>) {
+    bump_instance(e);
+    e.storage()
+        .instance()
+        .set(&DataKey::SyntheticPoolHash, pool_hash)
 }
 
 pub fn get_pools_plain(e: &Env, salt: BytesN<32>) -> Map<BytesN<32>, Address> {
