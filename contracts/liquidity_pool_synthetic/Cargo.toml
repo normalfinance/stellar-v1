@@ -22,6 +22,7 @@ liquidity-pool-config-storage = { workspace = true }
 soroban-fixed-point-math = { workspace = true }
 paste = { workspace = true }
 upgrade = { workspace = true }
+oracle = { workspace = true }
 sep-40-oracle = { workspace = true }
 
 [dev-dependencies]

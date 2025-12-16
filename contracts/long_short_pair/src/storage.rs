@@ -11,7 +11,7 @@ use utils::{
     generate_instance_storage_getter_with_default, generate_instance_storage_setter,
 };
 
-use utils::state::oracle::{HistoricalOracleData, OracleGuardRails};
+use oracle::state::{HistoricalOracleData, OracleGuardRails};
 
 use crate::funding::FundingCheckpoint;
 

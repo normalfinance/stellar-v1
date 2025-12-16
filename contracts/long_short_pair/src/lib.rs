@@ -5,7 +5,6 @@ pub mod errors;
 mod events;
 mod funding;
 mod interface;
-mod oracle;
 mod storage;
 mod test;
 mod test_permissions;

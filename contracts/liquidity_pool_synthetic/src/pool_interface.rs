@@ -1,5 +1,5 @@
+use oracle::state::{HistoricalOracleData, OracleGuardRails, OraclePriceData};
 use soroban_sdk::{Address, BytesN, Env, Map, Symbol, Val, Vec};
-use utils::state::oracle::{HistoricalOracleData, OracleGuardRails, OraclePriceData};
 
 pub trait LiquidityPoolSyntheticCrunch {
     // Initialize pool completely to reduce calculations cost

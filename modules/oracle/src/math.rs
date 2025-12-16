@@ -1,7 +1,7 @@
 use core::cmp::max;
 
-use crate::{constant::DEFAULT_MAX_TWAP_UPDATE_PRICE_BAND_DENOMINATOR, math::safe_math::SafeMath};
 use soroban_sdk::Env;
+use utils::{constant::DEFAULT_MAX_TWAP_UPDATE_PRICE_BAND_DENOMINATOR, math::safe_math::SafeMath};
 
 /// Sanitizes a new oracle price update by clamping it within a band around the TWAP.
 ///

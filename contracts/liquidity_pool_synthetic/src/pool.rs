@@ -115,9 +115,9 @@ pub fn pool_price(e: &Env) -> u128 {
 // * `u128` — The derived peg price (scaled by `PRICE_PRECISION`), or 0 if invalid.
 pub fn peg_price(e: &Env, current_time: u64) -> u128 {
     let base_oracle_price_data =
-        crate::oracle::get_oracle_price_with_validity(e, &get_base_asset(e), current_time);
+        get_oracle_price_with_validity(e, &get_base_asset(e), current_time);
     let quote_oracle_price_data =
-        crate::oracle::get_oracle_price_with_validity(e, &get_quote_asset(e), current_time);
+        get_oracle_price_with_validity(e, &get_quote_asset(e), current_time);
 
     if base_oracle_price_data.last_price_twap == 0 || quote_oracle_price_data.last_price_twap == 0 {
         return 0;

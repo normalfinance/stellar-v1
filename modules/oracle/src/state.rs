@@ -1,10 +1,10 @@
 use soroban_sdk::contracttype;
-
-use crate::{
+use utils::{
     constant::{FIVE_MINUTE, PERCENTAGE_PRECISION_U64, PRICE_PRECISION},
-    errors::oracle_error::OracleError,
     temporal::Delay,
 };
+
+use crate::errors::OracleError;
 
 #[contracttype]
 #[derive(Default, Clone, Copy, Debug)]

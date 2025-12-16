@@ -1,10 +1,10 @@
+use oracle::state::{HistoricalOracleData, OracleGuardRails};
 use paste::paste;
 use soroban_sdk::{contracttype, panic_with_error, Address, BytesN, Env, Symbol, Vec};
 pub use utils::bump::bump_instance;
 use utils::bump::bump_persistent;
 use utils::errors::storage_errors::StorageError;
 use utils::generate_instance_storage_getter;
-use utils::state::oracle::{HistoricalOracleData, OracleGuardRails};
 use utils::{
     generate_instance_storage_getter_and_setter,
     generate_instance_storage_getter_and_setter_with_default,

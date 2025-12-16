@@ -2,14 +2,14 @@ use core::cmp::max;
 
 use crate::errors::LongShortPairError;
 use crate::events::{Events, LongShortPairEvents};
+// use oracle::math::calculate_new_twap;
+use oracle::state::{OracleGuardRails, PriceDivergenceGuardRails};
 use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol, Vec};
 use utils::constant::{
     FUNDING_RATE_BUFFER_I128, ONE_HOUR_I128, PERCENTAGE_PRECISION_U64, PRICE_PRECISION,
     PRICE_PRECISION_I128, PRICE_PRECISION_I64, TWENTY_FOUR_HOUR,
 };
-use utils::math::oracle::calculate_new_twap;
 use utils::math::safe_math::{PrecisionMath, SafeMath};
-use utils::state::oracle::{OracleGuardRails, PriceDivergenceGuardRails};
 
 use crate::storage::{
     get_collateral_percent_long, get_cumulative_funding_index_long,
@@ -150,7 +150,7 @@ pub fn update_funding_rate(
             let last_24h_avg_funding_rate = get_last_24h_avg_funding_rate(e);
             set_last_24h_avg_funding_rate(
                 e,
-                &calculate_new_twap(
+                &oracle::math::calculate_new_twap(
                     e,
                     funding_rate,
                     current_time as i64,

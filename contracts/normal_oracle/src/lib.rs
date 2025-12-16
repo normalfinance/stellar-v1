@@ -4,7 +4,6 @@ mod contract;
 pub mod errors;
 mod interface;
 mod math;
-mod state;
 mod storage;
 mod test;
 mod testutils;

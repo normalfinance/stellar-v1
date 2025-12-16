@@ -17,6 +17,7 @@ token_share = { path = "modules/token_share" }
 rewards = { path = "modules/rewards" }
 access_control = { path = "modules/access_control" }
 upgrade = { path = "modules/upgrade" }
+oracle = { path = "modules/oracle" }
 liquidity-pool-validation-errors = { path = "modules/liquidity_pool_validation_errors" }
 liquidity-pool-events = { path = "modules/liquidity_pool_events" }
 liquidity-pool-rewards-gauge = { path = "modules/liquidity_pool_reward_gauge" }

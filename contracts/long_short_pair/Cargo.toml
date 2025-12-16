@@ -17,6 +17,7 @@ paste = { workspace = true }
 access_control = { workspace = true }
 utils = { workspace = true }
 upgrade = { workspace = true }
+oracle = { workspace = true }
 soroban-fixed-point-math = { workspace = true }
 
 [dev-dependencies]

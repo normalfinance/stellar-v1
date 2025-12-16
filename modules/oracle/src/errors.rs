@@ -8,4 +8,6 @@ pub enum OracleError {
     OracleNonPositive = 601,
     OracleTooVolatile = 602,
     OracleStaleForPool = 603,
+    OracleInvalid = 604,
+    FailedToGetOraclePrice = 605,
 }
