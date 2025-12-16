@@ -24,7 +24,7 @@ impl Events {
 // |___|\__/|___|(___/    \___)(__\_|_)\___|\____\)
 
 pub(crate) trait LongShortPairEvents {
-    fn tokens_created(&self, ts: u64, sponsor: Address, collateral_used: u128, tokens_minted: u128);
+    fn tokens_minted(&self, ts: u64, sponsor: Address, collateral_used: u128, tokens_minted: u128);
 
     fn tokens_redeemed(
         &self,
@@ -36,6 +36,8 @@ pub(crate) trait LongShortPairEvents {
     );
 
     fn funding_rate_record(&self, ts: u64, funding_rate: i64);
+
+    fn migration(&self, ts: u64, new_lower_bound: u128, new_upper_bound: u128);
 
     // Paused Ops
     fn kill_create(&self);
@@ -52,16 +54,10 @@ pub(crate) trait LongShortPairEvents {
 }
 
 impl LongShortPairEvents for Events {
-    fn tokens_created(
-        &self,
-        ts: u64,
-        sponsor: Address,
-        collateral_used: u128,
-        tokens_minted: u128,
-    ) {
+    fn tokens_minted(&self, ts: u64, sponsor: Address, collateral_used: u128, tokens_minted: u128) {
         self.env().events().publish(
             (
-                Symbol::new(self.env(), "tokens_created"),
+                Symbol::new(self.env(), "tokens_minted"),
                 ts,
                 sponsor,
                 collateral_used,
@@ -96,6 +92,18 @@ impl LongShortPairEvents for Events {
         self.env().events().publish(
             (Symbol::new(self.env(), "funding_rate_record"), ts),
             (funding_rate,),
+        );
+    }
+
+    fn migration(&self, ts: u64, new_lower_bound: u128, new_upper_bound: u128) {
+        self.env().events().publish(
+            (
+                Symbol::new(self.env(), "migration"),
+                ts,
+                new_lower_bound,
+                new_upper_bound,
+            ),
+            (),
         );
     }
 

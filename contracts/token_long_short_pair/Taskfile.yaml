@@ -11,7 +11,7 @@ tasks:
 
   build:
     cmds:
-      - soroban contract build --package token-long-short-pair
+      - soroban contract build --package token_long_short_pair
       - soroban contract optimize --wasm ../../target/wasm32v1-none/release/token_long_short_pair.wasm --wasm-out ../../target/wasm32v1-none/release/token_long_short_pair.wasm
       - cp ../../target/wasm32v1-none/release/token_long_short_pair.wasm ../../wasm/token_long_short_pair.wasm
 

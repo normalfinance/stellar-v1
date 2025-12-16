@@ -12,6 +12,7 @@ soroban-token-sdk = { version = "22.0.6" }
 soroban-fixed-point-math = { version = "=1.3.0" }
 paste = { version = "1.0.15" }
 sep-40-oracle = "=1.2.2"
+types = { path = "modules/types" }
 utils = { path = "modules/utils" }
 token_share = { path = "modules/token_share" }
 rewards = { path = "modules/rewards" }

@@ -232,6 +232,8 @@ pub trait PoolsManagementTrait {
         user: Address,
         tokens: Vec<Address>,
         fee_fraction: u32,
+        long_short_pair: Address,
+        assets_config: (Symbol, Symbol),
     ) -> (BytesN<32>, Address);
 
     // Get pools for given pair

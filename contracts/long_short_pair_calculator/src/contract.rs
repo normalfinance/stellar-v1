@@ -1,5 +1,5 @@
 use crate::errors::CalculatorError;
-use crate::interface::CalculatorTrait;
+use crate::interface::LongShortPairCalculatorTrait;
 use crate::storage::{get_params, set_params, LinearLongShortPairParameters};
 use soroban_sdk::{contract, contractimpl, contractmeta, panic_with_error, Address, Env};
 
@@ -7,11 +7,13 @@ use soroban_sdk::{contract, contractimpl, contractmeta, panic_with_error, Addres
 contractmeta!(key = "Description", val = "");
 
 #[contract]
-pub struct Calculator;
+pub struct LongShortPairCalculator;
 
 #[contractimpl]
-impl CalculatorTrait for Calculator {
+impl LongShortPairCalculatorTrait for LongShortPairCalculator {
     fn set_parameters(e: Env, long_short_pair: Address, lower_bound: u128, upper_bound: u128) {
+        long_short_pair.require_auth();
+
         if upper_bound <= lower_bound {
             panic_with_error!(&e, CalculatorError::InvalidBounds);
         }

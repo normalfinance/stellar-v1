@@ -1,5 +1,6 @@
 use crate::constants::{
-    CONSTANT_PRODUCT_FEE_AVAILABLE, STABLESWAP_DEFAULT_A, STABLESWAP_MAX_FEE, STABLESWAP_MAX_TOKENS,
+    CONSTANT_PRODUCT_FEE_AVAILABLE, STABLESWAP_DEFAULT_A, STABLESWAP_MAX_FEE,
+    STABLESWAP_MAX_TOKENS, SYNTHETIC_MAX_FEE,
 };
 use crate::errors::LiquidityPoolRouterError;
 use crate::events::{Events, LiquidityPoolRouterEvents};
@@ -1309,7 +1310,7 @@ impl PoolsManagementTrait for LiquidityPoolRouter {
     // * `user` - The address of the user initializing the pool.
     // * `tokens` - A vector of token addresses that the pool consists of.
     // * `fee_fraction` - The fee fraction for the pool. Has denominator 10000; 1 = 0.01%, 10 = 0.1%, 100 = 1%.
-    // * `oracle` - The address...
+    // * `long_short_pair` - The address...
     //
     // # Returns
     //
@@ -1321,15 +1322,15 @@ impl PoolsManagementTrait for LiquidityPoolRouter {
         user: Address,
         tokens: Vec<Address>,
         fee_fraction: u32,
-        oracle: Address,
+        long_short_pair: Address,
         assets_config: (Symbol, Symbol),
     ) -> (BytesN<32>, Address) {
         user.require_auth();
         validate_tokens_contracts(&e, &tokens);
         assert_tokens_sorted(&e, &tokens);
 
-        if fee_fraction > ELASTIC_MAX_FEE {
-            panic_with_error!(&e, PoolRouterError::BadFee);
+        if fee_fraction > SYNTHETIC_MAX_FEE {
+            panic_with_error!(&e, LiquidityPoolRouterError::BadFee);
         }
 
         let salt = get_tokens_salt(&e, &tokens);
@@ -1338,7 +1339,9 @@ impl PoolsManagementTrait for LiquidityPoolRouter {
 
         match pools.get(pool_index.clone()) {
             Some(pool_address) => (pool_index, pool_address),
-            None => deploy_synthetic_pool(&e, &tokens, fee_fraction, &oracle, &assets_config),
+            None => {
+                deploy_synthetic_pool(&e, &tokens, fee_fraction, &long_short_pair, &assets_config)
+            }
         }
     }
 

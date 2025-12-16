@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 #![cfg(test)]
 extern crate std;
-use crate::CalculatorClient;
+use crate::LongShortPairCalculatorClient;
 
 use soroban_sdk::{testutils::Address as _, Address, Env};
 use std::vec;
@@ -19,7 +19,7 @@ impl Default for TestConfig {
 pub(crate) struct Setup<'a> {
     pub(crate) env: Env,
     pub(crate) users: vec::Vec<Address>,
-    pub(crate) calculator: CalculatorClient<'a>,
+    pub(crate) calculator: LongShortPairCalculatorClient<'a>,
     pub(crate) admin: Address,
     pub(crate) pair: Address,
 }
@@ -68,7 +68,8 @@ impl Setup<'_> {
     }
 }
 
-pub fn create_calculator_contract<'a>(e: &Env) -> CalculatorClient<'a> {
-    let calculator = CalculatorClient::new(e, &e.register(crate::Calculator {}, ()));
+pub fn create_calculator_contract<'a>(e: &Env) -> LongShortPairCalculatorClient<'a> {
+    let calculator =
+        LongShortPairCalculatorClient::new(e, &e.register(crate::LongShortPairCalculator {}, ()));
     calculator
 }

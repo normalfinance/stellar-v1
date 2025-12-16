@@ -2,22 +2,20 @@ use core::cmp::max;
 
 use crate::errors::LongShortPairError;
 use crate::events::{Events, LongShortPairEvents};
-// use oracle::math::calculate_new_twap;
-use oracle::state::{OracleGuardRails, PriceDivergenceGuardRails};
 use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol, Vec};
 use utils::constant::{
     FUNDING_RATE_BUFFER_I128, ONE_HOUR_I128, PERCENTAGE_PRECISION_U64, PRICE_PRECISION,
-    PRICE_PRECISION_I128, PRICE_PRECISION_I64, TWENTY_FOUR_HOUR,
+    PRICE_PRECISION_I64, TWENTY_FOUR_HOUR,
 };
 use utils::math::safe_math::{PrecisionMath, SafeMath};
 
 use crate::storage::{
     get_collateral_percent_long, get_cumulative_funding_index_long,
     get_cumulative_funding_index_short, get_funding_period, get_is_killed_update_funding,
-    get_last_24h_avg_funding_rate, get_last_funding_rate_ts, get_last_update_ts, get_pool,
-    get_sanitize_clamp_denominator, put_user_funding_checkpoint, set_cumulative_funding_index_long,
-    set_cumulative_funding_index_short, set_last_24h_avg_funding_rate, set_last_funding_rate,
-    set_last_funding_rate_ts,
+    get_last_24h_avg_funding_rate, get_last_funding_rate_ts, get_last_update_ts,
+    get_max_ratio_percent_divergence, get_pool, put_user_funding_checkpoint,
+    set_cumulative_funding_index_long, set_cumulative_funding_index_short,
+    set_last_24h_avg_funding_rate, set_last_funding_rate, set_last_funding_rate_ts,
 };
 
 #[derive(Clone)]
@@ -69,12 +67,7 @@ impl FundingCheckpoint {
     }
 }
 
-pub fn update_funding_rate(
-    e: &Env,
-    guard_rails: &OracleGuardRails,
-    funding_paused: bool,
-    current_time: u64,
-) -> bool {
+pub fn update_funding_rate(e: &Env, funding_paused: bool, current_time: u64) -> bool {
     // TODO: Pause funding if oracle is invalid?
 
     let last_funding_rate_ts = get_last_funding_rate_ts(e);
@@ -120,8 +113,7 @@ pub fn update_funding_rate(
             let ratio_spread_pct =
                 calculate_price_spread_pct(e, ratio_spread as i64, expected_long_ratio);
 
-            let block_funding_rate_update =
-                block_operation(e, guard_rails, ratio_spread_pct, current_time);
+            let block_funding_rate_update = block_operation(e, ratio_spread_pct, current_time);
 
             if block_funding_rate_update {
                 return false;
@@ -152,9 +144,9 @@ pub fn update_funding_rate(
                 e,
                 &oracle::math::calculate_new_twap(
                     e,
-                    funding_rate,
+                    funding_rate as i128,
                     current_time as i64,
-                    last_24h_avg_funding_rate,
+                    last_24h_avg_funding_rate as i128,
                     last_funding_rate_ts as i64,
                     TWENTY_FOUR_HOUR as i64,
                 ),
@@ -175,25 +167,18 @@ pub fn calculate_price_spread_pct(e: &Env, spread: i64, other_price: u64) -> i64
         .safe_div(e, other_price as i64)
 }
 
-pub fn is_ratio_pct_too_divergent(
-    ratio_spread_pct: i64,
-    guard_rails: &PriceDivergenceGuardRails,
-) -> bool {
-    let max_divergence = guard_rails
-        .ratio_percent_divergence
-        .max(PERCENTAGE_PRECISION_U64 / 10);
+pub fn is_ratio_pct_too_divergent(e: &Env, ratio_spread_pct: i64) -> bool {
+    let max_divergence = get_max_ratio_percent_divergence(e).max(PERCENTAGE_PRECISION_U64 / 10);
 
     ratio_spread_pct.unsigned_abs() > max_divergence
 }
 
-pub fn block_operation(
-    e: &Env,
-    guard_rails: &OracleGuardRails,
-    ratio_spread_pct: i64,
-    now: u64,
-) -> bool {
-    let is_spread_pct_too_divergent: bool =
-        is_ratio_pct_too_divergent(ratio_spread_pct, &guard_rails.price_divergence);
+// pub fn max_ratio_percent_divergence(&self) -> u64 {
+//     self.price_divergence.ratio_percent_divergence.max(PERCENTAGE_PRECISION_U64 / 2)
+// }
+
+pub fn block_operation(e: &Env, ratio_spread_pct: i64, now: u64) -> bool {
+    let is_spread_pct_too_divergent: bool = is_ratio_pct_too_divergent(e, ratio_spread_pct);
 
     let seconds_since_update = now.saturating_sub(get_last_update_ts(e)); // FIXME: we need to actually set this somewhere
 

@@ -152,14 +152,20 @@ pub fn calculate_weighted_average(
 
 pub fn calculate_new_twap(
     e: &Env,
-    current_price: i64,
+    current_price: i128,
     current_ts: i64,
-    last_twap: i64,
+    last_twap: i128,
     last_ts: i64,
     period: i64,
 ) -> i64 {
     let since_last = max(0_i64, current_ts.safe_sub(&e, last_ts));
     let from_start = max(1_i64, period.safe_sub(&e, since_last));
 
-    calculate_weighted_average(e, current_price, last_twap, since_last, from_start)
+    calculate_weighted_average(
+        e,
+        current_price as i64,
+        last_twap as i64,
+        since_last,
+        from_start,
+    )
 }

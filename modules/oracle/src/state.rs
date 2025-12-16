@@ -1,8 +1,5 @@
 use soroban_sdk::contracttype;
-use utils::{
-    constant::{FIVE_MINUTE, PERCENTAGE_PRECISION_U64, PRICE_PRECISION},
-    temporal::Delay,
-};
+use utils::{constant::PRICE_PRECISION, temporal::Delay};
 
 use crate::errors::OracleError;
 
@@ -11,48 +8,6 @@ use crate::errors::OracleError;
 pub struct OraclePriceData {
     pub price: u128,
     pub delay: Delay,
-}
-
-#[contracttype]
-#[derive(Copy, Clone, Debug)]
-pub struct PriceDivergenceGuardRails {
-    pub ratio_percent_divergence: u64,
-}
-
-#[contracttype]
-#[derive(Copy, Clone, Default, Debug)]
-pub struct ValidityGuardRails {
-    pub seconds_before_stale: u64,
-    pub too_volatile_ratio: u64,
-}
-
-#[contracttype]
-#[derive(Copy, Clone, Debug)]
-pub struct OracleGuardRails {
-    pub price_divergence: PriceDivergenceGuardRails,
-    pub validity: ValidityGuardRails,
-}
-
-impl Default for OracleGuardRails {
-    fn default() -> Self {
-        OracleGuardRails {
-            price_divergence: PriceDivergenceGuardRails {
-                ratio_percent_divergence: PERCENTAGE_PRECISION_U64 / 10, // 10%
-            },
-            validity: ValidityGuardRails {
-                seconds_before_stale: FIVE_MINUTE as u64,
-                too_volatile_ratio: PERCENTAGE_PRECISION_U64 / 5, // ±20%
-            },
-        }
-    }
-}
-
-impl OracleGuardRails {
-    pub fn max_ratio_percent_divergence(&self) -> u64 {
-        self.price_divergence
-            .ratio_percent_divergence
-            .max(PERCENTAGE_PRECISION_U64 / 2)
-    }
 }
 
 // ordered by "severity"

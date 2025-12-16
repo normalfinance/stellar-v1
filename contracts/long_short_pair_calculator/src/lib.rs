@@ -7,4 +7,4 @@ mod storage;
 mod test;
 mod testutils;
 
-pub use contract::{Calculator, CalculatorClient};
+pub use contract::{LongShortPairCalculator, LongShortPairCalculatorClient};

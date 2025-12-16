@@ -1,6 +1,7 @@
-use oracle::state::{HistoricalOracleData, OracleGuardRails};
 use paste::paste;
 use soroban_sdk::{contracttype, panic_with_error, Address, BytesN, Env, Symbol, Vec};
+use types::pair::Direction;
+use types::tax::RateTableEntry;
 pub use utils::bump::bump_instance;
 use utils::bump::bump_persistent;
 use utils::errors::storage_errors::StorageError;
@@ -10,14 +11,6 @@ use utils::{
     generate_instance_storage_getter_and_setter_with_default,
     generate_instance_storage_getter_with_default, generate_instance_storage_setter,
 };
-
-// Rate Table Entry for configurable tax tables
-#[derive(Clone)]
-#[contracttype]
-pub struct RateTableEntry {
-    pub deviation: u128, // Price deviation scaled by PRICE_PRECISION
-    pub rate: u32,       // Tax rate fraction
-}
 
 #[derive(Clone)]
 #[contracttype]
@@ -29,15 +22,12 @@ pub enum DataKey {
     ReserveA,
     ReserveB,
 
+    Direction, // Long or Short
+
     // Contract
     Plane,
     Router,
-    Sink,
-
-    // Oracle
-    Oracle,
-    OracleGuardRails, // a set of oracle price data validations and protections.
-    HistoricalOracleData(Symbol),
+    LongShortPair,
 
     // Fee
     FeeFraction,         // 1 = 0.01%
@@ -54,7 +44,6 @@ pub enum DataKey {
     IsKilledSwap,
     IsKilledDeposit,
     IsKilledClaim,
-    IsKilledTax,
 
     // Wasm
     TokenFutureWASM,
@@ -64,6 +53,13 @@ pub enum DataKey {
 // Reserve
 generate_instance_storage_getter_and_setter_with_default!(reserve_a, DataKey::ReserveA, u128, 0);
 generate_instance_storage_getter_and_setter_with_default!(reserve_b, DataKey::ReserveB, u128, 0);
+
+generate_instance_storage_getter_and_setter_with_default!(
+    direction,
+    DataKey::Direction,
+    Direction,
+    Direction::Long
+);
 
 // Paused Ops
 generate_instance_storage_getter_and_setter_with_default!(
@@ -81,12 +77,6 @@ generate_instance_storage_getter_and_setter_with_default!(
 generate_instance_storage_getter_and_setter_with_default!(
     is_killed_claim,
     DataKey::IsKilledClaim,
-    bool,
-    false
-);
-generate_instance_storage_getter_and_setter_with_default!(
-    is_killed_tax,
-    DataKey::IsKilledTax,
     bool,
     false
 );
@@ -121,14 +111,6 @@ generate_instance_storage_getter_and_setter_with_default!(
 generate_instance_storage_getter_and_setter!(base_asset, DataKey::BaseAsset, Symbol);
 generate_instance_storage_getter_and_setter!(quote_asset, DataKey::QuoteAsset, Symbol);
 
-// Oracle
-generate_instance_storage_getter_and_setter_with_default!(
-    oracle_guard_rails,
-    DataKey::OracleGuardRails,
-    OracleGuardRails,
-    OracleGuardRails::default()
-);
-
 // Tax
 generate_instance_storage_getter_and_setter_with_default!(
     protocol_tax_a,
@@ -160,7 +142,7 @@ pub fn set_tax_rate_table(e: &Env, table: &Vec<RateTableEntry>) {
 // Addresses
 generate_instance_storage_getter_and_setter!(router, DataKey::Router, Address);
 generate_instance_storage_getter_and_setter!(plane, DataKey::Plane, Address);
-generate_instance_storage_getter_and_setter!(oracle, DataKey::Oracle, Address);
+generate_instance_storage_getter_and_setter!(long_short_pair, DataKey::LongShortPair, Address);
 generate_instance_storage_getter_and_setter!(
     token_future_wasm,
     DataKey::TokenFutureWASM,
@@ -201,27 +183,4 @@ pub fn put_token_b(e: &Env, contract: Address) {
 pub(crate) fn has_plane(e: &Env) -> bool {
     let key = DataKey::Plane;
     e.storage().instance().has(&key)
-}
-
-// Historical Oracle Data
-
-pub(crate) fn get_historical_oracle_data(e: &Env, asset: &Symbol) -> HistoricalOracleData {
-    let key = DataKey::HistoricalOracleData(asset.clone());
-    match e.storage().persistent().get(&key) {
-        Some(value) => {
-            bump_persistent(e, &key);
-            value
-        }
-        None => HistoricalOracleData::default_quote_oracle(),
-    }
-}
-
-pub(crate) fn put_historical_oracle_data(
-    e: &Env,
-    asset: &Symbol,
-    oracle_data: &HistoricalOracleData,
-) {
-    let key = DataKey::HistoricalOracleData(asset.clone());
-    e.storage().persistent().set(&key, oracle_data);
-    bump_persistent(e, &key);
 }

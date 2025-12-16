@@ -1,15 +1,18 @@
 use crate::errors::LongShortPairError;
 use crate::events::{Events, LongShortPairEvents};
-use crate::interface::{AdminInterfaceTrait, LongShortPairTrait, UpgradeableContract};
-use crate::oracle::get_oracle_price;
+use crate::interface::{
+    AdminInterfaceTrait, LongShortPairTrait, OracleInterfaceTrait, UpgradeableContract,
+};
 use crate::storage::{
     get_calculator, get_collateral_per_pair, get_collateral_percent_long,
     get_cumulative_funding_index_long, get_cumulative_funding_index_short, get_funding_period,
-    get_guard_rails, get_is_killed_create, get_is_killed_redeem, get_is_killed_update_funding,
+    get_is_killed_create, get_is_killed_redeem, get_is_killed_update_funding,
     get_last_24h_avg_funding_rate, get_last_funding_rate, get_last_funding_rate_ts,
-    get_sanitize_clamp_denominator, get_user_funding_checkpoint, set_calculator,
-    set_collateral_percent_long, set_funding_period, set_is_killed_create, set_is_killed_redeem,
-    set_is_killed_update_funding, set_normal_oracle, set_pool, CollateralInfo, FundingInfo,
+    get_normal_oracle, get_sanitize_clamp_denominator, get_user_funding_checkpoint, set_calculator,
+    set_collateral_percent_long, set_cumulative_funding_index_long,
+    set_cumulative_funding_index_short, set_funding_period, set_is_killed_create,
+    set_is_killed_redeem, set_is_killed_update_funding, set_last_funding_rate_ts,
+    set_normal_oracle, set_pool, CollateralInfo, FundingInfo,
 };
 use crate::storage::{
     get_token_long, get_token_short, put_token_collateral, put_token_long, put_token_short,
@@ -30,10 +33,12 @@ use access_control::utils::{
     require_operations_admin_or_owner, require_pause_admin_or_owner,
     require_pause_or_emergency_pause_admin_or_owner,
 };
+use oracle::get_oracle_price;
 use soroban_sdk::{
     contract, contractimpl, contractmeta, log, panic_with_error, Address, BytesN, Env, IntoVal,
     Map, Symbol, Vec,
 };
+use types::pair::PairParams;
 use upgrade::events::Events as UpgradeEvents;
 use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
 use utils::constant::PRICE_PRECISION_I128;
@@ -48,58 +53,48 @@ pub struct LongShortPair;
 #[contractimpl]
 impl LongShortPairTrait for LongShortPair {
     // Initializes the long short pair.
-    //
-    // # Arguments
-    //
-    // * `admin` - The address of the admin user.
-    // * `privileged_addrs` - (
-    //      emergency admin,
-    //      rewards admin,
-    //      operations admin,
-    //      pause admin,
-    //      emergency pause admins
-    //      system fee admin,
-    //  ).
-    // * `tokens` - The address of the long token, short token, and collateral.
-    // * `oracle` - The address of the oracle.
-    // * `calculator` - The address of the calculator.
-    // * `pool` - The address of the liquidity pool.
-    fn initialize(
-        e: Env,
-        admin: Address,
-        privileged_addrs: (Address, Address, Address, Address, Vec<Address>, Address),
-        tokens: Vec<Address>,
-        oracle: Address,
-        calculator: Address,
-        pool: Address,
-    ) {
+    fn initialize(e: Env, params: PairParams) {
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
             panic_with_error!(&e, LongShortPairError::AlreadyInitialized);
         }
-        access_control.set_role_address(&Role::Admin, &admin);
-        access_control.set_role_address(&Role::EmergencyAdmin, &privileged_addrs.0);
-        access_control.set_role_address(&Role::RewardsAdmin, &privileged_addrs.1);
-        access_control.set_role_address(&Role::OperationsAdmin, &privileged_addrs.2);
-        access_control.set_role_address(&Role::PauseAdmin, &privileged_addrs.3);
-        access_control.set_role_addresses(&Role::EmergencyPauseAdmin, &privileged_addrs.4);
-        access_control.set_role_address(&Role::SystemFeeAdmin, &privileged_addrs.5);
+        access_control.set_role_address(&Role::Admin, &params.admin);
+        access_control.set_role_address(&Role::EmergencyAdmin, &params.privileged_addrs.0);
+        access_control.set_role_address(&Role::RewardsAdmin, &params.privileged_addrs.1);
+        access_control.set_role_address(&Role::OperationsAdmin, &params.privileged_addrs.2);
+        access_control.set_role_address(&Role::PauseAdmin, &params.privileged_addrs.3);
+        access_control.set_role_addresses(&Role::EmergencyPauseAdmin, &params.privileged_addrs.4);
+        access_control.set_role_address(&Role::SystemFeeAdmin, &params.privileged_addrs.5);
 
-        set_normal_oracle(&e, &oracle);
-        set_calculator(&e, &calculator);
-        set_pool(&e, &pool);
+        set_normal_oracle(&e, &params.oracle);
+        set_calculator(&e, &params.pair_calculator);
+        set_pool(&e, &params.pool);
 
-        if tokens.len() != 3 {
+        if params.tokens.len() != 3 {
             panic_with_error!(&e, LongShortPairError::WrongInputVecSize);
         }
 
-        let token_long = tokens.get(0).unwrap();
-        let token_short = tokens.get(1).unwrap();
-        let token_collateral = tokens.get(2).unwrap();
+        let token_long = params.tokens.get(0).unwrap();
+        let token_short = params.tokens.get(1).unwrap();
+        let token_collateral = params.tokens.get(2).unwrap();
 
         put_token_long(&e, token_long);
         put_token_short(&e, token_short);
         put_token_collateral(&e, token_collateral);
+
+        // Add the new pair's parameters to the Calculator
+        e.invoke_contract(
+            &params.pair_calculator,
+            &Symbol::new(&e, "set_parameters"),
+            Vec::from_array(
+                &e,
+                [
+                    e.current_contract_address().into_val(&e),
+                    params.lower_bound.into_val(&e),
+                    params.upper_bound.into_val(&e),
+                ],
+            ),
+        )
     }
 
     /**
@@ -109,24 +104,24 @@ impl LongShortPairTrait for LongShortPair {
      * @param tokensToCreate number of long and short synthetic tokens to create.
      * @return collateralUsed total collateral used to mint the synthetics.
      */
-    fn create(e: Env, user: Address, tokens_to_create: u128) -> u128 {
+    fn mint(e: Env, user: Address, tokens_to_mint: u128) -> u128 {
         user.require_auth();
 
         let current_time = e.ledger().timestamp();
 
-        let collateral_used = tokens_to_create.safe_mul(&e, get_collateral_per_pair(&e));
+        let collateral_used = tokens_to_mint.safe_mul(&e, get_collateral_per_pair(&e));
 
         transfer_token_collateral(&e, &user, &e.current_contract_address(), collateral_used);
 
-        mint_token_long(&e, &user, &(tokens_to_create as i128));
-        mint_token_short(&e, &user, &(tokens_to_create as i128));
+        mint_token_long(&e, &user, &(tokens_to_mint as i128));
+        mint_token_short(&e, &user, &(tokens_to_mint as i128));
 
         let mut checkpoint = get_user_funding_checkpoint(&e, &user);
-        checkpoint.mint(&e, tokens_to_create);
+        checkpoint.mint(&e, tokens_to_mint);
 
-        Events::new(&e).tokens_created(current_time, user, collateral_used, tokens_to_create);
+        Events::new(&e).tokens_minted(current_time, user, collateral_used, tokens_to_mint);
 
-        tokens_to_create
+        tokens_to_mint
     }
 
     /**
@@ -226,7 +221,7 @@ impl LongShortPairTrait for LongShortPair {
     }
 
     fn update_oracle_price(e: Env) {
-        let oracle_price_data = get_oracle_price(&e);
+        let oracle_price_data = get_oracle_price(&e, &get_normal_oracle(&e));
 
         match e.try_invoke_contract::<u64, soroban_sdk::Error>(
             &get_calculator(&e),
@@ -301,10 +296,8 @@ impl AdminInterfaceTrait for LongShortPair {
 
         let current_time = e.ledger().timestamp();
         let funding_paused = get_is_killed_update_funding(&e);
-        let guard_rails = get_guard_rails(&e);
 
-        let is_updated =
-            crate::funding::update_funding_rate(&e, &guard_rails, funding_paused, current_time);
+        let is_updated = crate::funding::update_funding_rate(&e, funding_paused, current_time);
 
         if !is_updated {
             let last_update_ts = get_last_funding_rate_ts(&e);
@@ -324,6 +317,42 @@ impl AdminInterfaceTrait for LongShortPair {
 
             panic_with_error!(&e, LongShortPairError::FundingWasNotUpdated)
         }
+    }
+
+    fn migrate(e: Env, admin: Address, lower_bound: u128, upper_bound: u128) {
+        admin.require_auth();
+        require_operations_admin_or_owner(&e, &admin);
+
+        let current_time = e.ledger().timestamp();
+
+        match e.try_invoke_contract::<u64, soroban_sdk::Error>(
+            &get_calculator(&e),
+            &Symbol::new(&e, "set_parameters"),
+            Vec::from_array(
+                &e,
+                [
+                    e.current_contract_address().into_val(&e),
+                    lower_bound.into_val(&e),
+                    upper_bound.into_val(&e),
+                ],
+            ),
+        ) {
+            Ok(Err(_)) | Err(_) => {
+                panic_with_error!(e, LongShortPairError::FailedToGetCalculatorPercent)
+            }
+            Ok(Ok(new_collateral_percent_long)) => {
+                set_collateral_percent_long(&e, &new_collateral_percent_long);
+
+                // Reset funding
+                set_last_funding_rate_ts(&e, &current_time);
+                set_cumulative_funding_index_long(&e, &1_i64);
+                set_cumulative_funding_index_short(&e, &1_i64);
+
+                Events::new(&e).migration(current_time, lower_bound, upper_bound);
+            }
+        }
+
+        //  event
     }
 
     // Sets the privileged addresses.
@@ -494,6 +523,13 @@ impl AdminInterfaceTrait for LongShortPair {
     // Get update_funding killswitch status.
     fn get_is_killed_update_funding(e: Env) -> bool {
         get_is_killed_update_funding(&e)
+    }
+}
+
+#[contractimpl]
+impl OracleInterfaceTrait for LongShortPair {
+    fn get_price(e: Env) -> u128 {
+        get_collateral_percent_long(&e) as u128
     }
 }
 

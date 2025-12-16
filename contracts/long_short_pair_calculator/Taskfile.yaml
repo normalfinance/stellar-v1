@@ -11,9 +11,9 @@ tasks:
 
   build:
     cmds:
-      - soroban contract build --package calculator
-      - soroban contract optimize --wasm ../../target/wasm32v1-none/release/calculator.wasm --wasm-out ../../target/wasm32v1-none/release/calculator.wasm
-      - cp ../../target/wasm32v1-none/release/calculator.wasm ../../wasm/calculator.wasm
+      - soroban contract build --package long_short_pair_calculator
+      - soroban contract optimize --wasm ../../target/wasm32v1-none/release/long_short_pair_calculator.wasm --wasm-out ../../target/wasm32v1-none/release/long_short_pair_calculator.wasm
+      - cp ../../target/wasm32v1-none/release/long_short_pair_calculator.wasm ../../wasm/long_short_pair_calculator.wasm
 
   test:
     deps:

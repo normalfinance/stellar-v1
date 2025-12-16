@@ -1,8 +1,8 @@
 use paste::paste;
-use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env};
 pub use utils::bump::bump_instance;
 use utils::bump::bump_persistent;
-use utils::constant::ONE_HOUR;
+use utils::constant::{ONE_HOUR, PERCENTAGE_PRECISION_U64};
 use utils::errors::storage_errors::StorageError;
 use utils::generate_instance_storage_getter;
 use utils::{
@@ -10,8 +10,6 @@ use utils::{
     generate_instance_storage_getter_and_setter_with_default,
     generate_instance_storage_getter_with_default, generate_instance_storage_setter,
 };
-
-use oracle::state::{HistoricalOracleData, OracleGuardRails};
 
 use crate::funding::FundingCheckpoint;
 
@@ -52,9 +50,8 @@ pub enum DataKey {
     Calculator,
     NormalOracle,
 
-    // Oracle
-    GuardRails, // a set of oracle price data validations and protections.
-    OracleData,
+    // Guard Rails
+    MaxRatioPercentDivergence,
 
     // Funding
     SanitizeClampDenominator,
@@ -181,30 +178,13 @@ generate_instance_storage_getter_and_setter!(normal_oracle, DataKey::NormalOracl
 generate_instance_storage_getter_and_setter!(calculator, DataKey::Calculator, Address);
 generate_instance_storage_getter_and_setter!(pool, DataKey::Pool, Address);
 
-// Oracle
+// Guard Rails
 generate_instance_storage_getter_and_setter_with_default!(
-    guard_rails,
-    DataKey::GuardRails,
-    OracleGuardRails,
-    OracleGuardRails::default()
+    max_ratio_percent_divergence,
+    DataKey::MaxRatioPercentDivergence,
+    u64,
+    PERCENTAGE_PRECISION_U64 / 10 // 10%
 );
-
-pub(crate) fn get_historical_oracle_data(e: &Env) -> HistoricalOracleData {
-    let key = DataKey::OracleData;
-    match e.storage().persistent().get(&key) {
-        Some(value) => {
-            bump_persistent(e, &key);
-            value
-        }
-        None => HistoricalOracleData::default_quote_oracle(),
-    }
-}
-
-pub(crate) fn put_historical_oracle_data(e: &Env, oracle_data: &HistoricalOracleData) {
-    let key = DataKey::OracleData;
-    e.storage().persistent().set(&key, oracle_data);
-    bump_persistent(e, &key);
-}
 
 // Token Getters
 pub fn get_token_long(e: &Env) -> Address {

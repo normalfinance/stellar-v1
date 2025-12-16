@@ -142,7 +142,7 @@ pub fn deploy_synthetic_pool(
     e: &Env,
     tokens: &Vec<Address>,
     fee_fraction: u32,
-    oracle: &Address,
+    long_short_pair: &Address,
     assets_config: &(Symbol, Symbol),
 ) -> (BytesN<32>, Address) {
     let tokens_salt = get_tokens_salt(e, tokens);
@@ -160,7 +160,7 @@ pub fn deploy_synthetic_pool(
         tokens,
         &pool_contract_id,
         fee_fraction,
-        oracle,
+        long_short_pair,
         assets_config,
     );
 
@@ -325,7 +325,7 @@ fn init_synthetic_pool(
     tokens: &Vec<Address>,
     pool_contract_id: &Address,
     fee_fraction: u32,
-    oracle: &Address,
+    long_short_pair: &Address,
     assets_config: &(Symbol, Symbol),
 ) {
     let token_wasm_hash = get_token_hash(e);
@@ -374,7 +374,7 @@ fn init_synthetic_pool(
                 )
                     .into_val(e),
                 e.current_contract_address().to_val(),
-                oracle.to_val(),
+                long_short_pair.to_val(),
                 token_wasm_hash.into_val(e),
                 tokens.clone().into_val(e),
                 (

@@ -1,20 +1,9 @@
-use oracle::state::{HistoricalOracleData, OracleGuardRails, OraclePriceData};
 use soroban_sdk::{Address, BytesN, Env, Map, Symbol, Val, Vec};
+use types::pool::PoolParams;
 
 pub trait LiquidityPoolSyntheticCrunch {
     // Initialize pool completely to reduce calculations cost
-    fn initialize_all(
-        e: Env,
-        admin: Address,
-        privileged_addrs: (Address, Address, Address, Address, Vec<Address>, Address),
-        router: Address,
-        oracle: Address,
-        lp_token_wasm_hash: BytesN<32>,
-        tokens: Vec<Address>,
-        fees_config: (u32, u32),
-        assets_config: (Symbol, Symbol),
-        extra_addrs: (Address, Address, Address),
-    );
+    fn initialize_all(e: Env, params: PoolParams, extra_addrs: (Address, Address, Address));
 }
 
 pub trait LiquidityPoolSyntheticTrait {
@@ -22,17 +11,7 @@ pub trait LiquidityPoolSyntheticTrait {
     fn pool_type(e: Env) -> Symbol;
 
     // Sets the token contract addresses for this pool
-    fn initialize(
-        e: Env,
-        admin: Address,
-        privileged_addrs: (Address, Address, Address, Address, Vec<Address>, Address),
-        router: Address,
-        oracle: Address,
-        lp_token_wasm_hash: BytesN<32>,
-        tokens: Vec<Address>,
-        fees_config: (u32, u32),
-        assets_config: (Symbol, Symbol),
-    );
+    fn initialize(e: Env, params: PoolParams);
 
     // Returns the token contract address for the pool share token
     fn share_id(e: Env) -> Address;
@@ -121,34 +100,20 @@ pub trait AdminInterfaceTrait {
     // Get map of privileged roles
     fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>>;
 
-    // Oracle
-    fn set_oracle_guard_rails(
-        e: Env,
-        admin: Address,
-        twap_divergence: u64,
-        stale_limit: u64,
-        too_volatile_ratio: u64,
-    );
-
-    fn get_oracle_guard_rails(e: Env) -> OracleGuardRails;
-
     // Stop pool instantly
     fn kill_deposit(e: Env, admin: Address);
     fn kill_swap(e: Env, admin: Address);
     fn kill_claim(e: Env, admin: Address);
-    fn kill_tax(e: Env, admin: Address);
 
     // Resume pool
     fn unkill_deposit(e: Env, admin: Address);
     fn unkill_swap(e: Env, admin: Address);
     fn unkill_claim(e: Env, admin: Address);
-    fn unkill_tax(e: Env, admin: Address);
 
     // Get killswitch status
     fn get_is_killed_deposit(e: Env) -> bool;
     fn get_is_killed_swap(e: Env) -> bool;
     fn get_is_killed_claim(e: Env) -> bool;
-    fn get_is_killed_tax(e: Env) -> bool;
 
     // Sets the protocol fraction of total fee for the pool.
     fn set_protocol_fee_fraction(e: Env, admin: Address, new_fraction: u32);

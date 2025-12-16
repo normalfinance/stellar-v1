@@ -1,18 +1,11 @@
 use soroban_sdk::{Address, BytesN, Env, Map, Symbol, Vec};
+use types::pair::PairParams;
 
 use crate::storage::{CollateralInfo, FundingInfo};
 
 pub trait LongShortPairTrait {
     // Initialize lsp
-    fn initialize(
-        e: Env,
-        admin: Address,
-        privileged_addrs: (Address, Address, Address, Address, Vec<Address>, Address),
-        tokens: Vec<Address>,
-        oracle: Address,
-        calculator: Address,
-        pool: Address,
-    );
+    fn initialize(e: Env, params: PairParams);
 
     /**
      * @notice Creates a pair of long and short tokens equal in number to tokensToCreate. Pulls the required collateral
@@ -21,7 +14,7 @@ pub trait LongShortPairTrait {
      * @param tokensToCreate number of long and short synthetic tokens to create.
      * @return collateralUsed total collateral used to mint the synthetics.
      */
-    fn create(e: Env, user: Address, tokens_to_create: u128) -> u128;
+    fn mint(e: Env, user: Address, tokens_to_mint: u128) -> u128;
 
     /**
      * @notice Redeems a pair of long and short tokens equal in number to tokensToRedeem. Returns the commensurate
@@ -60,6 +53,8 @@ pub trait AdminInterfaceTrait {
 
     fn update_funding_rate(e: Env, admin: Address);
 
+    fn migrate(e: Env, admin: Address, lower_bound: u128, upper_bound: u128);
+
     // Set privileged addresses
     fn set_privileged_addrs(
         e: Env,
@@ -90,6 +85,10 @@ pub trait AdminInterfaceTrait {
     fn get_is_killed_create(e: Env) -> bool;
     fn get_is_killed_redeem(e: Env) -> bool;
     fn get_is_killed_update_funding(e: Env) -> bool;
+}
+
+pub trait OracleInterfaceTrait {
+    fn get_price(e: Env) -> u128;
 }
 
 pub trait UpgradeableContract {

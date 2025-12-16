@@ -11,6 +11,7 @@ tasks:
 
   build:
     cmds:
+      - task -d ../long_short_pair_calculator build || exit 1
       - soroban contract build --package long_short_pair
       - soroban contract optimize --wasm ../../target/wasm32v1-none/release/long_short_pair.wasm --wasm-out ../../target/wasm32v1-none/release/long_short_pair.wasm
       - cp ../../target/wasm32v1-none/release/long_short_pair.wasm ../../wasm/long_short_pair.wasm

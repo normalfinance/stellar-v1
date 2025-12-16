@@ -24,4 +24,5 @@ pub enum LiquidityPoolValidationError {
     ZeroAmount = 2018,
     InsufficientBalance = 2019,
     InMaxNotSatisfied = 2020,
+    FailedToGetOraclePrice = 2021,
 }

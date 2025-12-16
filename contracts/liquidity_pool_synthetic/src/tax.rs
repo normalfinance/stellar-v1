@@ -4,7 +4,32 @@ use utils::constant::PRICE_PRECISION;
 use utils::math::safe_math::{PrecisionMath, SafeConversion, SafeMath};
 
 use crate::errors::LiquidityPoolError;
-use crate::storage::{get_is_killed_tax, get_tax_rate_table};
+use crate::storage::{
+    get_protocol_tax_a, get_protocol_tax_b, get_tax_rate_table, set_protocol_tax_a,
+    set_protocol_tax_b,
+};
+
+pub fn collect_tax(e: &Env, out_idx: u32, out_amount: u128, current_time: u64) -> u128 {
+    let pool_price = crate::pool::pool_price(e);
+    let peg_price = crate::pool::peg_price(e, current_time);
+
+    let risk_increasing = crate::pool::is_swap_risk_increasing(&e, pool_price, peg_price, out_idx);
+
+    if !risk_increasing {
+        return 0;
+    }
+
+    let tax_amount = crate::tax::calculate_tax_amount(&e, pool_price, peg_price, out_amount);
+
+    // Add tax to the appropriate protocol tax
+    if out_idx == 0 {
+        set_protocol_tax_a(&e, &(get_protocol_tax_a(&e) + tax_amount));
+    } else {
+        set_protocol_tax_b(&e, &(get_protocol_tax_b(&e) + tax_amount));
+    }
+
+    tax_amount
+}
 
 pub fn calculate_tax_rate(e: &Env, pool_price: u128, peg_price: u128) -> u32 {
     // Guard against zero division
@@ -68,10 +93,6 @@ pub fn calculate_tax_rate(e: &Env, pool_price: u128, peg_price: u128) -> u32 {
 /// Calculates the tax amount to be collected from a trade.
 /// Returns the tax amount in token units.
 pub fn calculate_tax_amount(e: &Env, pool_price: u128, peg_price: u128, out_amount: u128) -> u128 {
-    if get_is_killed_tax(&e) {
-        return 0;
-    }
-
     if pool_price == 0 || peg_price == 0 || out_amount == 0 {
         return 0;
     }
@@ -85,12 +106,10 @@ pub fn calculate_tax_amount(e: &Env, pool_price: u128, peg_price: u128, out_amou
 #[cfg(test)]
 mod test {
     use soroban_sdk::Vec;
+    use types::tax::RateTableEntry;
 
     use super::*;
-    use crate::{
-        storage::{set_tax_rate_table, RateTableEntry},
-        LiquidityPoolSynthetic,
-    };
+    use crate::{storage::set_tax_rate_table, LiquidityPoolSynthetic};
 
     fn test_env_with_contract() -> (Env, soroban_sdk::Address) {
         let e = Env::default();
@@ -327,7 +346,7 @@ mod test {
 
     #[test]
     fn test_calculate_tax_rate_with_configured_table() {
-        use crate::storage::{set_tax_rate_table, RateTableEntry};
+        use crate::storage::set_tax_rate_table;
         use soroban_sdk::Vec;
 
         let (e, contract_id) = test_env_with_contract();
@@ -368,7 +387,7 @@ mod test {
 
     #[test]
     fn test_calculate_tax_rate_step_function() {
-        use crate::storage::{set_tax_rate_table, RateTableEntry};
+        use crate::storage::set_tax_rate_table;
         use soroban_sdk::Vec;
 
         let (e, contract_id) = test_env_with_contract();
@@ -415,7 +434,7 @@ mod test {
 
     #[test]
     fn test_calculate_tax_rate_above_all_table_entries() {
-        use crate::storage::{set_tax_rate_table, RateTableEntry};
+        use crate::storage::set_tax_rate_table;
         use soroban_sdk::Vec;
 
         let (e, contract_id) = test_env_with_contract();
@@ -444,7 +463,7 @@ mod test {
 
     #[test]
     fn test_calculate_tax_rate_below_all_table_entries() {
-        use crate::storage::{set_tax_rate_table, RateTableEntry};
+        use crate::storage::set_tax_rate_table;
         use soroban_sdk::Vec;
 
         let (e, contract_id) = test_env_with_contract();

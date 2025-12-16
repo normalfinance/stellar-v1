@@ -1,11 +1,12 @@
 use crate::constants::FEE_MULTIPLIER;
 use crate::storage::{
-    get_base_asset, get_fee_fraction, get_quote_asset, get_reserve_a, get_reserve_b,
+    get_direction, get_fee_fraction, get_long_short_pair, get_quote_asset, get_reserve_a,
+    get_reserve_b,
 };
 use liquidity_pool_validation_errors::LiquidityPoolValidationError;
 use soroban_fixed_point_math::SorobanFixedPoint;
-use soroban_sdk::{panic_with_error, Env, Symbol};
-use utils::constant::PRICE_PRECISION_I64;
+use soroban_sdk::{panic_with_error, Env, IntoVal, Symbol, Vec};
+use types::pair::Direction;
 use utils::{
     constant::PRICE_PRECISION,
     math::safe_math::{PrecisionMath, SafeConversion, SafeMath},
@@ -114,26 +115,30 @@ pub fn pool_price(e: &Env) -> u128 {
 // # Returns
 // * `u128` — The derived peg price (scaled by `PRICE_PRECISION`), or 0 if invalid.
 pub fn peg_price(e: &Env, current_time: u64) -> u128 {
-    let base_oracle_price_data =
-        get_oracle_price_with_validity(e, &get_base_asset(e), current_time);
-    let quote_oracle_price_data =
-        get_oracle_price_with_validity(e, &get_quote_asset(e), current_time);
+    let direction = get_direction(e);
 
-    if base_oracle_price_data.last_price_twap == 0 || quote_oracle_price_data.last_price_twap == 0 {
-        return 0;
-    }
+    match e.try_invoke_contract::<u128, soroban_sdk::Error>(
+        &get_long_short_pair(&e),
+        &Symbol::new(&e, "get_price"),
+        Vec::from_array(
+            &e,
+            [
+                e.current_contract_address().into_val(e),
+                // oracle_price_data.price.into_val(&e),
+            ],
+        ),
+    ) {
+        Ok(Err(_)) | Err(_) => {
+            panic_with_error!(e, LiquidityPoolValidationError::FailedToGetOraclePrice);
+        }
+        Ok(Ok(price)) => {
+            let directional_price = match direction {
+                Direction::Long => price,
+                Direction::Short => 1 - price,
+            };
 
-    // Calculate quote_oracle_price / base_oracle_price with round-to-nearest to reduce bias
-    if is_token_a_synthetic(e) {
-        quote_oracle_price_data
-            .last_price_twap
-            .safe_fixed_div_round(e, base_oracle_price_data.last_price_twap, PRICE_PRECISION)
-    } else {
-        base_oracle_price_data.last_price_twap.safe_fixed_div_round(
-            e,
-            quote_oracle_price_data.last_price_twap,
-            PRICE_PRECISION,
-        )
+            return directional_price;
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 use soroban_sdk::{Address, Env};
 
-pub trait CalculatorTrait {
+pub trait LongShortPairCalculatorTrait {
     /**
      * @notice Enables any address to set the parameters for an associated financial product.
      * @param longShortPair address of the LSP contract.

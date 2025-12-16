@@ -216,18 +216,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "calculator"
-version = "1.0.0"
-dependencies = [
- "access_control",
- "soroban-fixed-point-math",
- "soroban-sdk",
- "soroban-token-sdk",
- "upgrade",
- "utils",
-]
-
-[[package]]
 name = "cc"
 version = "1.2.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -921,6 +909,7 @@ dependencies = [
  "soroban-fixed-point-math",
  "soroban-sdk",
  "token_share",
+ "types",
  "upgrade",
  "utils",
 ]
@@ -938,6 +927,19 @@ dependencies = [
  "access_control",
  "oracle",
  "paste",
+ "soroban-fixed-point-math",
+ "soroban-sdk",
+ "soroban-token-sdk",
+ "types",
+ "upgrade",
+ "utils",
+]
+
+[[package]]
+name = "long_short_pair_calculator"
+version = "1.0.0"
+dependencies = [
+ "access_control",
  "soroban-fixed-point-math",
  "soroban-sdk",
  "soroban-token-sdk",
@@ -974,6 +976,7 @@ dependencies = [
  "sep-40-oracle",
  "soroban-sdk",
  "soroban-token-sdk",
+ "types",
  "upgrade",
  "utils",
 ]
@@ -1743,17 +1746,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "token-long-short-pair"
-version = "1.0.0"
-dependencies = [
- "access_control",
- "soroban-sdk",
- "soroban-token-sdk",
- "upgrade",
- "utils",
-]
-
-[[package]]
 name = "token_factory"
 version = "1.0.0"
 dependencies = [
@@ -1761,6 +1753,17 @@ dependencies = [
  "soroban-sdk",
  "soroban-token-sdk",
  "upgrade",
+]
+
+[[package]]
+name = "token_long_short_pair"
+version = "1.0.0"
+dependencies = [
+ "access_control",
+ "soroban-sdk",
+ "soroban-token-sdk",
+ "upgrade",
+ "utils",
 ]
 
 [[package]]
@@ -1787,6 +1790,14 @@ name = "typenum"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
+
+[[package]]
+name = "types"
+version = "1.0.0"
+dependencies = [
+ "soroban-fixed-point-math",
+ "soroban-sdk",
+]
 
 [[package]]
 name = "unicode-ident"

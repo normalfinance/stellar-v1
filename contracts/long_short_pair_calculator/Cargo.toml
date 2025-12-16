@@ -1,6 +1,6 @@
 [package]
-name = "calculator"
-description = "Soroban token contract for LP shares"
+name = "long_short_pair_calculator"
+description = ""
 version.workspace = true
 edition = "2021"
 publish = false
