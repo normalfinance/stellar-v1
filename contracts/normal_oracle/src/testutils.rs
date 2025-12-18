@@ -6,7 +6,7 @@ use crate::NormalOracleClient;
 use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPriceOracleWASM};
 use soroban_sdk::{testutils::Address as _, Address, Env, Symbol, Vec};
 use std::vec;
-use utils::test_utils::jump;
+use types::oracle::OracleSource;
 
 pub(crate) struct TestConfig {
     pub(crate) users_count: u32,
@@ -22,9 +22,10 @@ pub(crate) struct Setup<'a> {
     pub(crate) env: Env,
     pub(crate) users: vec::Vec<Address>,
     pub(crate) normal_oracle: NormalOracleClient<'a>,
-    pub(crate) oracle_addr: Address,
-    pub(crate) oracle_client: MockPriceOracleClient<'a>,
+    pub(crate) reflector_addr: Address,
+    pub(crate) reflector_client: MockPriceOracleClient<'a>,
     pub(crate) admin: Address,
+    pub(crate) initial_asset_price: i128,
 }
 
 impl Default for Setup<'_> {
@@ -47,39 +48,43 @@ impl Setup<'_> {
         e.mock_all_auths();
         e.cost_estimate().budget().reset_unlimited();
 
+        let start_time = e.ledger().timestamp();
         let users = Self::generate_random_users(&e, config.users_count);
         let admin = users[0].clone();
 
         // Setup oracle
-        let sol_symbol = Symbol::new(&e, "SOL");
-        let usd_sybmol = Symbol::new(&e, "USD");
+        let asset_symbol = Symbol::new(&e, "SOL");
+        let asset = MockAsset::Other(asset_symbol.clone());
 
-        let sol_asset = MockAsset::Other(sol_symbol.clone());
-        let usd_asset = MockAsset::Other(usd_sybmol);
-
-        let (oracle_addr, oracle_client) = setup_price_feed_oracle(
+        let (reflector_addr, reflector_client) = setup_price_feed_oracle(
             &e,
             &admin,
-            &usd_asset,
-            &Vec::from_array(&e, [sol_asset.clone()]),
+            &MockAsset::Other(Symbol::new(&e, "USD")),
+            &Vec::from_array(&e, [asset.clone()]),
             14,
             300,
         );
 
-        let prices_1: Vec<i128> = Vec::from_array(&e, [230_00000000000000, 1_00000000000000]);
-        oracle_client.set_price(&prices_1, &start_time);
+        let initial_asset_price = 230_00000000000000;
+        let prices: Vec<i128> = Vec::from_array(&e, [initial_asset_price, 1_00000000000000]);
+        reflector_client.set_price(&prices, &start_time);
 
-        let calculator = Address::generate(&e);
-
-        let normal_oracle = create_normal_oracle_contract(&e, &sol_symbol, &oracle_addr);
+        let normal_oracle = create_normal_oracle_contract(
+            &e,
+            &admin,
+            &asset_symbol,
+            &OracleSource::Reflector,
+            &reflector_addr,
+        );
 
         Self {
             env: e,
             users,
             normal_oracle,
-            oracle_addr,
-            oracle_client,
+            reflector_addr,
+            reflector_client,
             admin,
+            initial_asset_price,
         }
     }
 
@@ -94,11 +99,18 @@ impl Setup<'_> {
 
 pub fn create_normal_oracle_contract<'a>(
     e: &Env,
-    asset: &Symbol,
-    oracle: &Address,
+    admin: &Address,
+    asset_symbol: &Symbol,
+    oracle_source: &OracleSource,
+    reflector_addr: &Address,
 ) -> NormalOracleClient<'a> {
-    let normal_oracle =
-        NormalOracleClient::new(e, &e.register(crate::NormalOracle {}, (asset, oracle)));
+    let normal_oracle = NormalOracleClient::new(
+        e,
+        &e.register(
+            crate::NormalOracle {},
+            (admin, asset_symbol, oracle_source, reflector_addr),
+        ),
+    );
     normal_oracle
 }
 
@@ -110,8 +122,8 @@ pub fn setup_price_feed_oracle<'a>(
     decimals: u32,
     resolution: u32,
 ) -> (Address, MockPriceOracleClient<'a>) {
-    let oracle_addr = env.register(MockPriceOracleWASM, ());
-    let oracle_client = MockPriceOracleClient::new(env, &oracle_addr);
-    oracle_client.set_data(admin, base, assets, &decimals, &resolution);
-    (oracle_addr, oracle_client)
+    let reflector_addr = env.register(MockPriceOracleWASM, ());
+    let reflector_client = MockPriceOracleClient::new(env, &reflector_addr);
+    reflector_client.set_data(admin, base, assets, &decimals, &resolution);
+    (reflector_addr, reflector_client)
 }

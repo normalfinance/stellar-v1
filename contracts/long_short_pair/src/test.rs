@@ -13,36 +13,84 @@ use soroban_sdk::token::{
 use soroban_sdk::{
     symbol_short, testutils::Address as _, vec, Address, Env, Error, IntoVal, Map, Symbol, Val, Vec,
 };
+use types::pair::{LinearLongShortPairParameters, PairParams};
 use utils::constant::ONE_HOUR;
 use utils::test_utils::{install_dummy_wasm, jump};
+
+#[test]
+fn initialize_initialize() {
+    let setup = Setup::default();
+
+    assert_eq!(
+        setup
+            .pair_calculator
+            .get_parameters(&setup.env, &setup.pair.address),
+        LinearLongShortPairParameters {
+            upper_bound: 0,
+            lower_bound: 0,
+        }
+    );
+
+    let params = PairParams {
+        admin: setup.admin,
+        privileged_addrs: (setup.admin, setup.admin, setup.admin),
+        tokens: Vec::from_array(
+            &setup.env,
+            [
+                setup.token_long.address.clone(),
+                setup.token_short.address.clone(),
+            ],
+        ),
+        oracle: setup.normal_oracle.address,
+        pool: Address::generate(&setup.env),
+        pair_calculator: setup.pair_calculator.address,
+        lower_bound: 50_000000,
+        upper_bound: 300_0000000,
+    };
+
+    setup.pair.initialize(&params);
+
+    // assert calc values
+    assert_eq!(
+        setup
+            .pair_calculator
+            .get_parameters(&setup.env, &setup.pair.address),
+        LinearLongShortPairParameters {
+            upper_bound: 50_000000,
+            lower_bound: 300_0000000,
+        }
+    );
+
+    //
+}
 
 #[test]
 #[should_panic(expected = "Error(Contract, #201)")]
 fn initialize_already_initialized() {
     let setup = Setup::default();
 
-    let users = Setup::generate_random_users(&setup.env, 3);
-    let token1 = create_token_contract(&setup.env, &users[1]);
-    let token2 = create_token_contract(&setup.env, &users[2]);
-
-    setup.pair.initialize(
-        &users[0],
-        &(
-            users[0].clone(),
-            users[0].clone(),
-            users[0].clone(),
-            users[0].clone(),
-            Vec::from_array(&setup.env, [users[0].clone()]),
-            users[0].clone(),
+    let params = PairParams {
+        admin: setup.admin,
+        privileged_addrs: (setup.admin, setup.admin, setup.admin),
+        tokens: Vec::from_array(
+            &setup.env,
+            [
+                setup.token_long.address.clone(),
+                setup.token_short.address.clone(),
+            ],
         ),
-        &Vec::from_array(&setup.env, [token1.address.clone(), token2.address.clone()]),
-        &setup.oracle_addr,
-        &setup.calculator,
-    );
+        oracle: setup.normal_oracle.address,
+        pool: Address::generate(&setup.env),
+        pair_calculator: setup.pair_calculator.address,
+        lower_bound: 50_000000,
+        upper_bound: 300_0000000,
+    };
+
+    setup.pair.initialize(&params);
 }
 
 #[test]
-fn test_create() {
+fn test_mint() {
     let setup = Setup::new_with_config(
         &(TestConfig {
             mint_to_user: i128::MAX,
@@ -52,7 +100,7 @@ fn test_create() {
     let user1 = setup.users[0].clone();
     let tokens_to_create = 100_0000000;
 
-    let created_tokens = setup.pair.create(&user1, &tokens_to_create);
+    let created_tokens = setup.pair.mint(&user1, &tokens_to_create);
 
     let collateral_info = setup.pair.get_collateral_info();
 
@@ -87,7 +135,7 @@ fn test_redeem() {
     let tokens_to_create = 100_0000000;
 
     // TODO:
-    let created_tokens = setup.pair.create(&user1, &tokens_to_create);
+    let created_tokens = setup.pair.mint(&user1, &tokens_to_create);
 
     let collateral_info = setup.pair.get_collateral_info();
 
@@ -155,9 +203,10 @@ fn test_update_funding_rate() {
         .pair
         .update_funding_period(&setup.admin, &new_funding_period);
 
-    let new_funding_info = setup.pair.get_funding_info();
-
-    assert_eq!(funding_info.funding_period, new_funding_period);
+    assert_eq!(
+        setup.pair.get_funding_info().funding_period,
+        new_funding_period
+    );
 }
 
 #[test]

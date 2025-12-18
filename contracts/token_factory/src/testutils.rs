@@ -11,28 +11,18 @@ use std::vec;
 
 pub(crate) struct TestConfig {
     pub(crate) users_count: u32,
-    pub(crate) mint_to_user: i128,
 }
 
 impl Default for TestConfig {
     fn default() -> Self {
-        TestConfig {
-            users_count: 2,
-            mint_to_user: 1000,
-        }
+        TestConfig { users_count: 2 }
     }
 }
 
 pub(crate) struct Setup<'a> {
     pub(crate) env: Env,
     pub(crate) users: vec::Vec<Address>,
-    pub(crate) token1: SorobanTokenClient<'a>,
-    pub(crate) token1_admin_client: SorobanTokenAdminClient<'a>,
-    pub(crate) token2: SorobanTokenClient<'a>,
-    pub(crate) token2_admin_client: SorobanTokenAdminClient<'a>,
-
     pub(crate) factory: TokenFactoryClient<'a>,
-
     pub(crate) admin: Address,
 }
 
@@ -48,13 +38,10 @@ impl Setup<'_> {
     // Create setup from config and mint tokens for all users
     pub(crate) fn new_with_config(config: &TestConfig) -> Self {
         let setup = Self::setup(config);
-        setup.mint_tokens_for_users(config.mint_to_user);
         setup
     }
 
-    // Create users, token1, token2, reward token, lp token
-    //
-    // Mint reward token (1_000_000_0000000) & approve for liquidity_pool token
+    // Create users and factory
     pub(crate) fn setup(config: &TestConfig) -> Self {
         let e: Env = Env::default();
         e.mock_all_auths();
@@ -63,21 +50,11 @@ impl Setup<'_> {
         let users = Self::generate_random_users(&e, config.users_count);
         let admin = users[0].clone();
 
-        let token1 = create_token_contract(&e, &admin);
-        let token2 = create_token_contract(&e, &admin);
-
-        let token1_admin_client = get_token_admin_client(&e, &token1.address.clone());
-        let token2_admin_client = get_token_admin_client(&e, &token2.address.clone());
-
         let factory = create_factory_contract(&e);
 
         Self {
             env: e,
             users,
-            token1,
-            token1_admin_client,
-            token2,
-            token2_admin_client,
             factory,
             admin,
         }
@@ -90,31 +67,6 @@ impl Setup<'_> {
         }
         users
     }
-
-    pub(crate) fn mint_tokens_for_users(&self, amount: i128) {
-        for user in self.users.iter() {
-            self.token1_admin_client.mint(user, &amount);
-            assert_eq!(self.token1.balance(user), amount.clone());
-
-            self.token2_admin_client.mint(user, &amount);
-            assert_eq!(self.token2.balance(user), amount.clone());
-        }
-    }
-}
-
-pub(crate) fn create_token_contract<'a>(e: &Env, admin: &Address) -> SorobanTokenClient<'a> {
-    SorobanTokenClient::new(
-        e,
-        &e.register_stellar_asset_contract_v2(admin.clone())
-            .address(),
-    )
-}
-
-pub(crate) fn get_token_admin_client<'a>(
-    e: &Env,
-    address: &Address,
-) -> SorobanTokenAdminClient<'a> {
-    SorobanTokenAdminClient::new(e, address)
 }
 
 pub fn create_factory_contract<'a>(e: &Env) -> TokenFactoryClient<'a> {
@@ -124,5 +76,8 @@ pub fn create_factory_contract<'a>(e: &Env) -> TokenFactoryClient<'a> {
 }
 
 pub fn install_token_wasm(e: &Env) -> BytesN<32> {
+    soroban_sdk::contractimport!(
+        file = "../../target/wasm32v1-none/release/soroban_token_contract.wasm"
+    );
     e.deployer().upload_contract_wasm(WASM)
 }

@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, BytesN, Env, Vec};
+use soroban_sdk::{Address, BytesN, Env, Map, Symbol, Vec};
 
 use crate::contract::{CreatorParams, FactoryConfig};
 
@@ -22,6 +22,17 @@ pub trait AdminInterface {
     fn get_total_pair_count(e: Env) -> u32;
 
     fn set_lsp_contract_wasm(e: Env, admin: Address, lsp_contract_wasm: BytesN<32>);
+
+    // Set privileged addresses
+    fn set_privileged_addrs(
+        e: Env,
+        admin: Address,
+        pause_admin: Address,
+        emergency_pause_admin: Address,
+    );
+
+    // Get map of privileged roles
+    fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>>;
 
     // Stop LSP creation instantly
     fn kill_create(e: Env, admin: Address);

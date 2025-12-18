@@ -18,3 +18,10 @@ pub enum Direction {
     Long,
     Short,
 }
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LinearLongShortPairParameters {
+    pub upper_bound: u128,
+    pub lower_bound: u128,
+}

@@ -1,17 +1,11 @@
 use soroban_sdk::{contracttype, Address, Env};
+use types::pair::LinearLongShortPairParameters;
 use utils::bump::bump_persistent;
 
 #[derive(Clone)]
 #[contracttype]
 pub enum DataKey {
     LongShortPairParams(Address),
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct LinearLongShortPairParameters {
-    pub upper_bound: u128,
-    pub lower_bound: u128,
 }
 
 pub fn get_params(e: &Env, pair: Address) -> LinearLongShortPairParameters {

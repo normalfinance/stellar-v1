@@ -1,6 +1,9 @@
 use soroban_sdk::{Address, Env};
+use types::pair::LinearLongShortPairParameters;
 
 pub trait LongShortPairCalculatorTrait {
+    fn get_params(e: Env, pair: Address) -> LinearLongShortPairParameters;
+
     /**
      * @notice Enables any address to set the parameters for an associated financial product.
      * @param longShortPair address of the LSP contract.
@@ -12,7 +15,7 @@ pub trait LongShortPairCalculatorTrait {
      * e) For safety, parameters should be set before depositing any synthetic tokens in a liquidity pool.
      * f) longShortPair must expose an expirationTimestamp method to validate it is correctly deployed.
      */
-    fn set_parameters(e: Env, long_short_pair: Address, lower_bound: u128, upper_bound: u128);
+    fn set_parameters(e: Env, pair: Address, lower_bound: u128, upper_bound: u128);
 
     /**
      * @notice Returns a number between 0 and 1 to indicate how much collateral each long and short token is entitled

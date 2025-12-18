@@ -9,7 +9,7 @@ use soroban_sdk::{Address, BytesN, Env, Symbol, Vec};
 
 pub(crate) mod test_token {
     use soroban_sdk::contractimport;
-    contractimport!(file = "../contracts/soroban_token_contract.wasm");
+    contractimport!(file = "../../wasm/soroban_token_contract.wasm");
 }
 
 pub fn create_token_contract<'a>(e: &Env, admin: &Address) -> test_token::Client<'a> {
@@ -26,7 +26,7 @@ pub fn create_liqpool_router_contract<'a>(e: &Env) -> LiquidityPoolRouterClient<
 }
 
 pub fn install_token_wasm(e: &Env) -> BytesN<32> {
-    soroban_sdk::contractimport!(file = "../../wasm/token_contract.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/token_pool.wasm");
     e.deployer().upload_contract_wasm(WASM)
 }
 
@@ -39,7 +39,7 @@ pub fn install_liq_pool_hash(e: &Env) -> BytesN<32> {
 }
 
 pub mod stableswap_pool {
-    soroban_sdk::contractimport!(file = "../contracts/liquidity_pool_stableswap.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/liquidity_pool_stableswap.wasm");
 }
 
 pub fn install_stableswap_liq_pool_hash(e: &Env) -> BytesN<32> {
@@ -55,9 +55,7 @@ pub fn create_plane_contract<'a>(e: &Env) -> pool_plane::Client<'a> {
 }
 
 mod liquidity_calculator {
-    soroban_sdk::contractimport!(
-        file = "../contracts/soroban_liquidity_pool_liquidity_calculator.wasm"
-    );
+    soroban_sdk::contractimport!(file = "../../wasm/liquidity_pool_liquidity_calculator.wasm");
 }
 
 pub fn create_liquidity_calculator_contract<'a>(e: &Env) -> liquidity_calculator::Client<'a> {
@@ -133,12 +131,6 @@ impl Default for Setup<'_> {
         let pause_admin = soroban_sdk::Address::generate(&env);
         let emergency_pause_admin = soroban_sdk::Address::generate(&env);
         let system_fee_admin = soroban_sdk::Address::generate(&env);
-        let reward_boost_feed = create_reward_boost_feed_contract(
-            &env,
-            &admin,
-            &operations_admin,
-            &emergency_pause_admin,
-        );
         router.set_privileged_addrs(
             &admin,
             &rewards_admin,

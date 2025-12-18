@@ -107,6 +107,10 @@ impl LongShortPairTrait for LongShortPair {
     fn mint(e: Env, user: Address, tokens_to_mint: u128) -> u128 {
         user.require_auth();
 
+        if tokens_to_mint <= 0 {
+            panic_with_error!(&e, LongShortPairError::InvalidInput);
+        }
+
         let current_time = e.ledger().timestamp();
 
         let collateral_used = tokens_to_mint.safe_mul(&e, get_collateral_per_pair(&e));
@@ -136,6 +140,10 @@ impl LongShortPairTrait for LongShortPair {
      */
     fn redeem(e: Env, user: Address, tokens_to_redeem: u128) -> u128 {
         user.require_auth();
+
+        if tokens_to_redeem <= 0 {
+            panic_with_error!(&e, LongShortPairError::InvalidInput);
+        }
 
         let current_time = e.ledger().timestamp();
 

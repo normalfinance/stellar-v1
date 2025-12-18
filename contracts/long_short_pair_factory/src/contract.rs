@@ -21,11 +21,11 @@ use access_control::role::{Role, SymbolRepresentation};
 use access_control::transfer::TransferOwnershipTrait;
 use access_control::utils::require_pause_or_emergency_pause_admin_or_owner;
 use soroban_sdk::token::StellarAssetClient as SorobanTokenAdminClient;
-use soroban_sdk::Bytes;
 use soroban_sdk::IntoVal;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol, Vec,
 };
+use soroban_sdk::{Bytes, Map};
 use upgrade::events::Events as UpgradeEvents;
 use upgrade::interface::UpgradeableContract;
 use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
@@ -51,7 +51,7 @@ pub struct CreatorParams {
     pub serialized_short_asset: Bytes,
     pub collateral_token: Address,
     pub oracle: Address,
-    pub calculator: Address,
+    pub pair_calculator: Address,
     pub pool: Address,
 }
 
@@ -70,11 +70,16 @@ impl LongShortPairFactory {
         e: Env,
         admin: Address,
         emergency_admin: Address,
+        pause_admin: Address,
+        emergency_pause_admin: Address,
         token_factory: Address,
         lsp_contract_wasm: BytesN<32>,
     ) {
         let access_control = AccessControl::new(&e);
         access_control.set_role_address(&Role::Admin, &admin);
+        access_control.set_role_address(&Role::PauseAdmin, &pause_admin);
+        access_control.set_role_address(&Role::EmergencyPauseAdmin, &emergency_pause_admin);
+
         access_control.commit_transfer_ownership(&Role::EmergencyAdmin, &emergency_admin);
         access_control.apply_transfer_ownership(&Role::EmergencyAdmin);
 
@@ -115,23 +120,23 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
             Vec::from_array(&e, [params.serialized_short_asset.clone().into_val(&e)]),
         );
 
-        // Deploy the LSP contract
+        // Deploy the Long Sh contract
         let sequence = get_contract_sequence(&e, params.admin.clone());
         set_contract_sequence(&e, params.admin.clone(), sequence + 1);
 
         let salt = get_pair_salt(&e, &params.admin, &sequence);
 
-        let lsp_address = e.deployer().with_current_contract(salt).deploy_v2(
+        let pair_address = e.deployer().with_current_contract(salt).deploy_v2(
             get_lsp_contract_wasm(&e),
             (e.current_contract_address(), params.clone()),
         );
 
         // Give permissions to new lsp contract and then hand over ownership.
-        SorobanTokenAdminClient::new(&e, &token_long).set_admin(&lsp_address);
-        SorobanTokenAdminClient::new(&e, &token_short).set_admin(&lsp_address);
+        SorobanTokenAdminClient::new(&e, &token_long).set_admin(&pair_address);
+        SorobanTokenAdminClient::new(&e, &token_short).set_admin(&pair_address);
 
         // Add to LSP registry
-        add_deployed_pair(&e, &params.admin, &lsp_address);
+        add_deployed_pair(&e, &params.admin, &pair_address);
 
         // Emit enhanced deployment event
         let current_time = e.ledger().timestamp();
@@ -139,10 +144,10 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
         Events::new(&e).long_short_pair_deployed(
             current_time,
             params.admin.clone(),
-            lsp_address.clone(), // long_short_pair_address
+            pair_address.clone(),
         );
 
-        lsp_address
+        pair_address
     }
 }
 
@@ -222,6 +227,60 @@ impl AdminInterface for LongShortPairFactory {
             lsp_contract_wasm.clone(),
             1,
         );
+    }
+
+    // Sets the privileged addresses.
+    //
+    // # Arguments
+    //
+    // * `admin` - The address of the admin.
+    // * `pause_admin` - The address of the pause admin.
+    // * `emergency_pause_admin` - The address of the emergency pause admin.
+    fn set_privileged_addrs(
+        e: Env,
+        admin: Address,
+        pause_admin: Address,
+        emergency_pause_admin: Address,
+    ) {
+        admin.require_auth();
+        let access_control = AccessControl::new(&e);
+        access_control.assert_address_has_role(&admin, &Role::Admin);
+
+        access_control.set_role_address(&Role::PauseAdmin, &pause_admin);
+        access_control.set_role_address(&Role::EmergencyPauseAdmin, &emergency_pause_admin);
+        // AccessControlEvents::new(&e).set_privileged_addrs(
+        //     rewards_admin,
+        //     operations_admin,
+        //     pause_admin,
+        //     emergency_pause_admins,
+        //     system_fee_admin,
+        // );
+    }
+
+    // Returns a map of privileged roles.
+    //
+    // # Returns
+    //
+    // A map of privileged roles to their respective addresses.
+    fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>> {
+        let access_control = AccessControl::new(&e);
+        let mut result: Map<Symbol, Vec<Address>> = Map::new(&e);
+        for role in [
+            Role::Admin,
+            Role::EmergencyAdmin,
+            Role::PauseAdmin,
+            Role::EmergencyPauseAdmin,
+        ] {
+            result.set(
+                role.as_symbol(&e),
+                match access_control.get_role_safe(&role) {
+                    Some(v) => Vec::from_array(&e, [v]),
+                    None => Vec::new(&e),
+                },
+            );
+        }
+
+        result
     }
 
     //    _______     __       ____  ____   ________  _______  ________

@@ -14,6 +14,8 @@ use soroban_sdk::token::{
 use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Symbol, Vec};
 use std::vec;
 use token_share::token_contract::{Client as ShareTokenClient, WASM};
+use types::pair::Direction;
+use types::pool::PoolParams;
 use utils::test_utils::jump;
 
 pub(crate) struct TestConfig {
@@ -61,7 +63,7 @@ pub(crate) struct Setup<'a> {
     pub(crate) emergency_pause_admin: Address,
     pub(crate) system_fee_admin: Address,
 
-    pub(crate) oracle_addr: Address,
+    pub(crate) oracle: Address,
     pub(crate) oracle_client: MockPriceOracleClient<'a>,
     pub(crate) sol_asset: MockAsset,
     pub(crate) usdc_asset: MockAsset,
@@ -133,7 +135,7 @@ impl Setup<'_> {
         let usdc_asset = MockAsset::Other(usdc_symbol.clone());
         let usd_asset = MockAsset::Other(usd_sybmol);
 
-        let (oracle_addr, oracle_client) = setup_price_feed_oracle(
+        let (oracle, oracle_client) = setup_price_feed_oracle(
             &e,
             &admin,
             &usd_asset,
@@ -145,19 +147,11 @@ impl Setup<'_> {
         let prices_1: Vec<i128> = Vec::from_array(&e, [230_00000000000000, 1_00000000000000]);
         oracle_client.set_price(&prices_1, &start_time);
 
-        // verify price data can be fetched
-        let result_1 = oracle_client.lastprice(&sol_asset).unwrap();
-        assert_eq!(result_1.price, prices_1.get_unchecked(0));
-        // assert_eq!(result_1.timestamp, start_time);
-
-        let result_2 = oracle_client.lastprice(&usdc_asset).unwrap();
-        assert_eq!(result_2.price, prices_1.get_unchecked(1));
-
         let liq_pool = create_liqpool_contract(
             &e,
             &admin,
             &router,
-            &oracle_addr,
+            &oracle,
             &install_token_wasm(&e),
             &Vec::from_array(&e, [token1.address.clone(), token2.address.clone()]),
             &reward_token.address,
@@ -211,7 +205,7 @@ impl Setup<'_> {
             pause_admin,
             emergency_pause_admin,
             system_fee_admin,
-            oracle_addr,
+            oracle,
             oracle_client,
             sol_asset,
             usdc_asset,
@@ -270,22 +264,23 @@ pub(crate) fn create_plane_contract<'a>(e: &Env) -> PoolPlaneClient<'a> {
 
 pub fn create_liqpool_contract<'a>(
     e: &Env,
-    admin: &Address,
-    router: &Address,
-    oracle: &Address,
-    token_wasm_hash: &BytesN<32>,
-    tokens: &Vec<Address>,
-    reward_token: &Address,
+    admin: Address,
+    router: Address,
+    long_short_pair: Address,
+    token_wasm_hash: BytesN<32>,
+    tokens: Vec<Address>,
+    reward_token: Address,
     fee_fraction: u32,
-    base_asset: &Symbol,
-    plane: &Address,
-    config_storage: &Address,
+    base_asset: Symbol,
+    plane: Address,
+    config_storage: Address,
 ) -> LiquidityPoolSyntheticClient<'a> {
     let liqpool =
         LiquidityPoolSyntheticClient::new(e, &e.register(crate::LiquidityPoolSynthetic {}, ()));
-    liqpool.initialize_all(
-        &admin,
-        &(
+
+    let params = PoolParams {
+        admin,
+        privileged_addrs: &(
             admin.clone(),
             admin.clone(),
             admin.clone(),
@@ -294,14 +289,18 @@ pub fn create_liqpool_contract<'a>(
             admin.clone(),
         ),
         router,
-        oracle,
+        long_short_pair,
         token_wasm_hash,
         tokens,
-        &(
+        fees_config: &(
             fee_fraction,
             5000, // 50% protocol fee fraction
         ),
-        &(base_asset.clone(), Symbol::new(e, "USDC")),
+        asset_config: &(base_asset.clone(), Symbol::new(e, "USDC")),
+        direction: Direction::Long,
+    };
+    liqpool.initialize_all(
+        &params,
         &(reward_token.clone(), plane.clone(), config_storage.clone()),
     );
     liqpool
@@ -337,8 +336,8 @@ pub fn setup_price_feed_oracle<'a>(
     decimals: u32,
     resolution: u32,
 ) -> (Address, MockPriceOracleClient<'a>) {
-    let oracle_addr = env.register(MockPriceOracleWASM, ());
-    let oracle_client = MockPriceOracleClient::new(env, &oracle_addr);
+    let oracle = env.register(MockPriceOracleWASM, ());
+    let oracle_client = MockPriceOracleClient::new(env, &oracle);
     oracle_client.set_data(admin, base, assets, &decimals, &resolution);
-    (oracle_addr, oracle_client)
+    (oracle, oracle_client)
 }

@@ -41,8 +41,6 @@ pub fn create_liqpool_contract<'a>(
     a: u128,
     fee: u32,
     reward_token: &Address,
-    reward_boost_token: &Address,
-    reward_boost_feed: &Address,
     plane: &Address,
     config_storage: &Address,
 ) -> LiquidityPoolClient<'a> {
@@ -64,11 +62,7 @@ pub fn create_liqpool_contract<'a>(
         &(
             fee, 5000, // 50% protocol fee fraction
         ),
-        &(
-            reward_token.clone(),
-            reward_boost_token.clone(),
-            reward_boost_feed.clone(),
-        ),
+        &reward_token.clone(),
         plane,
         config_storage,
     );
@@ -76,7 +70,7 @@ pub fn create_liqpool_contract<'a>(
 }
 
 pub fn install_token_wasm(e: &Env) -> BytesN<32> {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_token_contract.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/soroban_token_contract.wasm");
     e.deployer().upload_contract_wasm(WASM)
 }
 
@@ -85,7 +79,7 @@ pub fn install_token_wasm_with_decimal<'a>(
     admin: &Address,
     decimal: u32,
 ) -> ShareTokenClient<'a> {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_token.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/token_pool.wasm");
 
     let token_client = ShareTokenClient::new(e, &e.register(WASM, ()));
     token_client.initialize(admin, &decimal, &"Token 1".into_val(e), &"TOK".into_val(e));
@@ -96,27 +90,8 @@ pub fn create_plane_contract<'a>(e: &Env) -> PoolPlaneClient<'a> {
     PoolPlaneClient::new(e, &e.register(pool_plane::WASM, ()))
 }
 
-mod reward_boost_feed {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_locker_feed_contract.wasm");
-}
-
-pub(crate) fn create_reward_boost_feed_contract<'a>(
-    e: &Env,
-    admin: &Address,
-    operations_admin: &Address,
-    emergency_admin: &Address,
-) -> reward_boost_feed::Client<'a> {
-    reward_boost_feed::Client::new(
-        e,
-        &e.register(
-            reward_boost_feed::WASM,
-            reward_boost_feed::Args::__constructor(admin, operations_admin, emergency_admin),
-        ),
-    )
-}
-
 mod rewards_gauge {
-    soroban_sdk::contractimport!(file = "../contracts/soroban_rewards_gauge_contract.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/rewards_gauge.wasm");
 }
 
 pub(crate) fn deploy_rewards_gauge<'a>(
@@ -161,8 +136,6 @@ pub(crate) struct Setup<'a> {
     pub(crate) token2: SorobanTokenClient<'a>,
     pub(crate) token_reward: SorobanTokenClient<'a>,
     pub(crate) token_share: ShareTokenClient<'a>,
-    pub(crate) reward_boost_token: SorobanTokenClient<'a>,
-    pub(crate) reward_boost_feed: reward_boost_feed::Client<'a>,
 
     pub(crate) liq_pool: LiquidityPoolClient<'a>,
     pub(crate) router: Address,
@@ -219,9 +192,6 @@ impl Setup<'_> {
         } else {
             create_token_contract(&env, &admin)
         };
-        let reward_boost_token = create_token_contract(&env, &admin);
-        let reward_boost_feed =
-            create_reward_boost_feed_contract(&env, &admin, &operations_admin, &emergency_admin);
 
         let plane = create_plane_contract(&env);
         let config_storage = deploy_config_storage(&env, &admin, &emergency_admin);
@@ -236,8 +206,6 @@ impl Setup<'_> {
             config.a,
             config.liq_pool_fee,
             &token_reward.address.clone(),
-            &reward_boost_token.address.clone(),
-            &reward_boost_feed.address.clone(),
             &plane.address,
             &config_storage.address,
         );
@@ -280,8 +248,6 @@ impl Setup<'_> {
             pause_admin,
             system_fee_admin,
             emergency_pause_admin,
-            reward_boost_token,
-            reward_boost_feed,
         }
     }
 }
