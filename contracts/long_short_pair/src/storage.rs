@@ -46,9 +46,11 @@ pub enum DataKey {
     CollateralPercentLong,
 
     // Addresses
-    Pool,
     Calculator,
-    NormalOracle,
+    Oracle,
+    PoolPlane,
+    PoolLong,
+    PoolShort,
 
     // Guard Rails
     MaxRatioPercentDivergence,
@@ -66,7 +68,7 @@ pub enum DataKey {
     LastUpdateTs,
 
     // Paused ops
-    IsKilledCreate,
+    IsKilledMint,
     IsKilledRedeem,
     IsKilledUpdateFunding,
 }
@@ -156,8 +158,8 @@ generate_instance_storage_getter_and_setter_with_default!(
 
 // Paused Ops
 generate_instance_storage_getter_and_setter_with_default!(
-    is_killed_create,
-    DataKey::IsKilledCreate,
+    is_killed_mint,
+    DataKey::IsKilledMint,
     bool,
     false
 );
@@ -174,9 +176,16 @@ generate_instance_storage_getter_and_setter_with_default!(
     false
 );
 
-generate_instance_storage_getter_and_setter!(normal_oracle, DataKey::NormalOracle, Address);
+generate_instance_storage_getter_and_setter!(oracle, DataKey::Oracle, Address);
 generate_instance_storage_getter_and_setter!(calculator, DataKey::Calculator, Address);
-generate_instance_storage_getter_and_setter!(pool, DataKey::Pool, Address);
+generate_instance_storage_getter_and_setter!(pool_plane, DataKey::PoolPlane, Address);
+generate_instance_storage_getter_and_setter!(pool_long, DataKey::PoolLong, Address);
+generate_instance_storage_getter_and_setter!(pool_short, DataKey::PoolShort, Address);
+
+pub(crate) fn has_pools(e: &Env) -> bool {
+    e.storage().instance().has(&DataKey::PoolLong)
+        && e.storage().instance().has(&DataKey::PoolShort)
+}
 
 // Guard Rails
 generate_instance_storage_getter_and_setter_with_default!(

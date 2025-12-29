@@ -1,7 +1,10 @@
 use soroban_sdk::{Address, BytesN, Env, Map, Symbol, Vec};
 use types::pair::PairParams;
 
-use crate::storage::{CollateralInfo, FundingInfo};
+use crate::{
+    funding::FundingCheckpoint,
+    storage::{CollateralInfo, FundingInfo},
+};
 
 pub trait LongShortPairTrait {
     // Initialize lsp
@@ -45,44 +48,47 @@ pub trait LongShortPairTrait {
     fn get_collateral_info(e: Env) -> CollateralInfo;
 
     fn get_funding_info(e: Env) -> FundingInfo;
+
+    fn get_user_funding_checkpoint(e: Env, user: Address) -> FundingCheckpoint;
 }
 
 pub trait AdminInterfaceTrait {
+    // Oracle
+    fn set_oracle(e: Env, admin: Address, oracle: Address);
+
+    // Pool
+    fn set_pool_plane(e: Env, admin: Address, plane: Address);
+
+    fn set_pools(e: Env, admin: Address, pools: Vec<Address>);
+
     // Funding
     fn update_funding_period(e: Env, admin: Address, funding_period: u64);
 
     fn update_funding_rate(e: Env, admin: Address);
 
-    fn migrate(e: Env, admin: Address, lower_bound: u128, upper_bound: u128);
+    // Calculator
+    fn set_calculator(e: Env, admin: Address, calculator: Address);
+
+    fn migrate_bounds(e: Env, admin: Address, lower_bound: u128, upper_bound: u128);
 
     // Set privileged addresses
-    fn set_privileged_addrs(
-        e: Env,
-        admin: Address,
-        rewards_admin: Address,
-        operations_admin: Address,
-        pause_admin: Address,
-        emergency_pause_admins: Vec<Address>,
-        system_fee_admin: Address,
-    );
+    fn set_privileged_addrs(e: Env, admin: Address, pause_admin: Address);
 
     // Get map of privileged roles
     fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>>;
 
-    fn set_oracle(e: Env, admin: Address, oracle: Address);
-
-    // Stop LSP instantly
-    fn kill_create(e: Env, admin: Address);
+    // Stop pair instantly
+    fn kill_mint(e: Env, admin: Address);
     fn kill_redeem(e: Env, admin: Address);
     fn kill_update_funding(e: Env, admin: Address);
 
-    // Resume LSP
-    fn unkill_create(e: Env, admin: Address);
+    // Resume pair
+    fn unkill_mint(e: Env, admin: Address);
     fn unkill_redeem(e: Env, admin: Address);
     fn unkill_update_funding(e: Env, admin: Address);
 
     // Get killswitch status
-    fn get_is_killed_create(e: Env) -> bool;
+    fn get_is_killed_mint(e: Env) -> bool;
     fn get_is_killed_redeem(e: Env) -> bool;
     fn get_is_killed_update_funding(e: Env) -> bool;
 }

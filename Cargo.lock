@@ -935,6 +935,7 @@ dependencies = [
  "access_control",
  "oracle",
  "paste",
+ "sep-40-oracle",
  "soroban-fixed-point-math",
  "soroban-sdk",
  "soroban-token-sdk",

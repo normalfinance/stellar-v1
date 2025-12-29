@@ -13,4 +13,5 @@ pub enum LongShortPairError {
     FailedToGetCalculatorPercent = 207,
     FailedToUpdateTokenScalingFactor = 208,
     FailedToGetOraclePrice = 209,
+    PoolsNotSet = 210,
 }

@@ -266,23 +266,15 @@ fn test_commit_upgrade() {
     let setup = Setup::default();
     let pair = setup.pair;
     let new_wasm = install_dummy_wasm(&setup.env);
-    let new_token_wasm = install_dummy_wasm(&setup.env);
     let user = Address::generate(&setup.env);
 
     for (addr, is_ok) in [
         (user, false),
         (setup.admin, true),
         (setup.emergency_admin, false),
-        (setup.rewards_admin, false),
-        (setup.operations_admin, false),
         (setup.pause_admin, false),
-        (setup.emergency_pause_admin, false),
     ] {
-        assert_eq!(
-            pair.try_commit_upgrade(&addr, &new_wasm, &new_token_wasm)
-                .is_ok(),
-            is_ok
-        );
+        assert_eq!(pair.try_commit_upgrade(&addr, &new_wasm).is_ok(), is_ok);
     }
 }
 
@@ -291,11 +283,7 @@ fn test_apply_upgrade_third_party_user() {
     let setup = Setup::default();
     let pair = setup.pair;
     let user = Address::generate(&setup.env);
-    pair.commit_upgrade(
-        &setup.admin,
-        &install_dummy_wasm(&setup.env),
-        &install_dummy_wasm(&setup.env),
-    );
+    pair.commit_upgrade(&setup.admin, &install_dummy_wasm(&setup.env));
     jump(&setup.env, ADMIN_ACTIONS_DELAY + 1);
     assert!(pair.try_apply_upgrade(&user).is_err());
 }
@@ -304,11 +292,7 @@ fn test_apply_upgrade_third_party_user() {
 fn test_apply_upgrade_emergency_admin() {
     let setup = Setup::default();
     let pair = setup.pair;
-    pair.commit_upgrade(
-        &setup.admin,
-        &install_dummy_wasm(&setup.env),
-        &install_dummy_wasm(&setup.env),
-    );
+    pair.commit_upgrade(&setup.admin, &install_dummy_wasm(&setup.env));
     jump(&setup.env, ADMIN_ACTIONS_DELAY + 1);
     assert!(pair.try_apply_upgrade(&setup.emergency_admin).is_err());
 }
@@ -317,20 +301,16 @@ fn test_apply_upgrade_emergency_admin() {
 fn test_apply_upgrade_admin() {
     let setup = Setup::default();
     let pair = setup.pair;
-    let token = ShareTokenClient::new(&setup.env, &pair.share_id());
     let new_wasm = install_dummy_wasm(&setup.env);
-    let new_token_wasm = install_dummy_wasm(&setup.env);
 
     assert_ne!(pair.version(), 130);
-    assert_ne!(token.version(), 130);
 
-    pair.commit_upgrade(&setup.admin, &new_wasm, &new_token_wasm);
+    pair.commit_upgrade(&setup.admin, &new_wasm);
     jump(&setup.env, ADMIN_ACTIONS_DELAY + 1);
-    assert_eq!(pair.apply_upgrade(&setup.admin), (new_wasm, new_token_wasm));
+    assert_eq!(pair.apply_upgrade(&setup.admin), new_wasm);
 
     // check contracts updated, dummy contract version is 130
     assert_eq!(pair.version(), 130);
-    assert_eq!(token.version(), 130);
 }
 
 // emergency mode
@@ -360,7 +340,7 @@ fn test_set_emergency_mode_emergency_admin() {
 
 // kill switches
 #[test]
-fn test_kill_create() {
+fn test_kill_mint() {
     let setup = Setup::default();
     let pair = setup.pair;
     let user = Address::generate(&setup.env);
@@ -368,12 +348,9 @@ fn test_kill_create() {
     for (addr, is_ok) in [
         (user.clone(), false),
         (setup.admin.clone(), true),
-        (setup.rewards_admin, false),
-        (setup.operations_admin, false),
         (setup.pause_admin, true),
-        (setup.emergency_pause_admin, true),
     ] {
-        assert_eq!(pair.try_kill_create(&addr).is_ok(), is_ok);
+        assert_eq!(pair.try_kill_mint(&addr).is_ok(), is_ok);
     }
 }
 
@@ -386,10 +363,7 @@ fn test_kill_redeem() {
     for (addr, is_ok) in [
         (user.clone(), false),
         (setup.admin.clone(), true),
-        (setup.rewards_admin, false),
-        (setup.operations_admin, false),
         (setup.pause_admin, true),
-        (setup.emergency_pause_admin, true),
     ] {
         assert_eq!(pair.try_kill_redeem(&addr).is_ok(), is_ok);
     }
@@ -404,16 +378,13 @@ fn test_kill_update_funding() {
     for (addr, is_ok) in [
         (user.clone(), false),
         (setup.admin.clone(), true),
-        (setup.rewards_admin, false),
-        (setup.operations_admin, false),
         (setup.pause_admin, true),
-        (setup.emergency_pause_admin, true),
     ] {
         assert_eq!(pair.try_kill_update_funding(&addr).is_ok(), is_ok);
     }
 }
 #[test]
-fn test_unkill_create() {
+fn test_unkill_mint() {
     let setup = Setup::default();
     let pair = setup.pair;
     let user = Address::generate(&setup.env);
@@ -421,12 +392,9 @@ fn test_unkill_create() {
     for (addr, is_ok) in [
         (user.clone(), false),
         (setup.admin.clone(), true),
-        (setup.rewards_admin, false),
-        (setup.operations_admin, false),
         (setup.pause_admin, true),
-        (setup.emergency_pause_admin, false),
     ] {
-        assert_eq!(pair.try_unkill_create(&addr).is_ok(), is_ok);
+        assert_eq!(pair.try_unkill_mint(&addr).is_ok(), is_ok);
     }
 }
 
@@ -439,10 +407,7 @@ fn test_unkill_redeem() {
     for (addr, is_ok) in [
         (user.clone(), false),
         (setup.admin.clone(), true),
-        (setup.rewards_admin, false),
-        (setup.operations_admin, false),
         (setup.pause_admin, true),
-        (setup.emergency_pause_admin, false),
     ] {
         assert_eq!(pair.try_unkill_redeem(&addr).is_ok(), is_ok);
     }
@@ -457,10 +422,7 @@ fn test_unkill_update_funding() {
     for (addr, is_ok) in [
         (user.clone(), false),
         (setup.admin.clone(), true),
-        (setup.rewards_admin, false),
-        (setup.operations_admin, false),
         (setup.pause_admin, true),
-        (setup.emergency_pause_admin, false),
     ] {
         assert_eq!(pair.try_unkill_update_funding(&addr).is_ok(), is_ok);
     }
@@ -476,21 +438,50 @@ fn test_set_privileged_addresses() {
     for (addr, is_ok) in [
         (user, false),
         (setup.admin.clone(), true),
-        (setup.rewards_admin.clone(), false),
-        (setup.operations_admin.clone(), false),
         (setup.pause_admin.clone(), false),
-        (setup.emergency_pause_admin.clone(), false),
     ] {
         assert_eq!(
-            pair.try_set_privileged_addrs(
-                &addr,
-                &setup.rewards_admin,
-                &setup.operations_admin,
-                &setup.pause_admin,
-                &Vec::from_array(&setup.env, [setup.emergency_pause_admin.clone()]),
-                &setup.system_fee_admin
-            )
-            .is_ok(),
+            pair.try_set_privileged_addrs(&addr, &setup.pause_admin)
+                .is_ok(),
+            is_ok
+        );
+    }
+}
+
+#[test]
+fn test_update_pool_plane() {
+    let setup = Setup::default();
+    let user = Address::generate(&setup.env);
+    let plane = Address::generate(&setup.env);
+
+    for (addr, is_ok) in [
+        (user.clone(), false),
+        (setup.admin.clone(), true),
+        (setup.emergency_admin, false),
+        (setup.pause_admin, false),
+    ] {
+        assert_eq!(setup.pair.try_set_pool_plane(&addr, &plane).is_ok(), is_ok);
+    }
+}
+
+#[test]
+fn test_update_pools() {
+    let setup = Setup::default();
+    let user = Address::generate(&setup.env);
+    let pool_long = Address::generate(&setup.env);
+    let pool_short = Address::generate(&setup.env);
+
+    for (addr, is_ok) in [
+        (user.clone(), false),
+        (setup.admin.clone(), true),
+        (setup.emergency_admin, false),
+        (setup.pause_admin, false),
+    ] {
+        assert_eq!(
+            setup
+                .pair
+                .try_set_pools(&addr, &pool_long, &pool_short)
+                .is_ok(),
             is_ok
         );
     }
@@ -505,10 +496,7 @@ fn test_update_funding_period() {
         (user.clone(), false),
         (setup.admin.clone(), true),
         (setup.emergency_admin, false),
-        (setup.rewards_admin, false),
-        (setup.operations_admin, true),
         (setup.pause_admin, false),
-        (setup.emergency_pause_admin, false),
     ] {
         assert_eq!(
             setup.pair.try_update_funding_period(&addr, &5000).is_ok(),
@@ -526,11 +514,61 @@ fn test_update_funding_rate() {
         (user.clone(), false),
         (setup.admin.clone(), true),
         (setup.emergency_admin, false),
-        (setup.rewards_admin, false),
-        (setup.operations_admin, true),
         (setup.pause_admin, false),
-        (setup.emergency_pause_admin, false),
     ] {
         assert_eq!(setup.pair.try_update_funding_rate(&addr).is_ok(), is_ok);
+    }
+}
+
+#[test]
+fn test_update_calculator() {
+    let setup = Setup::default();
+    let user = Address::generate(&setup.env);
+    let calculator = Address::generate(&setup.env);
+
+    for (addr, is_ok) in [
+        (user.clone(), false),
+        (setup.admin.clone(), true),
+        (setup.emergency_admin, false),
+        (setup.pause_admin, false),
+    ] {
+        assert_eq!(
+            setup.pair.try_set_calculator(&addr, &calculator).is_ok(),
+            is_ok
+        );
+    }
+}
+
+#[test]
+fn test_migrate_bounds() {
+    let setup = Setup::default();
+    let user = Address::generate(&setup.env);
+
+    for (addr, is_ok) in [
+        (user.clone(), false),
+        (setup.admin.clone(), true),
+        (setup.emergency_admin, false),
+        (setup.pause_admin, false),
+    ] {
+        assert_eq!(
+            setup.pair.try_migrate_bounds(&addr, &100, &200).is_ok(),
+            is_ok
+        );
+    }
+}
+
+#[test]
+fn test_update_oracle() {
+    let setup = Setup::default();
+    let user = Address::generate(&setup.env);
+    let oracle = Address::generate(&setup.env);
+
+    for (addr, is_ok) in [
+        (user.clone(), false),
+        (setup.admin.clone(), true),
+        (setup.emergency_admin, false),
+        (setup.pause_admin, false),
+    ] {
+        assert_eq!(setup.pair.try_set_oracle(&addr, &oracle).is_ok(), is_ok);
     }
 }

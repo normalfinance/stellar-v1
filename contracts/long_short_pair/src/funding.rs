@@ -13,12 +13,13 @@ use crate::storage::{
     get_collateral_percent_long, get_cumulative_funding_index_long,
     get_cumulative_funding_index_short, get_funding_period, get_is_killed_update_funding,
     get_last_24h_avg_funding_rate, get_last_funding_rate_ts, get_last_update_ts,
-    get_max_ratio_percent_divergence, get_pool, put_user_funding_checkpoint,
-    set_cumulative_funding_index_long, set_cumulative_funding_index_short,
-    set_last_24h_avg_funding_rate, set_last_funding_rate, set_last_funding_rate_ts,
+    get_max_ratio_percent_divergence, get_pool_long, get_pool_plane, get_pool_short,
+    put_user_funding_checkpoint, set_cumulative_funding_index_long,
+    set_cumulative_funding_index_short, set_last_24h_avg_funding_rate, set_last_funding_rate,
+    set_last_funding_rate_ts,
 };
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 #[contracttype]
 pub struct FundingCheckpoint {
     pub account: Address,
@@ -88,26 +89,42 @@ pub fn update_funding_rate(e: &Env, funding_paused: bool, current_time: u64) -> 
         .safe_mul(e, ONE_HOUR_I128)
         .safe_div(e, max(ONE_HOUR_I128, funding_period as i128));
 
-    match e.try_invoke_contract::<Vec<u128>, soroban_sdk::Error>(
-        &get_pool(e),
-        &Symbol::new(e, "get_reserves"),
-        Vec::from_array(e, []),
+    let pools = Vec::from_array(e, [get_pool_long(e), get_pool_short(e)]);
+
+    match e.try_invoke_contract::<Vec<(Symbol, Vec<u128>, Vec<u128>)>, soroban_sdk::Error>(
+        &get_pool_plane(e),
+        &Symbol::new(e, "get"),
+        Vec::from_array(e, [pools.into_val(e)]),
     ) {
         Ok(Err(_)) | Err(_) => {
             panic_with_error!(e, LongShortPairError::FailedToGetPoolReserves);
         }
-        Ok(Ok(reserves)) => {
-            let (reserve_long, reserve_short) =
-                (reserves.get(0).unwrap(), reserves.get(1).unwrap());
+        Ok(Ok(pools_info)) => {
+            let (_, _, pool_long_reserves) = pools_info.get(0).unwrap();
+            let (_, _, pool_short_reserves) = pools_info.get(1).unwrap();
 
-            let pool_long_ratio = reserve_long.safe_fixed_div_round(
-                e,
-                reserve_long.safe_add(e, reserve_short),
-                PRICE_PRECISION,
-            );
+            let pool_long_price = pool_long_reserves
+                .get(1)
+                .ok_or(LongShortPairError::AlreadyInitialized)
+                / pool_long_reserves
+                    .get(0)
+                    .ok_or(LongShortPairError::AlreadyInitialized);
+            let pool_short_price =
+                pool_short_reserves.get(1).unwrap() / pool_short_reserves.get(0).unwrap();
 
-            let expected_long_ratio = get_collateral_percent_long(e);
-            let ratio_spread = (pool_long_ratio as i128).safe_sub(e, expected_long_ratio as i128);
+            // let pool_long_ratio = reserve_long.safe_fixed_div_round(
+            //     e,
+            //     reserve_long.safe_add(e, reserve_short),
+            //     PRICE_PRECISION
+            // );
+
+            let collateral_percent_long = get_collateral_percent_long(e);
+            let collateral_percent_short = (1_u64).safe_sub(e, collateral_percent_long);
+
+            let long_delta = pool_long_price.safe_sub(e, collateral_percent_long as u128);
+            let short_delta = pool_short_price.safe_sub(e, collateral_percent_short as u128);
+
+            // let ratio_spread = (pool_long_ratio as i128).safe_sub(e, expected_long_ratio as i128);
 
             // Pause funding if mark/oracle spread is too divergent
             let ratio_spread_pct =

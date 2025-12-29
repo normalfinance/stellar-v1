@@ -6,6 +6,12 @@ use soroban_sdk::testutils::Address as _;
 use soroban_sdk::token::TokenClient;
 use soroban_sdk::{vec, Address, Vec};
 
+/**
+ * Tests to write
+ * -
+ *
+ */
+
 #[test]
 fn test_integration() {
     let setup = Setup::default();
@@ -53,22 +59,10 @@ fn test_integration() {
     // swaps
 
     setup.router.swap(
-        (user),
-        tokens,
-        token_in,
-        token_out,
-        pool_index,
-        in_amount,
-        out_min,
+        user, tokens, token_in, token_out, pool_index, in_amount, out_min,
     );
 
     setup.router.swap(
-        (user),
-        tokens,
-        token_in,
-        token_out,
-        pool_index,
-        in_amount,
-        out_min,
+        user, tokens, token_in, token_out, pool_index, in_amount, out_min,
     );
 }

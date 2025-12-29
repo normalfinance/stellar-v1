@@ -1,18 +1,20 @@
 use crate::errors::LongShortPairError;
 use crate::events::{Events, LongShortPairEvents};
+use crate::funding::FundingCheckpoint;
 use crate::interface::{
     AdminInterfaceTrait, LongShortPairTrait, OracleInterfaceTrait, UpgradeableContract,
 };
+use crate::pool_utils::{validate_pools_contracts, validate_tokens_contracts};
 use crate::storage::{
     get_calculator, get_collateral_per_pair, get_collateral_percent_long,
     get_cumulative_funding_index_long, get_cumulative_funding_index_short, get_funding_period,
-    get_is_killed_create, get_is_killed_redeem, get_is_killed_update_funding,
-    get_last_24h_avg_funding_rate, get_last_funding_rate, get_last_funding_rate_ts,
-    get_normal_oracle, get_sanitize_clamp_denominator, get_user_funding_checkpoint, set_calculator,
+    get_is_killed_mint, get_is_killed_redeem, get_is_killed_update_funding,
+    get_last_24h_avg_funding_rate, get_last_funding_rate, get_last_funding_rate_ts, get_oracle,
+    get_sanitize_clamp_denominator, get_user_funding_checkpoint, has_pools, set_calculator,
     set_collateral_percent_long, set_cumulative_funding_index_long,
-    set_cumulative_funding_index_short, set_funding_period, set_is_killed_create,
-    set_is_killed_redeem, set_is_killed_update_funding, set_last_funding_rate_ts,
-    set_normal_oracle, set_pool, CollateralInfo, FundingInfo,
+    set_cumulative_funding_index_short, set_funding_period, set_is_killed_mint,
+    set_is_killed_redeem, set_is_killed_update_funding, set_last_funding_rate_ts, set_oracle,
+    set_pool_long, set_pool_plane, set_pool_short, CollateralInfo, FundingInfo,
 };
 use crate::storage::{
     get_token_long, get_token_short, put_token_collateral, put_token_long, put_token_short,
@@ -52,7 +54,6 @@ pub struct LongShortPair;
 
 #[contractimpl]
 impl LongShortPairTrait for LongShortPair {
-    // Initializes the long short pair.
     fn initialize(e: Env, params: PairParams) {
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
@@ -60,19 +61,13 @@ impl LongShortPairTrait for LongShortPair {
         }
         access_control.set_role_address(&Role::Admin, &params.admin);
         access_control.set_role_address(&Role::EmergencyAdmin, &params.privileged_addrs.0);
-        access_control.set_role_address(&Role::RewardsAdmin, &params.privileged_addrs.1);
-        access_control.set_role_address(&Role::OperationsAdmin, &params.privileged_addrs.2);
-        access_control.set_role_address(&Role::PauseAdmin, &params.privileged_addrs.3);
-        access_control.set_role_addresses(&Role::EmergencyPauseAdmin, &params.privileged_addrs.4);
-        access_control.set_role_address(&Role::SystemFeeAdmin, &params.privileged_addrs.5);
-
-        set_normal_oracle(&e, &params.oracle);
-        set_calculator(&e, &params.pair_calculator);
-        set_pool(&e, &params.pool);
+        access_control.set_role_address(&Role::PauseAdmin, &params.privileged_addrs.1);
 
         if params.tokens.len() != 3 {
             panic_with_error!(&e, LongShortPairError::WrongInputVecSize);
         }
+
+        validate_tokens_contracts(&e, params.tokens);
 
         let token_long = params.tokens.get(0).unwrap();
         let token_short = params.tokens.get(1).unwrap();
@@ -81,6 +76,10 @@ impl LongShortPairTrait for LongShortPair {
         put_token_long(&e, token_long);
         put_token_short(&e, token_short);
         put_token_collateral(&e, token_collateral);
+
+        set_oracle(&e, &params.oracle);
+        set_calculator(&e, &params.pair_calculator);
+        set_pool_plane(&e, &params.pool_plane);
 
         // Add the new pair's parameters to the Calculator
         e.invoke_contract(
@@ -109,6 +108,10 @@ impl LongShortPairTrait for LongShortPair {
 
         if tokens_to_mint <= 0 {
             panic_with_error!(&e, LongShortPairError::InvalidInput);
+        }
+
+        if !has_pools(&e) {
+            panic_with_error!(&e, LongShortPairError::PoolsNotSet);
         }
 
         let current_time = e.ledger().timestamp();
@@ -143,6 +146,10 @@ impl LongShortPairTrait for LongShortPair {
 
         if tokens_to_redeem <= 0 {
             panic_with_error!(&e, LongShortPairError::InvalidInput);
+        }
+
+        if !has_pools(&e) {
+            panic_with_error!(&e, LongShortPairError::PoolsNotSet);
         }
 
         let current_time = e.ledger().timestamp();
@@ -229,7 +236,7 @@ impl LongShortPairTrait for LongShortPair {
     }
 
     fn update_oracle_price(e: Env) {
-        let oracle_price_data = get_oracle_price(&e, &get_normal_oracle(&e));
+        let oracle_price_data = get_oracle_price(&e, &get_oracle(&e));
 
         match e.try_invoke_contract::<u64, soroban_sdk::Error>(
             &get_calculator(&e),
@@ -283,10 +290,40 @@ impl LongShortPairTrait for LongShortPair {
             funding_period: get_funding_period(&e),
         }
     }
+
+    fn get_user_funding_checkpoint(e: Env, user: Address) -> FundingCheckpoint {
+        get_user_funding_checkpoint(&e, &user)
+    }
 }
 
 #[contractimpl]
 impl AdminInterfaceTrait for LongShortPair {
+    // Pools
+    fn set_pool_plane(e: Env, admin: Address, plane: Address) {
+        admin.require_auth();
+        require_operations_admin_or_owner(&e, &admin);
+
+        set_pool_plane(&e, &plane);
+    }
+
+    fn set_pools(e: Env, admin: Address, pools: Vec<Address>) {
+        admin.require_auth();
+        require_operations_admin_or_owner(&e, &admin);
+
+        if pools.len() != 2 {
+            panic_with_error!(&e, LongShortPairError::WrongInputVecSize);
+        }
+
+        validate_pools_contracts(&e, pools);
+
+        let pool_long = pools.get(0).unwrap();
+        let pool_short = pools.get(1).unwrap();
+
+        set_pool_long(&e, &pool_long);
+        set_pool_short(&e, &pool_short);
+    }
+
+    // Funding
     fn update_funding_period(e: Env, admin: Address, funding_period: u64) {
         admin.require_auth();
         require_operations_admin_or_owner(&e, &admin);
@@ -301,6 +338,10 @@ impl AdminInterfaceTrait for LongShortPair {
     fn update_funding_rate(e: Env, admin: Address) {
         admin.require_auth();
         require_operations_admin_or_owner(&e, &admin);
+
+        if !has_pools(&e) {
+            panic_with_error!(&e, LongShortPairError::PoolsNotSet);
+        }
 
         let current_time = e.ledger().timestamp();
         let funding_paused = get_is_killed_update_funding(&e);
@@ -327,7 +368,15 @@ impl AdminInterfaceTrait for LongShortPair {
         }
     }
 
-    fn migrate(e: Env, admin: Address, lower_bound: u128, upper_bound: u128) {
+    // Calculator
+    fn set_calculator(e: Env, admin: Address, calculator: Address) {
+        admin.require_auth();
+        require_operations_admin_or_owner(&e, &admin);
+
+        set_calculator(&e, &calculator);
+    }
+
+    fn migrate_bounds(e: Env, admin: Address, lower_bound: u128, upper_bound: u128) {
         admin.require_auth();
         require_operations_admin_or_owner(&e, &admin);
 
@@ -368,36 +417,14 @@ impl AdminInterfaceTrait for LongShortPair {
     // # Arguments
     //
     // * `admin` - The address of the admin.
-    // * `rewards_admin` - The address of the rewards admin.
-    // * `operations_admin` - The address of the operations admin.
     // * `pause_admin` - The address of the pause admin.
     // * `emergency_pause_admin` - The addresses of the emergency pause admins.
-    // * `system_fee_admin` - The address of the system fee admin.
-    fn set_privileged_addrs(
-        e: Env,
-        admin: Address,
-        rewards_admin: Address,
-        operations_admin: Address,
-        pause_admin: Address,
-        emergency_pause_admins: Vec<Address>,
-        system_fee_admin: Address,
-    ) {
+    fn set_privileged_addrs(e: Env, admin: Address, pause_admin: Address) {
         admin.require_auth();
         let access_control = AccessControl::new(&e);
         access_control.assert_address_has_role(&admin, &Role::Admin);
 
-        access_control.set_role_address(&Role::RewardsAdmin, &rewards_admin);
-        access_control.set_role_address(&Role::OperationsAdmin, &operations_admin);
         access_control.set_role_address(&Role::PauseAdmin, &pause_admin);
-        access_control.set_role_addresses(&Role::EmergencyPauseAdmin, &emergency_pause_admins);
-        access_control.set_role_address(&Role::SystemFeeAdmin, &system_fee_admin);
-        AccessControlEvents::new(&e).set_privileged_addrs(
-            rewards_admin,
-            operations_admin,
-            pause_admin,
-            emergency_pause_admins,
-            system_fee_admin,
-        );
     }
 
     // Returns a map of privileged roles.
@@ -408,14 +435,7 @@ impl AdminInterfaceTrait for LongShortPair {
     fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>> {
         let access_control = AccessControl::new(&e);
         let mut result: Map<Symbol, Vec<Address>> = Map::new(&e);
-        for role in [
-            Role::Admin,
-            Role::EmergencyAdmin,
-            Role::RewardsAdmin,
-            Role::OperationsAdmin,
-            Role::PauseAdmin,
-            Role::SystemFeeAdmin,
-        ] {
+        for role in [Role::Admin, Role::EmergencyAdmin, Role::PauseAdmin] {
             result.set(
                 role.as_symbol(&e),
                 match access_control.get_role_safe(&role) {
@@ -425,11 +445,6 @@ impl AdminInterfaceTrait for LongShortPair {
             );
         }
 
-        result.set(
-            Role::EmergencyPauseAdmin.as_symbol(&e),
-            access_control.get_role_addresses(&Role::EmergencyPauseAdmin),
-        );
-
         result
     }
 
@@ -437,23 +452,23 @@ impl AdminInterfaceTrait for LongShortPair {
         admin.require_auth();
         require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
-        set_normal_oracle(&e, &oracle);
+        set_oracle(&e, &oracle);
     }
 
-    // Stops the pool deposits instantly.
+    // Stops the pair mints instantly.
     //
     // # Arguments
     //
     // * `admin` - The address of the admin.
-    fn kill_create(e: Env, admin: Address) {
+    fn kill_mint(e: Env, admin: Address) {
         admin.require_auth();
         require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
-        set_is_killed_create(&e, &true);
-        Events::new(&e).kill_create();
+        set_is_killed_mint(&e, &true);
+        Events::new(&e).kill_mint();
     }
 
-    // Stops the pool swaps instantly.
+    // Stops the pair redemptions instantly.
     //
     // # Arguments
     //
@@ -466,7 +481,7 @@ impl AdminInterfaceTrait for LongShortPair {
         Events::new(&e).kill_redeem();
     }
 
-    // Stops the pool claims instantly.
+    // Stops the pair funding instantly.
     //
     // # Arguments
     //
@@ -479,20 +494,20 @@ impl AdminInterfaceTrait for LongShortPair {
         Events::new(&e).kill_update_funding();
     }
 
-    // Resumes the pool deposits.
+    // Resumes the pair mints.
     //
     // # Arguments
     //
     // * `admin` - The address of the admin.
-    fn unkill_create(e: Env, admin: Address) {
+    fn unkill_mint(e: Env, admin: Address) {
         admin.require_auth();
         require_pause_admin_or_owner(&e, &admin);
 
-        set_is_killed_create(&e, &false);
-        Events::new(&e).unkill_create();
+        set_is_killed_mint(&e, &false);
+        Events::new(&e).unkill_mint();
     }
 
-    // Resumes the pool swaps.
+    // Resumes the pair redemptions.
     //
     // # Arguments
     //
@@ -505,7 +520,7 @@ impl AdminInterfaceTrait for LongShortPair {
         Events::new(&e).unkill_redeem();
     }
 
-    // Resumes the pool claims.
+    // Resumes the pair funding.
     //
     // # Arguments
     //
@@ -519,8 +534,8 @@ impl AdminInterfaceTrait for LongShortPair {
     }
 
     // Get create killswitch status.
-    fn get_is_killed_create(e: Env) -> bool {
-        get_is_killed_create(&e)
+    fn get_is_killed_mint(e: Env) -> bool {
+        get_is_killed_mint(&e)
     }
 
     // Get redeem killswitch status.

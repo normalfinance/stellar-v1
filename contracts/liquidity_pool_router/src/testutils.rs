@@ -141,6 +141,7 @@ impl Default for Setup<'_> {
         );
         router.set_pool_hash(&admin, &pool_hash);
         router.set_stableswap_pool_hash(&admin, &install_stableswap_liq_pool_hash(&env));
+        router.set_synthetic_pool_hash(&admin, &install_synthetic_liq_pool_hash(&env));
         router.set_token_hash(&admin, &token_hash);
         router.set_reward_token(&admin, &reward_token.address);
         router.configure_init_pool_payment(

@@ -40,9 +40,9 @@ pub(crate) trait LongShortPairEvents {
     fn migration(&self, ts: u64, new_lower_bound: u128, new_upper_bound: u128);
 
     // Paused Ops
-    fn kill_create(&self);
+    fn kill_mint(&self);
 
-    fn unkill_create(&self);
+    fn unkill_mint(&self);
 
     fn kill_redeem(&self);
 
@@ -107,16 +107,16 @@ impl LongShortPairEvents for Events {
         );
     }
 
-    fn kill_create(&self) {
+    fn kill_mint(&self) {
         self.env()
             .events()
-            .publish((Symbol::new(self.env(), "kill_create"),), ())
+            .publish((Symbol::new(self.env(), "kill_mint"),), ())
     }
 
-    fn unkill_create(&self) {
+    fn unkill_mint(&self) {
         self.env()
             .events()
-            .publish((Symbol::new(self.env(), "unkill_create"),), ())
+            .publish((Symbol::new(self.env(), "unkill_mint"),), ())
     }
 
     fn kill_redeem(&self) {
