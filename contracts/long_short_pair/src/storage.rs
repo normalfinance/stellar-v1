@@ -1,11 +1,9 @@
 use paste::paste;
 use soroban_sdk::{contracttype, panic_with_error, Address, Env};
+use types::pair::PairStatus;
 pub use utils::bump::bump_instance;
 use utils::bump::bump_persistent;
-use utils::constant::{
-    ONE_HOUR, PERCENTAGE_PRECISION_U64, PERCENT_MULTIPLIER, PERCENT_MULTIPLIER_I128,
-    PERCENT_MULTIPLIER_I64, PERCENT_MULTIPLIER_U64,
-};
+use utils::constant::PERCENTAGE_PRECISION_U64;
 use utils::errors::storage_errors::StorageError;
 use utils::generate_instance_storage_getter;
 use utils::{
@@ -13,8 +11,6 @@ use utils::{
     generate_instance_storage_getter_and_setter_with_default,
     generate_instance_storage_getter_with_default, generate_instance_storage_setter,
 };
-
-use crate::funding::FundingCheckpoint;
 
 // Factory configuration struct for query methods
 #[contracttype]
@@ -41,6 +37,11 @@ pub struct FundingInfo {
 pub enum DataKey {
     TokenCollateral,
 
+    LowerBound,
+    UpperBound,
+
+    Status,
+
     CollateralPerPair,
     // Number between 0 and 1 to allocate collateral between long & short tokens at redemption. 0 entitles each short
     // to collateralPerPair and each long to 0. 1 makes each long worth collateralPerPair and short 0.
@@ -49,105 +50,42 @@ pub enum DataKey {
     // Addresses
     Calculator,
     Oracle,
-    PoolPlane,
-    PoolLong,
-    PoolShort,
 
     // Guard Rails
     MaxRatioPercentDivergence,
-
-    // Funding
-    SanitizeClampDenominator,
-    FundingCheckpoint(Address),
-    CumulativeFundingIndexLong,
-    CumulativeFundingIndexShort,
-    LastFundingRate,
-    Last24hAvgFundingRate, // estimate of last 24h of funding rate perp market (unit is quote per base)
-    LastFundingRateTs,
-    FundingPeriod,
-    FundingClamp, // max/min the
 
     LastUpdateTs,
 
     // Paused ops
     IsKilledMint,
     IsKilledRedeem,
-    IsKilledUpdateFunding,
 }
-
-// Funding
-generate_instance_storage_getter_and_setter_with_default!(
-    sanitize_clamp_denominator,
-    DataKey::SanitizeClampDenominator,
-    i64,
-    0
-);
-
-pub(crate) fn get_user_funding_checkpoint(e: &Env, user: &Address) -> FundingCheckpoint {
-    let key = DataKey::FundingCheckpoint(user.clone());
-    match e.storage().persistent().get(&key) {
-        Some(value) => {
-            bump_persistent(e, &key);
-            value
-        }
-        None => FundingCheckpoint::new(user.clone()),
-    }
-}
-
-pub(crate) fn put_user_funding_checkpoint(e: &Env, user: &Address, checkpoint: &FundingCheckpoint) {
-    let key = DataKey::FundingCheckpoint(user.clone());
-    e.storage().persistent().set(&key, checkpoint);
-    bump_persistent(e, &key);
-}
-
-generate_instance_storage_getter_and_setter_with_default!(
-    cumulative_funding_index_long,
-    DataKey::CumulativeFundingIndexLong,
-    i64,
-    0
-);
-generate_instance_storage_getter_and_setter_with_default!(
-    cumulative_funding_index_short,
-    DataKey::CumulativeFundingIndexShort,
-    i64,
-    0
-);
-generate_instance_storage_getter_and_setter_with_default!(
-    last_funding_rate,
-    DataKey::LastFundingRate,
-    i64,
-    0
-);
-generate_instance_storage_getter_and_setter_with_default!(
-    last_24h_avg_funding_rate,
-    DataKey::Last24hAvgFundingRate,
-    i64,
-    0
-);
-generate_instance_storage_getter_and_setter_with_default!(
-    last_funding_rate_ts,
-    DataKey::LastFundingRateTs,
-    u64,
-    0
-);
-generate_instance_storage_getter_and_setter_with_default!(
-    funding_period,
-    DataKey::FundingPeriod,
-    u64,
-    ONE_HOUR
-);
-generate_instance_storage_getter_and_setter_with_default!(
-    funding_clamp,
-    DataKey::FundingClamp,
-    i128,
-    PERCENT_MULTIPLIER_I128 // 100%
-);
 
 generate_instance_storage_getter_and_setter_with_default!(
     last_update_ts,
     DataKey::LastUpdateTs,
     u64,
     0
+);
+
+generate_instance_storage_getter_and_setter_with_default!(
+    lower_bound,
+    DataKey::LowerBound,
+    u128,
+    0
+);
+generate_instance_storage_getter_and_setter_with_default!(
+    upper_bound,
+    DataKey::UpperBound,
+    u128,
+    0
+);
+
+generate_instance_storage_getter_and_setter_with_default!(
+    status,
+    DataKey::Status,
+    PairStatus,
+    PairStatus::Inactive
 );
 
 // Collateral
@@ -177,23 +115,9 @@ generate_instance_storage_getter_and_setter_with_default!(
     bool,
     false
 );
-generate_instance_storage_getter_and_setter_with_default!(
-    is_killed_update_funding,
-    DataKey::IsKilledUpdateFunding,
-    bool,
-    false
-);
 
 generate_instance_storage_getter_and_setter!(oracle, DataKey::Oracle, Address);
 generate_instance_storage_getter_and_setter!(calculator, DataKey::Calculator, Address);
-generate_instance_storage_getter_and_setter!(pool_plane, DataKey::PoolPlane, Address);
-generate_instance_storage_getter_and_setter!(pool_long, DataKey::PoolLong, Address);
-generate_instance_storage_getter_and_setter!(pool_short, DataKey::PoolShort, Address);
-
-pub(crate) fn has_pools(e: &Env) -> bool {
-    e.storage().instance().has(&DataKey::PoolLong)
-        && e.storage().instance().has(&DataKey::PoolShort)
-}
 
 // Guard Rails
 generate_instance_storage_getter_and_setter_with_default!(

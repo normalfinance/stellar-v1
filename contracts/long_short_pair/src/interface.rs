@@ -1,10 +1,7 @@
 use soroban_sdk::{Address, BytesN, Env, Map, Symbol, Vec};
 use types::pair::PairParams;
 
-use crate::{
-    funding::FundingCheckpoint,
-    storage::{CollateralInfo, FundingInfo},
-};
+use crate::storage::CollateralInfo;
 
 pub trait LongShortPairTrait {
     // Initialize lsp
@@ -31,47 +28,23 @@ pub trait LongShortPairTrait {
      */
     fn redeem(e: Env, user: Address, tokens_to_redeem: u128) -> u128;
 
-    fn checkpoint_funding(
-        e: Env,
-        token_contract: Address,
-        from: Address,
-        to: Address,
-        transfer_amount: u128,
-    );
-
     fn sync_collateral_percent_long(e: Env);
 
     fn get_tokens(e: Env) -> Vec<Address>;
 
+    fn get_price_bounds(e: Env) -> Vec<u128>;
+
     fn get_position_tokens(e: Env, user: Address) -> Vec<u128>;
 
     fn get_collateral_info(e: Env) -> CollateralInfo;
-
-    fn get_funding_info(e: Env) -> FundingInfo;
-
-    fn get_user_funding_checkpoint(e: Env, user: Address) -> FundingCheckpoint;
 }
 
 pub trait AdminInterfaceTrait {
     // Oracle
     fn set_oracle(e: Env, admin: Address, oracle: Address);
 
-    // Pool
-    fn set_pool_plane(e: Env, admin: Address, plane: Address);
-
-    fn set_pools(e: Env, admin: Address, pools: Vec<Address>);
-
-    // Funding
-    fn update_funding_period(e: Env, admin: Address, funding_period: u64);
-
-    fn update_funding_clamp(e: Env, admin: Address, clamp: i128);
-
-    fn update_funding_rate(e: Env, admin: Address);
-
     // Calculator
     fn set_calculator(e: Env, admin: Address, calculator: Address);
-
-    fn migrate_bounds(e: Env, admin: Address, lower_bound: u128, upper_bound: u128);
 
     // Set privileged addresses
     fn set_privileged_addrs(e: Env, admin: Address, pause_admin: Address);
@@ -82,17 +55,14 @@ pub trait AdminInterfaceTrait {
     // Stop pair instantly
     fn kill_mint(e: Env, admin: Address);
     fn kill_redeem(e: Env, admin: Address);
-    fn kill_update_funding(e: Env, admin: Address);
 
     // Resume pair
     fn unkill_mint(e: Env, admin: Address);
     fn unkill_redeem(e: Env, admin: Address);
-    fn unkill_update_funding(e: Env, admin: Address);
 
     // Get killswitch status
     fn get_is_killed_mint(e: Env) -> bool;
     fn get_is_killed_redeem(e: Env) -> bool;
-    fn get_is_killed_update_funding(e: Env) -> bool;
 }
 
 pub trait OracleInterfaceTrait {

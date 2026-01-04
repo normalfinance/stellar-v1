@@ -370,20 +370,6 @@ fn test_kill_redeem() {
 }
 
 #[test]
-fn test_kill_update_funding() {
-    let setup = Setup::default();
-    let pair = setup.pair;
-    let user = Address::generate(&setup.env);
-
-    for (addr, is_ok) in [
-        (user.clone(), false),
-        (setup.admin.clone(), true),
-        (setup.pause_admin, true),
-    ] {
-        assert_eq!(pair.try_kill_update_funding(&addr).is_ok(), is_ok);
-    }
-}
-#[test]
 fn test_unkill_mint() {
     let setup = Setup::default();
     let pair = setup.pair;
@@ -413,21 +399,6 @@ fn test_unkill_redeem() {
     }
 }
 
-#[test]
-fn test_unkill_update_funding() {
-    let setup = Setup::default();
-    let pair = setup.pair;
-    let user = Address::generate(&setup.env);
-
-    for (addr, is_ok) in [
-        (user.clone(), false),
-        (setup.admin.clone(), true),
-        (setup.pause_admin, true),
-    ] {
-        assert_eq!(pair.try_unkill_update_funding(&addr).is_ok(), is_ok);
-    }
-}
-
 // manage privileged addresses
 #[test]
 fn test_set_privileged_addresses() {
@@ -449,74 +420,6 @@ fn test_set_privileged_addresses() {
 }
 
 #[test]
-fn test_update_pool_plane() {
-    let setup = Setup::default();
-    let user = Address::generate(&setup.env);
-    let plane = Address::generate(&setup.env);
-
-    for (addr, is_ok) in [
-        (user.clone(), false),
-        (setup.admin.clone(), true),
-        (setup.emergency_admin, false),
-        (setup.pause_admin, false),
-    ] {
-        assert_eq!(setup.pair.try_set_pool_plane(&addr, &plane).is_ok(), is_ok);
-    }
-}
-
-#[test]
-fn test_update_pools() {
-    let setup = Setup::default();
-    let user = Address::generate(&setup.env);
-    let pools: Vec<Address> = Vec::from_array(
-        &setup.env,
-        [Address::generate(&setup.env), Address::generate(&setup.env)],
-    );
-
-    for (addr, is_ok) in [
-        (user.clone(), false),
-        (setup.admin.clone(), true),
-        (setup.emergency_admin, false),
-        (setup.pause_admin, false),
-    ] {
-        assert_eq!(setup.pair.try_set_pools(&addr, &pools).is_ok(), is_ok);
-    }
-}
-
-#[test]
-fn test_update_funding_period() {
-    let setup = Setup::default();
-    let user = Address::generate(&setup.env);
-
-    for (addr, is_ok) in [
-        (user.clone(), false),
-        (setup.admin.clone(), true),
-        (setup.emergency_admin, false),
-        (setup.pause_admin, false),
-    ] {
-        assert_eq!(
-            setup.pair.try_update_funding_period(&addr, &5000).is_ok(),
-            is_ok
-        );
-    }
-}
-
-#[test]
-fn test_update_funding_rate() {
-    let setup = Setup::default();
-    let user = Address::generate(&setup.env);
-
-    for (addr, is_ok) in [
-        (user.clone(), false),
-        (setup.admin.clone(), true),
-        (setup.emergency_admin, false),
-        (setup.pause_admin, false),
-    ] {
-        assert_eq!(setup.pair.try_update_funding_rate(&addr).is_ok(), is_ok);
-    }
-}
-
-#[test]
 fn test_update_calculator() {
     let setup = Setup::default();
     let user = Address::generate(&setup.env);
@@ -530,27 +433,6 @@ fn test_update_calculator() {
     ] {
         assert_eq!(
             setup.pair.try_set_calculator(&addr, &calculator).is_ok(),
-            is_ok
-        );
-    }
-}
-
-#[test]
-fn test_migrate_bounds() {
-    let setup = Setup::default();
-    let user = Address::generate(&setup.env);
-
-    for (addr, is_ok) in [
-        (user.clone(), false),
-        (setup.admin.clone(), true),
-        (setup.emergency_admin, false),
-        (setup.pause_admin, false),
-    ] {
-        assert_eq!(
-            setup
-                .pair
-                .try_migrate_bounds(&addr, &100_0000000, &200_0000000)
-                .is_ok(),
             is_ok
         );
     }

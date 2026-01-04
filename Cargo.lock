@@ -1604,17 +1604,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "token_long_short_pair"
-version = "1.0.0"
-dependencies = [
- "access_control",
- "soroban-sdk",
- "soroban-token-sdk",
- "upgrade",
- "utils",
-]
-
-[[package]]
 name = "token_pair"
 version = "1.0.0"
 dependencies = [

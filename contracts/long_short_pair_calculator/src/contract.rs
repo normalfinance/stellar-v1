@@ -1,8 +1,6 @@
 use crate::errors::CalculatorError;
 use crate::interface::LongShortPairCalculatorTrait;
-use crate::storage::{get_params, set_params};
 use soroban_sdk::{contract, contractimpl, contractmeta, panic_with_error, Address, Env};
-use types::pair::LinearLongShortPairParameters;
 
 // Metadata that is added on to the WASM custom section
 contractmeta!(key = "Description", val = "");
@@ -12,45 +10,24 @@ pub struct LongShortPairCalculator;
 
 #[contractimpl]
 impl LongShortPairCalculatorTrait for LongShortPairCalculator {
-    fn get_params(e: Env, pair: Address) -> LinearLongShortPairParameters {
-        get_params(&e, pair)
-    }
-
-    fn set_parameters(e: Env, pair: Address, lower_bound: u128, upper_bound: u128) {
-        pair.require_auth();
-
-        if upper_bound <= lower_bound {
-            panic_with_error!(&e, CalculatorError::InvalidBounds);
-        }
-
-        let params = get_params(&e, pair.clone());
-
-        if params.lower_bound != 0 || params.upper_bound != 0 {
-            panic_with_error!(&e, CalculatorError::ParamsAlreadySet);
-        }
-
-        let new_params = LinearLongShortPairParameters {
-            lower_bound,
-            upper_bound,
-        };
-        set_params(&e, pair, new_params);
-    }
-
     /**
      * @notice Returns a number between 0 and 1 to indicate how much collateral each long and short token is entitled
      * to per collateralPerPair.
      * @param oracle_price price from the optimistic oracle for the LSP price identifier.
      * @return expiryPercentLong to indicate how much collateral should be sent between long and short tokens.
      */
-    fn percent_long_collateral(e: Env, caller: Address, oracle_price: u128) -> u64 {
-        let params = get_params(&e, caller); // user is the calling LongShortPair contract
-
-        if params.upper_bound == 0 && params.lower_bound == 0 {
+    fn percent_long_collateral(
+        e: Env,
+        oracle_price: u128,
+        lower_bound: u128,
+        upper_bound: u128,
+    ) -> u64 {
+        if upper_bound == 0 && lower_bound == 0 {
             panic_with_error!(&e, CalculatorError::ParamsNotSetForCallingLSP);
         }
 
-        let lower = params.lower_bound;
-        let upper = params.upper_bound;
+        let lower = lower_bound;
+        let upper = upper_bound;
 
         // Clamp oracle price
         let price = oracle_price.min(upper).max(lower);

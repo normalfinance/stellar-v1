@@ -33,14 +33,6 @@ pub fn create_normal_oracle_contract<'a>(e: &Env) -> normal_oracle::Client<'a> {
     normal_oracle::Client::new(e, &e.register(normal_oracle::WASM, ()))
 }
 
-pub mod plane {
-    soroban_sdk::contractimport!(file = "../../wasm/liquidity_pool_plane.wasm");
-}
-
-pub(crate) fn create_plane_contract<'a>(e: &Env) -> plane::Client<'a> {
-    plane::Client::new(e, &e.register(plane::WASM, ()))
-}
-
 pub fn create_pair_contract<'a>(e: &Env) -> LongShortPairClient<'a> {
     LongShortPairClient::new(e, &e.register(crate::LongShortPair {}, ()))
 }
@@ -70,9 +62,6 @@ pub(crate) struct Setup<'a> {
     pub(crate) pair: LongShortPairClient<'a>,
     pub(crate) pair_calculator: long_short_pair_calculator::Client<'a>,
     pub(crate) oracle: normal_oracle::Client<'a>,
-    pub(crate) plane: plane::Client<'a>,
-    pub(crate) long_pool: Address,
-    pub(crate) short_pool: Address,
 
     // Oracle
     pub(crate) reflector_addr: Address,
@@ -124,22 +113,6 @@ impl Setup<'_> {
         let token_usdc = create_token_contract(&e, &admin);
         let token_usdc_admin_client = get_token_admin_client(&e, &token_usdc.address.clone());
 
-        // Setup Pool Plane
-        let pool_type = Symbol::new(&e, "Synthetic");
-        let pool_init_args: Vec<u128> = Vec::from_array(&e, []);
-
-        let long_pool = Address::generate(&e);
-        let short_pool = Address::generate(&e);
-        let plane = create_plane_contract(&e);
-
-        let initial_pool_reserves: Vec<u128> = Vec::from_array(&e, [100_0000000, 100_0000000]);
-        plane.update(
-            &long_pool,
-            &pool_type,
-            &pool_init_args,
-            &initial_pool_reserves,
-        );
-
         // Setup Oracle
         let sol_symbol = Symbol::new(&e, "SOL");
         let solana = MockAsset::Other(sol_symbol.clone());
@@ -180,14 +153,6 @@ impl Setup<'_> {
         // Setup Long Short Pair
         let pair = create_pair_contract(&e);
 
-        assert_eq!(
-            pair_calculator.get_params(&pair.address),
-            LinearLongShortPairParameters {
-                upper_bound: 0_u128,
-                lower_bound: 0_u128,
-            }
-        );
-
         // Initialize Pair
         pair.initialize(
             &(PairParams {
@@ -197,7 +162,6 @@ impl Setup<'_> {
                 collateral_token: token_usdc.address.clone(),
                 pair_token_wasm_hash: install_pair_token_wasm(&e),
                 oracle: oracle.address.clone(),
-                pool_plane: plane.address.clone(),
                 pair_calculator: pair_calculator.address.clone(),
                 collateral_per_pair: 100_0000000,
                 lower_bound: 50_0000000,
@@ -218,12 +182,6 @@ impl Setup<'_> {
             }
         );
 
-        // Add pools to the Pair
-        pair.set_pool_plane(&admin, &plane.address);
-
-        let pools: Vec<Address> = Vec::from_array(&e, [long_pool.clone(), short_pool.clone()]);
-        pair.set_pools(&admin.clone(), &pools);
-
         Self {
             env: e,
 
@@ -239,9 +197,6 @@ impl Setup<'_> {
             pair_calculator,
             pair,
             oracle,
-            plane,
-            long_pool,
-            short_pool,
 
             // Oracle
             reflector_addr,

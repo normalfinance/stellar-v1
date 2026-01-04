@@ -22,7 +22,6 @@ fn initialize_already_initialized() {
         collateral_token: setup.token_usdc.address,
         pair_token_wasm_hash: install_pair_token_wasm(&setup.env),
         oracle: setup.oracle.address,
-        pool_plane: Address::generate(&setup.env),
         pair_calculator: setup.pair_calculator.address,
         collateral_per_pair: 100_0000000,
         lower_bound: 50_000000,

@@ -39,7 +39,7 @@ pub fn sync_collateral_percent_long(e: &Env, oracle_price_data: OraclePriceData)
                 new_collateral_percent_long
             );
 
-            // Validate calculator response
+            // TODO: enforce collateral invariant (long + short = 1)
             if new_collateral_percent_long > 10_000 {
                 panic_with_error!(e, LongShortPairError::InvalidCalculatorValue);
             }
@@ -47,4 +47,19 @@ pub fn sync_collateral_percent_long(e: &Env, oracle_price_data: OraclePriceData)
             set_collateral_percent_long(e, &new_collateral_percent_long);
         }
     }
+}
+
+pub fn block_operation(e: &Env, price_delta_pct: i64, now: u64) -> bool {
+    let is_spread_pct_too_divergent: bool = is_price_delta_too_divergent(e, price_delta_pct);
+
+    let seconds_since_update = now.saturating_sub(get_last_update_ts(e));
+
+    let funding_paused = get_is_killed_update_funding(e);
+
+    // block if pair hasnt been updated since over half the funding period (assuming slot ~= 500ms)
+    let block = seconds_since_update > get_funding_period(e)
+        || is_spread_pct_too_divergent
+        || funding_paused;
+
+    block
 }
