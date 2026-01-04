@@ -42,7 +42,8 @@ export const LongShortPairError = {
   206: {message:"FailedToGetPoolReserves"},
   207: {message:"FailedToGetCalculatorPercent"},
   208: {message:"FailedToUpdateTokenScalingFactor"},
-  209: {message:"FailedToGetOraclePrice"}
+  209: {message:"FailedToGetOraclePrice"},
+  210: {message:"PoolsNotSet"}
 }
 
 
@@ -71,7 +72,7 @@ export interface FundingInfo {
   sanitize_clamp_denominator: i64;
 }
 
-export type DataKey = {tag: "TokenLong", values: void} | {tag: "TokenShort", values: void} | {tag: "TokenCollateral", values: void} | {tag: "CollateralPerPair", values: void} | {tag: "CollateralPercentLong", values: void} | {tag: "Pool", values: void} | {tag: "Calculator", values: void} | {tag: "NormalOracle", values: void} | {tag: "MaxRatioPercentDivergence", values: void} | {tag: "SanitizeClampDenominator", values: void} | {tag: "FundingCheckpoint", values: readonly [string]} | {tag: "CumulativeFundingIndexLong", values: void} | {tag: "CumulativeFundingIndexShort", values: void} | {tag: "LastFundingRate", values: void} | {tag: "Last24hAvgFundingRate", values: void} | {tag: "LastFundingRateTs", values: void} | {tag: "FundingPeriod", values: void} | {tag: "LastUpdateTs", values: void} | {tag: "IsKilledCreate", values: void} | {tag: "IsKilledRedeem", values: void} | {tag: "IsKilledUpdateFunding", values: void};
+export type DataKey = {tag: "TokenLong", values: void} | {tag: "TokenShort", values: void} | {tag: "TokenCollateral", values: void} | {tag: "CollateralPerPair", values: void} | {tag: "CollateralPercentLong", values: void} | {tag: "Calculator", values: void} | {tag: "Oracle", values: void} | {tag: "PoolPlane", values: void} | {tag: "PoolLong", values: void} | {tag: "PoolShort", values: void} | {tag: "MaxRatioPercentDivergence", values: void} | {tag: "SanitizeClampDenominator", values: void} | {tag: "FundingCheckpoint", values: readonly [string]} | {tag: "CumulativeFundingIndexLong", values: void} | {tag: "CumulativeFundingIndexShort", values: void} | {tag: "LastFundingRate", values: void} | {tag: "Last24hAvgFundingRate", values: void} | {tag: "LastFundingRateTs", values: void} | {tag: "FundingPeriod", values: void} | {tag: "LastUpdateTs", values: void} | {tag: "IsKilledMint", values: void} | {tag: "IsKilledRedeem", values: void} | {tag: "IsKilledUpdateFunding", values: void};
 
 export const AccessControlError = {
   101: {message:"RoleNotFound"},
@@ -117,13 +118,19 @@ export interface PairParams {
   lower_bound: u128;
   oracle: string;
   pair_calculator: string;
-  pool: string;
-  privileged_addrs: readonly [string, string, string, string, Array<string>, string];
+  pool_plane: string;
+  privileged_addrs: readonly [string, string];
   tokens: Array<string>;
   upper_bound: u128;
 }
 
 export type Direction = {tag: "Long", values: void} | {tag: "Short", values: void};
+
+
+export interface LinearLongShortPairParameters {
+  lower_bound: u128;
+  upper_bound: u128;
+}
 
 
 export interface PoolParams {
@@ -405,6 +412,66 @@ export interface Client {
   }) => Promise<AssembledTransaction<FundingInfo>>
 
   /**
+   * Construct and simulate a get_user_funding_checkpoint transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_user_funding_checkpoint: ({user}: {user: string}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<FundingCheckpoint>>
+
+  /**
+   * Construct and simulate a set_pool_plane transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  set_pool_plane: ({admin, plane}: {admin: string, plane: string}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a set_pools transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  set_pools: ({admin, pools}: {admin: string, pools: Array<string>}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<null>>
+
+  /**
    * Construct and simulate a update_funding_period transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   update_funding_period: ({admin, funding_period}: {admin: string, funding_period: u64}, options?: {
@@ -445,9 +512,29 @@ export interface Client {
   }) => Promise<AssembledTransaction<null>>
 
   /**
-   * Construct and simulate a migrate transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Construct and simulate a set_calculator transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  migrate: ({admin, lower_bound, upper_bound}: {admin: string, lower_bound: u128, upper_bound: u128}, options?: {
+  set_calculator: ({admin, calculator}: {admin: string, calculator: string}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a migrate_bounds transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  migrate_bounds: ({admin, lower_bound, upper_bound}: {admin: string, lower_bound: u128, upper_bound: u128}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -467,7 +554,7 @@ export interface Client {
   /**
    * Construct and simulate a set_privileged_addrs transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  set_privileged_addrs: ({admin, rewards_admin, operations_admin, pause_admin, emergency_pause_admins, system_fee_admin}: {admin: string, rewards_admin: string, operations_admin: string, pause_admin: string, emergency_pause_admins: Array<string>, system_fee_admin: string}, options?: {
+  set_privileged_addrs: ({admin, pause_admin}: {admin: string, pause_admin: string}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -525,9 +612,9 @@ export interface Client {
   }) => Promise<AssembledTransaction<null>>
 
   /**
-   * Construct and simulate a kill_create transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Construct and simulate a kill_mint transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  kill_create: ({admin}: {admin: string}, options?: {
+  kill_mint: ({admin}: {admin: string}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -585,9 +672,9 @@ export interface Client {
   }) => Promise<AssembledTransaction<null>>
 
   /**
-   * Construct and simulate a unkill_create transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Construct and simulate a unkill_mint transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  unkill_create: ({admin}: {admin: string}, options?: {
+  unkill_mint: ({admin}: {admin: string}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -645,9 +732,9 @@ export interface Client {
   }) => Promise<AssembledTransaction<null>>
 
   /**
-   * Construct and simulate a get_is_killed_create transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Construct and simulate a get_is_killed_mint transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  get_is_killed_create: (options?: {
+  get_is_killed_mint: (options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -971,19 +1058,23 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAATZ2V0X3Bvc2l0aW9uX3Rva2VucwAAAAABAAAAAAAAAAR1c2VyAAAAEwAAAAEAAAPqAAAACg==",
         "AAAAAAAAAAAAAAATZ2V0X2NvbGxhdGVyYWxfaW5mbwAAAAAAAAAAAQAAB9AAAAAOQ29sbGF0ZXJhbEluZm8AAA==",
         "AAAAAAAAAAAAAAAQZ2V0X2Z1bmRpbmdfaW5mbwAAAAAAAAABAAAH0AAAAAtGdW5kaW5nSW5mbwA=",
+        "AAAAAAAAAAAAAAAbZ2V0X3VzZXJfZnVuZGluZ19jaGVja3BvaW50AAAAAAEAAAAAAAAABHVzZXIAAAATAAAAAQAAB9AAAAARRnVuZGluZ0NoZWNrcG9pbnQAAAA=",
+        "AAAAAAAAAAAAAAAOc2V0X3Bvb2xfcGxhbmUAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFcGxhbmUAAAAAAAATAAAAAA==",
+        "AAAAAAAAAAAAAAAJc2V0X3Bvb2xzAAAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAVwb29scwAAAAAAA+oAAAATAAAAAA==",
         "AAAAAAAAAAAAAAAVdXBkYXRlX2Z1bmRpbmdfcGVyaW9kAAAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAA5mdW5kaW5nX3BlcmlvZAAAAAAABgAAAAA=",
         "AAAAAAAAAAAAAAATdXBkYXRlX2Z1bmRpbmdfcmF0ZQAAAAABAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAA",
-        "AAAAAAAAAAAAAAAHbWlncmF0ZQAAAAADAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAAC2xvd2VyX2JvdW5kAAAAAAoAAAAAAAAAC3VwcGVyX2JvdW5kAAAAAAoAAAAA",
-        "AAAAAAAAAAAAAAAUc2V0X3ByaXZpbGVnZWRfYWRkcnMAAAAGAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAADXJld2FyZHNfYWRtaW4AAAAAAAATAAAAAAAAABBvcGVyYXRpb25zX2FkbWluAAAAEwAAAAAAAAALcGF1c2VfYWRtaW4AAAAAEwAAAAAAAAAWZW1lcmdlbmN5X3BhdXNlX2FkbWlucwAAAAAD6gAAABMAAAAAAAAAEHN5c3RlbV9mZWVfYWRtaW4AAAATAAAAAA==",
+        "AAAAAAAAAAAAAAAOc2V0X2NhbGN1bGF0b3IAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAKY2FsY3VsYXRvcgAAAAAAEwAAAAA=",
+        "AAAAAAAAAAAAAAAObWlncmF0ZV9ib3VuZHMAAAAAAAMAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAALbG93ZXJfYm91bmQAAAAACgAAAAAAAAALdXBwZXJfYm91bmQAAAAACgAAAAA=",
+        "AAAAAAAAAAAAAAAUc2V0X3ByaXZpbGVnZWRfYWRkcnMAAAACAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAAC3BhdXNlX2FkbWluAAAAABMAAAAA",
         "AAAAAAAAAAAAAAAUZ2V0X3ByaXZpbGVnZWRfYWRkcnMAAAAAAAAAAQAAA+wAAAARAAAD6gAAABM=",
         "AAAAAAAAAAAAAAAKc2V0X29yYWNsZQAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAZvcmFjbGUAAAAAABMAAAAA",
-        "AAAAAAAAAAAAAAALa2lsbF9jcmVhdGUAAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
+        "AAAAAAAAAAAAAAAJa2lsbF9taW50AAAAAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
         "AAAAAAAAAAAAAAALa2lsbF9yZWRlZW0AAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
         "AAAAAAAAAAAAAAATa2lsbF91cGRhdGVfZnVuZGluZwAAAAABAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAA",
-        "AAAAAAAAAAAAAAANdW5raWxsX2NyZWF0ZQAAAAAAAAEAAAAAAAAABWFkbWluAAAAAAAAEwAAAAA=",
+        "AAAAAAAAAAAAAAALdW5raWxsX21pbnQAAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
         "AAAAAAAAAAAAAAANdW5raWxsX3JlZGVlbQAAAAAAAAEAAAAAAAAABWFkbWluAAAAAAAAEwAAAAA=",
         "AAAAAAAAAAAAAAAVdW5raWxsX3VwZGF0ZV9mdW5kaW5nAAAAAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
-        "AAAAAAAAAAAAAAAUZ2V0X2lzX2tpbGxlZF9jcmVhdGUAAAAAAAAAAQAAAAE=",
+        "AAAAAAAAAAAAAAASZ2V0X2lzX2tpbGxlZF9taW50AAAAAAAAAAAAAQAAAAE=",
         "AAAAAAAAAAAAAAAUZ2V0X2lzX2tpbGxlZF9yZWRlZW0AAAAAAAAAAQAAAAE=",
         "AAAAAAAAAAAAAAAcZ2V0X2lzX2tpbGxlZF91cGRhdGVfZnVuZGluZwAAAAAAAAABAAAAAQ==",
         "AAAAAAAAAAAAAAAJZ2V0X3ByaWNlAAAAAAAAAAAAAAEAAAAK",
@@ -998,19 +1089,20 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAAOcmV2ZXJ0X3VwZ3JhZGUAAAAAAAEAAAAAAAAABWFkbWluAAAAAAAAEwAAAAA=",
         "AAAAAAAAAAAAAAASc2V0X2VtZXJnZW5jeV9tb2RlAAAAAAACAAAAAAAAAA9lbWVyZ2VuY3lfYWRtaW4AAAAAEwAAAAAAAAAFdmFsdWUAAAAAAAABAAAAAA==",
         "AAAAAAAAAAAAAAASZ2V0X2VtZXJnZW5jeV9tb2RlAAAAAAAAAAAAAQAAAAE=",
-        "AAAABAAAAAAAAAAAAAAAEkxvbmdTaG9ydFBhaXJFcnJvcgAAAAAACQAAAAAAAAASQWxyZWFkeUluaXRpYWxpemVkAAAAAADJAAAAAAAAABFXcm9uZ0lucHV0VmVjU2l6ZQAAAAAAAMoAAAAAAAAADUludmFsaWRPcmFjbGUAAAAAAADLAAAAAAAAAAxJbnZhbGlkSW5wdXQAAADMAAAAAAAAABRGdW5kaW5nV2FzTm90VXBkYXRlZAAAAM0AAAAAAAAAF0ZhaWxlZFRvR2V0UG9vbFJlc2VydmVzAAAAAM4AAAAAAAAAHEZhaWxlZFRvR2V0Q2FsY3VsYXRvclBlcmNlbnQAAADPAAAAAAAAACBGYWlsZWRUb1VwZGF0ZVRva2VuU2NhbGluZ0ZhY3RvcgAAANAAAAAAAAAAFkZhaWxlZFRvR2V0T3JhY2xlUHJpY2UAAAAAANE=",
+        "AAAABAAAAAAAAAAAAAAAEkxvbmdTaG9ydFBhaXJFcnJvcgAAAAAACgAAAAAAAAASQWxyZWFkeUluaXRpYWxpemVkAAAAAADJAAAAAAAAABFXcm9uZ0lucHV0VmVjU2l6ZQAAAAAAAMoAAAAAAAAADUludmFsaWRPcmFjbGUAAAAAAADLAAAAAAAAAAxJbnZhbGlkSW5wdXQAAADMAAAAAAAAABRGdW5kaW5nV2FzTm90VXBkYXRlZAAAAM0AAAAAAAAAF0ZhaWxlZFRvR2V0UG9vbFJlc2VydmVzAAAAAM4AAAAAAAAAHEZhaWxlZFRvR2V0Q2FsY3VsYXRvclBlcmNlbnQAAADPAAAAAAAAACBGYWlsZWRUb1VwZGF0ZVRva2VuU2NhbGluZ0ZhY3RvcgAAANAAAAAAAAAAFkZhaWxlZFRvR2V0T3JhY2xlUHJpY2UAAAAAANEAAAAAAAAAC1Bvb2xzTm90U2V0AAAAANI=",
         "AAAAAQAAAAAAAAAAAAAAEUZ1bmRpbmdDaGVja3BvaW50AAAAAAAABQAAAAAAAAAHYWNjb3VudAAAAAATAAAAAAAAAAxsb25nX2JhbGFuY2UAAAAKAAAAAAAAAApsb25nX2luZGV4AAAAAAAHAAAAAAAAAA1zaG9ydF9iYWxhbmNlAAAAAAAACgAAAAAAAAALc2hvcnRfaW5kZXgAAAAABw==",
         "AAAAAQAAAAAAAAAAAAAADkNvbGxhdGVyYWxJbmZvAAAAAAACAAAAAAAAABNjb2xsYXRlcmFsX3Blcl9wYWlyAAAAAAoAAAAAAAAAF2NvbGxhdGVyYWxfcGVyY2VudF9sb25nAAAAAAY=",
         "AAAAAQAAAAAAAAAAAAAAC0Z1bmRpbmdJbmZvAAAAAAcAAAAAAAAAHWN1bXVsYXRpdmVfZnVuZGluZ19pbmRleF9sb25nAAAAAAAABwAAAAAAAAAeY3VtdWxhdGl2ZV9mdW5kaW5nX2luZGV4X3Nob3J0AAAAAAAHAAAAAAAAAA5mdW5kaW5nX3BlcmlvZAAAAAAABgAAAAAAAAAYbGFzdDI0aF9hdmdfZnVuZGluZ19yYXRlAAAABwAAAAAAAAARbGFzdF9mdW5kaW5nX3JhdGUAAAAAAAAHAAAAAAAAABRsYXN0X2Z1bmRpbmdfcmF0ZV90cwAAAAYAAAAAAAAAGnNhbml0aXplX2NsYW1wX2Rlbm9taW5hdG9yAAAAAAAH",
-        "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAAFQAAAAAAAAAAAAAACVRva2VuTG9uZwAAAAAAAAAAAAAAAAAAClRva2VuU2hvcnQAAAAAAAAAAAAAAAAAD1Rva2VuQ29sbGF0ZXJhbAAAAAAAAAAAAAAAABFDb2xsYXRlcmFsUGVyUGFpcgAAAAAAAAAAAAAAAAAAFUNvbGxhdGVyYWxQZXJjZW50TG9uZwAAAAAAAAAAAAAAAAAABFBvb2wAAAAAAAAAAAAAAApDYWxjdWxhdG9yAAAAAAAAAAAAAAAAAAxOb3JtYWxPcmFjbGUAAAAAAAAAAAAAABlNYXhSYXRpb1BlcmNlbnREaXZlcmdlbmNlAAAAAAAAAAAAAAAAAAAYU2FuaXRpemVDbGFtcERlbm9taW5hdG9yAAAAAQAAAAAAAAARRnVuZGluZ0NoZWNrcG9pbnQAAAAAAAABAAAAEwAAAAAAAAAAAAAAGkN1bXVsYXRpdmVGdW5kaW5nSW5kZXhMb25nAAAAAAAAAAAAAAAAABtDdW11bGF0aXZlRnVuZGluZ0luZGV4U2hvcnQAAAAAAAAAAAAAAAAPTGFzdEZ1bmRpbmdSYXRlAAAAAAAAAAAAAAAAFUxhc3QyNGhBdmdGdW5kaW5nUmF0ZQAAAAAAAAAAAAAAAAAAEUxhc3RGdW5kaW5nUmF0ZVRzAAAAAAAAAAAAAAAAAAANRnVuZGluZ1BlcmlvZAAAAAAAAAAAAAAAAAAADExhc3RVcGRhdGVUcwAAAAAAAAAAAAAADklzS2lsbGVkQ3JlYXRlAAAAAAAAAAAAAAAAAA5Jc0tpbGxlZFJlZGVlbQAAAAAAAAAAAAAAAAAVSXNLaWxsZWRVcGRhdGVGdW5kaW5nAAAA",
+        "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAAFwAAAAAAAAAAAAAACVRva2VuTG9uZwAAAAAAAAAAAAAAAAAAClRva2VuU2hvcnQAAAAAAAAAAAAAAAAAD1Rva2VuQ29sbGF0ZXJhbAAAAAAAAAAAAAAAABFDb2xsYXRlcmFsUGVyUGFpcgAAAAAAAAAAAAAAAAAAFUNvbGxhdGVyYWxQZXJjZW50TG9uZwAAAAAAAAAAAAAAAAAACkNhbGN1bGF0b3IAAAAAAAAAAAAAAAAABk9yYWNsZQAAAAAAAAAAAAAAAAAJUG9vbFBsYW5lAAAAAAAAAAAAAAAAAAAIUG9vbExvbmcAAAAAAAAAAAAAAAlQb29sU2hvcnQAAAAAAAAAAAAAAAAAABlNYXhSYXRpb1BlcmNlbnREaXZlcmdlbmNlAAAAAAAAAAAAAAAAAAAYU2FuaXRpemVDbGFtcERlbm9taW5hdG9yAAAAAQAAAAAAAAARRnVuZGluZ0NoZWNrcG9pbnQAAAAAAAABAAAAEwAAAAAAAAAAAAAAGkN1bXVsYXRpdmVGdW5kaW5nSW5kZXhMb25nAAAAAAAAAAAAAAAAABtDdW11bGF0aXZlRnVuZGluZ0luZGV4U2hvcnQAAAAAAAAAAAAAAAAPTGFzdEZ1bmRpbmdSYXRlAAAAAAAAAAAAAAAAFUxhc3QyNGhBdmdGdW5kaW5nUmF0ZQAAAAAAAAAAAAAAAAAAEUxhc3RGdW5kaW5nUmF0ZVRzAAAAAAAAAAAAAAAAAAANRnVuZGluZ1BlcmlvZAAAAAAAAAAAAAAAAAAADExhc3RVcGRhdGVUcwAAAAAAAAAAAAAADElzS2lsbGVkTWludAAAAAAAAAAAAAAADklzS2lsbGVkUmVkZWVtAAAAAAAAAAAAAAAAABVJc0tpbGxlZFVwZGF0ZUZ1bmRpbmcAAAA=",
         "AAAABAAAAAAAAAAAAAAAEkFjY2Vzc0NvbnRyb2xFcnJvcgAAAAAABwAAAAAAAAAMUm9sZU5vdEZvdW5kAAAAZQAAAAAAAAAMVW5hdXRob3JpemVkAAAAZgAAAAAAAAAPQWRtaW5BbHJlYWR5U2V0AAAAAGcAAAAAAAAADEJhZFJvbGVVc2FnZQAAAGgAAAAAAAAAE0Fub3RoZXJBY3Rpb25BY3RpdmUAAAALWgAAAAAAAAAOTm9BY3Rpb25BY3RpdmUAAAAAC1sAAAAAAAAAEUFjdGlvbk5vdFJlYWR5WWV0AAAAAAALXA==",
         "AAAABAAAAAAAAAAAAAAAC09yYWNsZUVycm9yAAAAAAUAAAAeT3JhY2xlRXJyb3I6IE9yYWNsZU5vblBvc2l0aXZlAAAAAAART3JhY2xlTm9uUG9zaXRpdmUAAAAAAAJZAAAAAAAAABFPcmFjbGVUb29Wb2xhdGlsZQAAAAAAAloAAAAAAAAAEk9yYWNsZVN0YWxlRm9yUG9vbAAAAAACWwAAAAAAAAANT3JhY2xlSW52YWxpZAAAAAAAAlwAAAAAAAAAFkZhaWxlZFRvR2V0T3JhY2xlUHJpY2UAAAAAAl0=",
         "AAAAAQAAAAAAAAAAAAAAD09yYWNsZVByaWNlRGF0YQAAAAACAAAAAAAAAAVkZWxheQAAAAAAB9AAAAAFRGVsYXkAAAAAAAAAAAAABXByaWNlAAAAAAAACg==",
         "AAAAAgAAAAAAAAAAAAAADk9yYWNsZVZhbGlkaXR5AAAAAAAFAAAAAAAAAAAAAAALTm9uUG9zaXRpdmUAAAAAAAAAAAAAAAALVG9vVm9sYXRpbGUAAAAAAAAAAAAAAAAMU3RhbGVGb3JQb29sAAAAAAAAAAAAAAAGRnJvemVuAAAAAAAAAAAAAAAAAAVWYWxpZAAAAA==",
         "AAAAAQAAAAAAAAAAAAAAFEhpc3RvcmljYWxPcmFjbGVEYXRhAAAAAwAAAAAAAAAKbGFzdF9wcmljZQAAAAAACgAAAAAAAAAPbGFzdF9wcmljZV90d2FwAAAAAAoAAAAAAAAADmxhc3RfdXBkYXRlX3RzAAAAAAAG",
         "AAAAAgAAAAAAAAAAAAAADE9yYWNsZVNvdXJjZQAAAAEAAAAAAAAAAAAAAAlSZWZsZWN0b3IAAAA=",
-        "AAAAAQAAAAAAAAAAAAAAClBhaXJQYXJhbXMAAAAAAAgAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAALbG93ZXJfYm91bmQAAAAACgAAAAAAAAAGb3JhY2xlAAAAAAATAAAAAAAAAA9wYWlyX2NhbGN1bGF0b3IAAAAAEwAAAAAAAAAEcG9vbAAAABMAAAAAAAAAEHByaXZpbGVnZWRfYWRkcnMAAAPtAAAABgAAABMAAAATAAAAEwAAABMAAAPqAAAAEwAAABMAAAAAAAAABnRva2VucwAAAAAD6gAAABMAAAAAAAAAC3VwcGVyX2JvdW5kAAAAAAo=",
+        "AAAAAQAAAAAAAAAAAAAAClBhaXJQYXJhbXMAAAAAAAgAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAALbG93ZXJfYm91bmQAAAAACgAAAAAAAAAGb3JhY2xlAAAAAAATAAAAAAAAAA9wYWlyX2NhbGN1bGF0b3IAAAAAEwAAAAAAAAAKcG9vbF9wbGFuZQAAAAAAEwAAAAAAAAAQcHJpdmlsZWdlZF9hZGRycwAAA+0AAAACAAAAEwAAABMAAAAAAAAABnRva2VucwAAAAAD6gAAABMAAAAAAAAAC3VwcGVyX2JvdW5kAAAAAAo=",
         "AAAAAgAAAAAAAAAAAAAACURpcmVjdGlvbgAAAAAAAAIAAAAAAAAAAAAAAARMb25nAAAAAAAAAAAAAAAFU2hvcnQAAAA=",
+        "AAAAAQAAAAAAAAAAAAAAHUxpbmVhckxvbmdTaG9ydFBhaXJQYXJhbWV0ZXJzAAAAAAAAAgAAAAAAAAALbG93ZXJfYm91bmQAAAAACgAAAAAAAAALdXBwZXJfYm91bmQAAAAACg==",
         "AAAAAQAAAAAAAAAAAAAAClBvb2xQYXJhbXMAAAAAAAkAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAANYXNzZXRzX2NvbmZpZwAAAAAAA+0AAAACAAAAEQAAABEAAAAAAAAACWRpcmVjdGlvbgAAAAAAB9AAAAAJRGlyZWN0aW9uAAAAAAAAAAAAAAtmZWVzX2NvbmZpZwAAAAPtAAAAAgAAAAQAAAAEAAAAAAAAAA9sb25nX3Nob3J0X3BhaXIAAAAAEwAAAAAAAAASbHBfdG9rZW5fd2FzbV9oYXNoAAAAAAPuAAAAIAAAAAAAAAAQcHJpdmlsZWdlZF9hZGRycwAAA+0AAAAGAAAAEwAAABMAAAATAAAAEwAAA+oAAAATAAAAEwAAAAAAAAAGcm91dGVyAAAAAAATAAAAAAAAAAZ0b2tlbnMAAAAAA+oAAAAT",
         "AAAAAQAAAAAAAAAAAAAADlJhdGVUYWJsZUVudHJ5AAAAAAACAAAAAAAAAAlkZXZpYXRpb24AAAAAAAAKAAAAAAAAAARyYXRlAAAABA==",
         "AAAABAAAAAAAAAAAAAAABUVycm9yAAAAAAAAAwAAAAAAAAATQW5vdGhlckFjdGlvbkFjdGl2ZQAAAAtaAAAAAAAAAA5Ob0FjdGlvbkFjdGl2ZQAAAAALWwAAAAAAAAARQWN0aW9uTm90UmVhZHlZZXQAAAAAAAtc",
@@ -1031,19 +1123,23 @@ export class Client extends ContractClient {
         get_position_tokens: this.txFromJSON<Array<u128>>,
         get_collateral_info: this.txFromJSON<CollateralInfo>,
         get_funding_info: this.txFromJSON<FundingInfo>,
+        get_user_funding_checkpoint: this.txFromJSON<FundingCheckpoint>,
+        set_pool_plane: this.txFromJSON<null>,
+        set_pools: this.txFromJSON<null>,
         update_funding_period: this.txFromJSON<null>,
         update_funding_rate: this.txFromJSON<null>,
-        migrate: this.txFromJSON<null>,
+        set_calculator: this.txFromJSON<null>,
+        migrate_bounds: this.txFromJSON<null>,
         set_privileged_addrs: this.txFromJSON<null>,
         get_privileged_addrs: this.txFromJSON<Map<string, Array<string>>>,
         set_oracle: this.txFromJSON<null>,
-        kill_create: this.txFromJSON<null>,
+        kill_mint: this.txFromJSON<null>,
         kill_redeem: this.txFromJSON<null>,
         kill_update_funding: this.txFromJSON<null>,
-        unkill_create: this.txFromJSON<null>,
+        unkill_mint: this.txFromJSON<null>,
         unkill_redeem: this.txFromJSON<null>,
         unkill_update_funding: this.txFromJSON<null>,
-        get_is_killed_create: this.txFromJSON<boolean>,
+        get_is_killed_mint: this.txFromJSON<boolean>,
         get_is_killed_redeem: this.txFromJSON<boolean>,
         get_is_killed_update_funding: this.txFromJSON<boolean>,
         get_price: this.txFromJSON<u128>,

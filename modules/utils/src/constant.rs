@@ -48,6 +48,12 @@ pub const FUNDING_RATE_BUFFER_I128: i128 = FUNDING_RATE_BUFFER as i128; // expo 
 
 // Pool
 pub const FEE_MULTIPLIER: u128 = 10_000;
+
+pub const PERCENT_MULTIPLIER: u128 = FEE_MULTIPLIER;
+pub const PERCENT_MULTIPLIER_I64: i64 = FEE_MULTIPLIER as i64;
+pub const PERCENT_MULTIPLIER_U64: u64 = FEE_MULTIPLIER as u64;
+pub const PERCENT_MULTIPLIER_I128: i128 = FEE_MULTIPLIER as i128;
+
 pub const DEFAULT_MAX_TWAP_UPDATE_PRICE_BAND_DENOMINATOR: u64 = 3; // '3' here means clamp new data point to 33% (1/3) divergence from current twap (if twap > 0)
 
 // Minimum liquidity locked permanently on first deposit to prevent dust attacks
@@ -68,6 +74,7 @@ pub const ONE_MINUTE: i128 = 60_i128;
 pub const FIVE_MINUTE: i128 = (60 * 5) as i128;
 pub const ONE_HOUR: u64 = 3600;
 pub const ONE_HOUR_I128: i128 = ONE_HOUR as i128;
+pub const ONE_HOUR_I64: i64 = ONE_HOUR as i64;
 pub const TWENTY_FOUR_HOUR: u64 = 3600 * 24;
 pub const THIRTEEN_DAY: u64 = TWENTY_FOUR_HOUR * 13; // IF unstake default
 pub const EPOCH_DURATION: u64 = TWENTY_FOUR_HOUR * 28;

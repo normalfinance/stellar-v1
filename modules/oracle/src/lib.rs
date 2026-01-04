@@ -1,8 +1,9 @@
 #![no_std]
 
 use soroban_sdk::{panic_with_error, Address, Env, Symbol, Vec};
+use types::oracle::OraclePriceData;
 
-use crate::{errors::OracleError, state::OraclePriceData};
+use crate::errors::OracleError;
 
 pub mod errors;
 pub mod math;

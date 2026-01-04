@@ -42,10 +42,10 @@ export interface FactoryConfig {
 
 export interface CreatorParams {
   admin: string;
-  calculator: string;
   collateral_per_pair: u128;
   collateral_token: string;
   oracle: string;
+  pair_calculator: string;
   pair_name: string;
   pool: string;
   serialized_long_asset: Buffer;
@@ -319,6 +319,46 @@ export interface Client {
      */
     simulate?: boolean;
   }) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a set_privileged_addrs transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  set_privileged_addrs: ({admin, pause_admin, emergency_pause_admin}: {admin: string, pause_admin: string, emergency_pause_admin: string}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a get_privileged_addrs transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_privileged_addrs: (options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Map<string, Array<string>>>>
 
   /**
    * Construct and simulate a kill_create transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -604,7 +644,7 @@ export interface Client {
 export class Client extends ContractClient {
   static async deploy<T = Client>(
         /** Constructor/Initialization Args for the contract's `__constructor` method */
-        {admin, emergency_admin, token_factory, lsp_contract_wasm}: {admin: string, emergency_admin: string, token_factory: string, lsp_contract_wasm: Buffer},
+        {admin, emergency_admin, pause_admin, emergency_pause_admin, token_factory, lsp_contract_wasm}: {admin: string, emergency_admin: string, pause_admin: string, emergency_pause_admin: string, token_factory: string, lsp_contract_wasm: Buffer},
     /** Options for initializing a Client as well as for calling a method, with extras specific to deploying. */
     options: MethodOptions &
       Omit<ContractClientOptions, "contractId"> & {
@@ -616,13 +656,13 @@ export class Client extends ContractClient {
         format?: "hex" | "base64";
       }
   ): Promise<AssembledTransaction<T>> {
-    return ContractClient.deploy({admin, emergency_admin, token_factory, lsp_contract_wasm}, options)
+    return ContractClient.deploy({admin, emergency_admin, pause_admin, emergency_pause_admin, token_factory, lsp_contract_wasm}, options)
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
       new ContractSpec([ "AAAAAQAAAAAAAAAAAAAADUZhY3RvcnlDb25maWcAAAAAAAACAAAAAAAAABFsc3BfY29udHJhY3Rfd2FzbQAAAAAAA+4AAAAgAAAAAAAAAA10b2tlbl9mYWN0b3J5AAAAAAAAEw==",
-        "AAAAAQAAAAAAAAAAAAAADUNyZWF0b3JQYXJhbXMAAAAAAAAJAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAACmNhbGN1bGF0b3IAAAAAABMAAAAAAAAAE2NvbGxhdGVyYWxfcGVyX3BhaXIAAAAACgAAAAAAAAAQY29sbGF0ZXJhbF90b2tlbgAAABMAAAAAAAAABm9yYWNsZQAAAAAAEwAAAAAAAAAJcGFpcl9uYW1lAAAAAAAAEQAAAAAAAAAEcG9vbAAAABMAAAAAAAAAFXNlcmlhbGl6ZWRfbG9uZ19hc3NldAAAAAAAAA4AAAAAAAAAFnNlcmlhbGl6ZWRfc2hvcnRfYXNzZXQAAAAAAA4=",
-        "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAQAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAPZW1lcmdlbmN5X2FkbWluAAAAABMAAAAAAAAADXRva2VuX2ZhY3RvcnkAAAAAAAATAAAAAAAAABFsc3BfY29udHJhY3Rfd2FzbQAAAAAAA+4AAAAgAAAAAA==",
+        "AAAAAQAAAAAAAAAAAAAADUNyZWF0b3JQYXJhbXMAAAAAAAAJAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAAE2NvbGxhdGVyYWxfcGVyX3BhaXIAAAAACgAAAAAAAAAQY29sbGF0ZXJhbF90b2tlbgAAABMAAAAAAAAABm9yYWNsZQAAAAAAEwAAAAAAAAAPcGFpcl9jYWxjdWxhdG9yAAAAABMAAAAAAAAACXBhaXJfbmFtZQAAAAAAABEAAAAAAAAABHBvb2wAAAATAAAAAAAAABVzZXJpYWxpemVkX2xvbmdfYXNzZXQAAAAAAAAOAAAAAAAAABZzZXJpYWxpemVkX3Nob3J0X2Fzc2V0AAAAAAAO",
+        "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAYAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAPZW1lcmdlbmN5X2FkbWluAAAAABMAAAAAAAAAC3BhdXNlX2FkbWluAAAAABMAAAAAAAAAFWVtZXJnZW5jeV9wYXVzZV9hZG1pbgAAAAAAABMAAAAAAAAADXRva2VuX2ZhY3RvcnkAAAAAAAATAAAAAAAAABFsc3BfY29udHJhY3Rfd2FzbQAAAAAAA+4AAAAgAAAAAA==",
         "AAAAAAAAA0AqIEBub3RpY2UgQ3JlYXRlcyBhIGxvbmdTaG9ydFBhaXIgY29udHJhY3QgYW5kIGFzc29jaWF0ZWQgbG9uZyBhbmQgc2hvcnQgdG9rZW5zLgogICAgICogQHBhcmFtIHBhcmFtcyBDb25zdHJ1Y3RvciBwYXJhbXMgdXNlZCB0byBpbml0aWFsaXplIHRoZSBMU1AuIEtleS12YWx1ZWQgb2JqZWN0IHdpdGggdGhlIGZvbGxvd2luZyBzdHJ1Y3R1cmU6CiAgICAgKiAgICAgLSBgcGFpck5hbWVgOiBOYW1lIG9mIHRoZSBsb25nIHNob3J0IHBhaXIgY29udHJhY3QuCiAgICAgKiAgICAgLSBgY29sbGF0ZXJhbFBlclBhaXJgOiBIb3cgbWFueSB1bml0cyBvZiBjb2xsYXRlcmFsIGFyZSByZXF1aXJlZCB0byBtaW50IG9uZSBwYWlyIG9mIHN5bnRoZXRpYyB0b2tlbnMuCiAgICAgKiAgICAgLSBgY29sbGF0ZXJhbFRva2VuYDogRVJDMjAgdG9rZW4gdXNlZCBhcyBjb2xsYXRlcmFsIGluIHRoZSBMU1AuCiAgICAgKiAgICAgLSBgY2FsY3VsYXRvcmA6IENvbnRyYWN0IHByb3ZpZGluZyBzZXR0bGVtZW50IHBheW91dCBsb2dpYy4KICAgICAqIEByZXR1cm4gbHNwQWRkcmVzcyB0aGUgZGVwbG95ZWQgYWRkcmVzcyBvZiB0aGUgbmV3IGxvbmcgc2hvcnQgcGFpciBjb250cmFjdC4KICAgICAqIEBub3RpY2UgQ3JlYXRlZCBMU1AgaXMgbm90IHJlZ2lzdGVyZWQgd2l0aGluIHRoZSByZWdpc3RyeSBhcyB0aGUgTFNQIHVzZXMgdGhlIE9wdGltaXN0aWMgT3JhY2xlIGZvciBzZXR0bGVtZW50LgogICAgICogQG5vdGljZSBUaGUgTFNQIGNvbnN0cnVjdG9yIGRvZXMgYSBudW1iZXIgb2YgdmFsaWRhdGlvbnMgb24gaW5wdXQgcGFyYW1zLiBUaGVzZSBhcmUgbm90IHJlcGVhdGVkIGhlcmUuAAAAE2RlcGxveV9sc3BfY29udHJhY3QAAAAAAQAAAAAAAAAGcGFyYW1zAAAAAAfQAAAADUNyZWF0b3JQYXJhbXMAAAAAAAABAAAAEw==",
         "AAAAAAAAAAAAAAASZ2V0X2ZhY3RvcnlfY29uZmlnAAAAAAAAAAAAAQAAB9AAAAANRmFjdG9yeUNvbmZpZwAAAA==",
         "AAAAAAAAAAAAAAARZ2V0X3Rva2VuX2ZhY3RvcnkAAAAAAAAAAAAAAQAAABM=",
@@ -632,6 +672,8 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAAOZ2V0X3BhaXJfY291bnQAAAAAAAEAAAAAAAAACG9wZXJhdG9yAAAAEwAAAAEAAAAE",
         "AAAAAAAAAAAAAAAUZ2V0X3RvdGFsX3BhaXJfY291bnQAAAAAAAAAAQAAAAQ=",
         "AAAAAAAAAAAAAAAVc2V0X2xzcF9jb250cmFjdF93YXNtAAAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAABFsc3BfY29udHJhY3Rfd2FzbQAAAAAAA+4AAAAgAAAAAA==",
+        "AAAAAAAAAAAAAAAUc2V0X3ByaXZpbGVnZWRfYWRkcnMAAAADAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAAC3BhdXNlX2FkbWluAAAAABMAAAAAAAAAFWVtZXJnZW5jeV9wYXVzZV9hZG1pbgAAAAAAABMAAAAA",
+        "AAAAAAAAAAAAAAAUZ2V0X3ByaXZpbGVnZWRfYWRkcnMAAAAAAAAAAQAAA+wAAAARAAAD6gAAABM=",
         "AAAAAAAAAAAAAAALa2lsbF9jcmVhdGUAAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
         "AAAAAAAAAAAAAAANdW5raWxsX2NyZWF0ZQAAAAAAAAEAAAAAAAAABWFkbWluAAAAAAAAEwAAAAA=",
         "AAAAAAAAAAAAAAAUZ2V0X2lzX2tpbGxlZF9jcmVhdGUAAAAAAAAAAQAAAAE=",
@@ -666,6 +708,8 @@ export class Client extends ContractClient {
         get_pair_count: this.txFromJSON<u32>,
         get_total_pair_count: this.txFromJSON<u32>,
         set_lsp_contract_wasm: this.txFromJSON<null>,
+        set_privileged_addrs: this.txFromJSON<null>,
+        get_privileged_addrs: this.txFromJSON<Map<string, Array<string>>>,
         kill_create: this.txFromJSON<null>,
         unkill_create: this.txFromJSON<null>,
         get_is_killed_create: this.txFromJSON<boolean>,

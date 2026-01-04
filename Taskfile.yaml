@@ -24,7 +24,6 @@ tasks:
       # LSP
       - task -d contracts/normal_oracle build || exit 1
       - task -d contracts/token_long_short_pair build || exit 1
-      - task -d contracts/token_factory build || exit 1
       - task -d contracts/long_short_pair_factory build || exit 1
       - cp ./target/wasm32v1-none/release/*.wasm ./wasm
 

@@ -1,14 +1,15 @@
 use soroban_sdk::contracttype;
-use utils::{constant::PRICE_PRECISION, temporal::Delay};
+use types::oracle::OraclePriceData;
+use utils::constant::PRICE_PRECISION;
 
 use crate::errors::OracleError;
 
-#[contracttype]
-#[derive(Default, Clone, Copy, Debug)]
-pub struct OraclePriceData {
-    pub price: u128,
-    pub delay: Delay,
-}
+// #[contracttype]
+// #[derive(Default, Clone, Copy, Debug)]
+// pub struct OraclePriceData {
+//     pub price: u128,
+//     pub delay: Delay,
+// }
 
 // ordered by "severity"
 #[contracttype]

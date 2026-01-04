@@ -10,16 +10,6 @@ permissions: # required permissions for the workflow
   attestations: write
 
 jobs:
-  # Token Factory contract
-  release-contract-token-factory:
-    uses: stellar-expert/soroban-build-workflow/.github/workflows/release.yml@main
-    with:
-      release_name: ${{ github.ref_name }}
-      release_description: "Contract release"
-      relative_path: "contracts/token_factory"
-    secrets:
-      release_token: ${{ secrets.GITHUB_TOKEN }}
-
   # Calculator contract
   release-contract-calculator:
     uses: stellar-expert/soroban-build-workflow/.github/workflows/release.yml@main

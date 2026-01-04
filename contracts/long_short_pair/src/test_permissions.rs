@@ -468,8 +468,10 @@ fn test_update_pool_plane() {
 fn test_update_pools() {
     let setup = Setup::default();
     let user = Address::generate(&setup.env);
-    let pool_long = Address::generate(&setup.env);
-    let pool_short = Address::generate(&setup.env);
+    let pools: Vec<Address> = Vec::from_array(
+        &setup.env,
+        [Address::generate(&setup.env), Address::generate(&setup.env)],
+    );
 
     for (addr, is_ok) in [
         (user.clone(), false),
@@ -477,13 +479,7 @@ fn test_update_pools() {
         (setup.emergency_admin, false),
         (setup.pause_admin, false),
     ] {
-        assert_eq!(
-            setup
-                .pair
-                .try_set_pools(&addr, &pool_long, &pool_short)
-                .is_ok(),
-            is_ok
-        );
+        assert_eq!(setup.pair.try_set_pools(&addr, &pools).is_ok(), is_ok);
     }
 }
 
@@ -551,7 +547,10 @@ fn test_migrate_bounds() {
         (setup.pause_admin, false),
     ] {
         assert_eq!(
-            setup.pair.try_migrate_bounds(&addr, &100, &200).is_ok(),
+            setup
+                .pair
+                .try_migrate_bounds(&addr, &100_0000000, &200_0000000)
+                .is_ok(),
             is_ok
         );
     }

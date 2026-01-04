@@ -7,6 +7,7 @@ use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPr
 use soroban_sdk::{testutils::Address as _, Address, Env, Symbol, Vec};
 use std::vec;
 use types::oracle::OracleSource;
+use utils::test_utils::jump;
 
 pub(crate) struct TestConfig {
     pub(crate) users_count: u32,
@@ -48,7 +49,9 @@ impl Setup<'_> {
         e.mock_all_auths();
         e.cost_estimate().budget().reset_unlimited();
 
-        let start_time = e.ledger().timestamp();
+        let start_time = 1767285451; // e.ledger().timestamp();
+        jump(&e, start_time);
+
         let users = Self::generate_random_users(&e, config.users_count);
         let admin = users[0].clone();
 
@@ -69,8 +72,12 @@ impl Setup<'_> {
         let prices: Vec<i128> = Vec::from_array(&e, [initial_asset_price, 1_00000000000000]);
         reflector_client.set_price(&prices, &start_time);
 
-        let normal_oracle = create_normal_oracle_contract(
-            &e,
+        // verify price data can be fetched
+        let result_1 = reflector_client.lastprice(&asset.clone()).unwrap();
+        assert_eq!(result_1.price, initial_asset_price);
+
+        let normal_oracle = create_normal_oracle_contract(&e);
+        normal_oracle.initialize(
             &admin,
             &asset_symbol,
             &OracleSource::Reflector,
@@ -97,20 +104,8 @@ impl Setup<'_> {
     }
 }
 
-pub fn create_normal_oracle_contract<'a>(
-    e: &Env,
-    admin: &Address,
-    asset_symbol: &Symbol,
-    oracle_source: &OracleSource,
-    reflector_addr: &Address,
-) -> NormalOracleClient<'a> {
-    let normal_oracle = NormalOracleClient::new(
-        e,
-        &e.register(
-            crate::NormalOracle {},
-            (admin, asset_symbol, oracle_source, reflector_addr),
-        ),
-    );
+pub fn create_normal_oracle_contract<'a>(e: &Env) -> NormalOracleClient<'a> {
+    let normal_oracle = NormalOracleClient::new(e, &e.register(crate::NormalOracle {}, ()));
     normal_oracle
 }
 

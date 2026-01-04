@@ -1,28 +1,25 @@
 #![cfg(test)]
 extern crate std;
 
-use crate::testutils::{Setup, TestConfig};
-use utils::constant::{FIVE_MINUTE, PERCENTAGE_PRECISION_U64};
+use crate::testutils::Setup;
+use utils::constant::{FIVE_MINUTE, PERCENTAGE_PRECISION_U64, PRICE_PRECISION_I128};
+
+// TODO: test double init
 
 #[test]
 fn test_get_price() {
-    let setup = Setup::new_with_config(
-        &(TestConfig {
-            ..TestConfig::default()
-        }),
-    );
+    let setup = Setup::default();
 
     let price_data = setup.normal_oracle.get_price();
-    assert_eq!(price_data.price as i128, setup.initial_asset_price);
+    assert_eq!(
+        price_data.price as i128,
+        setup.initial_asset_price / PRICE_PRECISION_I128
+    );
 }
 
 #[test]
 fn test_set_seconds_before_stale() {
-    let setup = Setup::new_with_config(
-        &(TestConfig {
-            ..TestConfig::default()
-        }),
-    );
+    let setup = Setup::default();
     let stale_limit = (FIVE_MINUTE as u64) * 2;
 
     // Test the default
@@ -39,11 +36,7 @@ fn test_set_seconds_before_stale() {
 
 #[test]
 fn test_set_too_volatile_ratio() {
-    let setup = Setup::new_with_config(
-        &(TestConfig {
-            ..TestConfig::default()
-        }),
-    );
+    let setup = Setup::default();
     let too_volatile_ratio = PERCENTAGE_PRECISION_U64 / 10;
 
     // Test the default

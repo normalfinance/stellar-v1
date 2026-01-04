@@ -1,13 +1,16 @@
-use soroban_sdk::{contracttype, Address, Vec};
+use soroban_sdk::{contracttype, Address, Bytes, BytesN, Symbol, Vec};
 
 #[contracttype]
 pub struct PairParams {
     pub admin: Address,
     pub privileged_addrs: (Address, Address),
-    pub tokens: Vec<Address>,
+    pub asset: Symbol,
+    pub collateral_token: Address,
+    pub pair_token_wasm_hash: BytesN<32>,
     pub oracle: Address,
     pub pool_plane: Address,
     pub pair_calculator: Address,
+    pub collateral_per_pair: u128,
     pub lower_bound: u128,
     pub upper_bound: u128,
 }
@@ -22,6 +25,6 @@ pub enum Direction {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LinearLongShortPairParameters {
-    pub upper_bound: u128,
     pub lower_bound: u128,
+    pub upper_bound: u128,
 }

@@ -15,6 +15,7 @@ sep-40-oracle = "=1.2.2"
 types = { path = "modules/types" }
 utils = { path = "modules/utils" }
 token_share = { path = "modules/token_share" }
+token_pair = { path = "modules/token_pair" }
 rewards = { path = "modules/rewards" }
 access_control = { path = "modules/access_control" }
 upgrade = { path = "modules/upgrade" }

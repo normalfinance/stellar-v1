@@ -39,7 +39,7 @@ pub trait LongShortPairTrait {
         transfer_amount: u128,
     );
 
-    fn update_oracle_price(e: Env);
+    fn sync_collateral_percent_long(e: Env);
 
     fn get_tokens(e: Env) -> Vec<Address>;
 
@@ -63,6 +63,8 @@ pub trait AdminInterfaceTrait {
 
     // Funding
     fn update_funding_period(e: Env, admin: Address, funding_period: u64);
+
+    fn update_funding_clamp(e: Env, admin: Address, clamp: i128);
 
     fn update_funding_rate(e: Env, admin: Address);
 

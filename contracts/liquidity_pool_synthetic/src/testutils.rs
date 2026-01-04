@@ -149,9 +149,9 @@ impl Setup<'_> {
 
         let liq_pool = create_liqpool_contract(
             &e,
-            &admin,
-            &router,
-            &oracle,
+            admin.clone(),
+            router,
+            oracle.clone(),
             &install_token_wasm(&e),
             &Vec::from_array(&e, [token1.address.clone(), token2.address.clone()]),
             &reward_token.address,
@@ -267,7 +267,7 @@ pub fn create_liqpool_contract<'a>(
     admin: Address,
     router: Address,
     long_short_pair: Address,
-    token_wasm_hash: BytesN<32>,
+    lp_token_wasm_hash: BytesN<32>,
     tokens: Vec<Address>,
     reward_token: Address,
     fee_fraction: u32,
@@ -279,8 +279,8 @@ pub fn create_liqpool_contract<'a>(
         LiquidityPoolSyntheticClient::new(e, &e.register(crate::LiquidityPoolSynthetic {}, ()));
 
     let params = PoolParams {
-        admin,
-        privileged_addrs: &(
+        admin: admin.clone(),
+        privileged_addrs: (
             admin.clone(),
             admin.clone(),
             admin.clone(),
@@ -290,13 +290,13 @@ pub fn create_liqpool_contract<'a>(
         ),
         router,
         long_short_pair,
-        token_wasm_hash,
+        lp_token_wasm_hash,
         tokens,
-        fees_config: &(
+        fees_config: (
             fee_fraction,
             5000, // 50% protocol fee fraction
         ),
-        asset_config: &(base_asset.clone(), Symbol::new(e, "USDC")),
+        assets_config: (base_asset.clone(), Symbol::new(e, "USDC")),
         direction: Direction::Long,
     };
     liqpool.initialize_all(

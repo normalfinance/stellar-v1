@@ -42,10 +42,45 @@ export const CalculatorError = {
 
 export type DataKey = {tag: "LongShortPairParams", values: readonly [string]};
 
+export type OracleSource = {tag: "Reflector", values: void};
+
+
+export interface PairParams {
+  admin: string;
+  lower_bound: u128;
+  oracle: string;
+  pair_calculator: string;
+  pool_plane: string;
+  privileged_addrs: readonly [string, string];
+  tokens: Array<string>;
+  upper_bound: u128;
+}
+
+export type Direction = {tag: "Long", values: void} | {tag: "Short", values: void};
+
 
 export interface LinearLongShortPairParameters {
   lower_bound: u128;
   upper_bound: u128;
+}
+
+
+export interface PoolParams {
+  admin: string;
+  assets_config: readonly [string, string];
+  direction: Direction;
+  fees_config: readonly [u32, u32];
+  long_short_pair: string;
+  lp_token_wasm_hash: Buffer;
+  privileged_addrs: readonly [string, string, string, string, Array<string>, string];
+  router: string;
+  tokens: Array<string>;
+}
+
+
+export interface RateTableEntry {
+  deviation: u128;
+  rate: u32;
 }
 
 export const MathError = {
@@ -110,9 +145,29 @@ export type Delay = readonly [u64];
 
 export interface Client {
   /**
+   * Construct and simulate a get_params transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_params: ({pair}: {pair: string}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<LinearLongShortPairParameters>>
+
+  /**
    * Construct and simulate a set_parameters transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  set_parameters: ({long_short_pair, lower_bound, upper_bound}: {long_short_pair: string, lower_bound: u128, upper_bound: u128}, options?: {
+  set_parameters: ({pair, lower_bound, upper_bound}: {pair: string, lower_bound: u128, upper_bound: u128}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -171,11 +226,17 @@ export class Client extends ContractClient {
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAAAAAAAAAAAAAOc2V0X3BhcmFtZXRlcnMAAAAAAAMAAAAAAAAAD2xvbmdfc2hvcnRfcGFpcgAAAAATAAAAAAAAAAtsb3dlcl9ib3VuZAAAAAAKAAAAAAAAAAt1cHBlcl9ib3VuZAAAAAAKAAAAAA==",
+      new ContractSpec([ "AAAAAAAAAAAAAAAKZ2V0X3BhcmFtcwAAAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAH0AAAAB1MaW5lYXJMb25nU2hvcnRQYWlyUGFyYW1ldGVycwAAAA==",
+        "AAAAAAAAAAAAAAAOc2V0X3BhcmFtZXRlcnMAAAAAAAMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAtsb3dlcl9ib3VuZAAAAAAKAAAAAAAAAAt1cHBlcl9ib3VuZAAAAAAKAAAAAA==",
         "AAAAAAAAAVoqIEBub3RpY2UgUmV0dXJucyBhIG51bWJlciBiZXR3ZWVuIDAgYW5kIDEgdG8gaW5kaWNhdGUgaG93IG11Y2ggY29sbGF0ZXJhbCBlYWNoIGxvbmcgYW5kIHNob3J0IHRva2VuIGlzIGVudGl0bGVkCiAgICAgKiB0byBwZXIgY29sbGF0ZXJhbFBlclBhaXIuCiAgICAgKiBAcGFyYW0gb3JhY2xlX3ByaWNlIHByaWNlIGZyb20gdGhlIG9wdGltaXN0aWMgb3JhY2xlIGZvciB0aGUgTFNQIHByaWNlIGlkZW50aWZpZXIuCiAgICAgKiBAcmV0dXJuIGV4cGlyeVBlcmNlbnRMb25nIHRvIGluZGljYXRlIGhvdyBtdWNoIGNvbGxhdGVyYWwgc2hvdWxkIGJlIHNlbnQgYmV0d2VlbiBsb25nIGFuZCBzaG9ydCB0b2tlbnMuAAAAAAAXcGVyY2VudF9sb25nX2NvbGxhdGVyYWwAAAAAAgAAAAAAAAAGY2FsbGVyAAAAAAATAAAAAAAAAAxvcmFjbGVfcHJpY2UAAAAKAAAAAQAAAAY=",
         "AAAABAAAAAAAAAAAAAAAD0NhbGN1bGF0b3JFcnJvcgAAAAAEAAAAAAAAABJBbHJlYWR5SW5pdGlhbGl6ZWQAAAAAAMkAAAAAAAAADUludmFsaWRCb3VuZHMAAAAAAADKAAAAAAAAABBQYXJhbXNBbHJlYWR5U2V0AAAAywAAAAAAAAAZUGFyYW1zTm90U2V0Rm9yQ2FsbGluZ0xTUAAAAAAAAMw=",
         "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAAAQAAAAEAAAAAAAAAE0xvbmdTaG9ydFBhaXJQYXJhbXMAAAAAAQAAABM=",
+        "AAAAAgAAAAAAAAAAAAAADE9yYWNsZVNvdXJjZQAAAAEAAAAAAAAAAAAAAAlSZWZsZWN0b3IAAAA=",
+        "AAAAAQAAAAAAAAAAAAAAClBhaXJQYXJhbXMAAAAAAAgAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAALbG93ZXJfYm91bmQAAAAACgAAAAAAAAAGb3JhY2xlAAAAAAATAAAAAAAAAA9wYWlyX2NhbGN1bGF0b3IAAAAAEwAAAAAAAAAKcG9vbF9wbGFuZQAAAAAAEwAAAAAAAAAQcHJpdmlsZWdlZF9hZGRycwAAA+0AAAACAAAAEwAAABMAAAAAAAAABnRva2VucwAAAAAD6gAAABMAAAAAAAAAC3VwcGVyX2JvdW5kAAAAAAo=",
+        "AAAAAgAAAAAAAAAAAAAACURpcmVjdGlvbgAAAAAAAAIAAAAAAAAAAAAAAARMb25nAAAAAAAAAAAAAAAFU2hvcnQAAAA=",
         "AAAAAQAAAAAAAAAAAAAAHUxpbmVhckxvbmdTaG9ydFBhaXJQYXJhbWV0ZXJzAAAAAAAAAgAAAAAAAAALbG93ZXJfYm91bmQAAAAACgAAAAAAAAALdXBwZXJfYm91bmQAAAAACg==",
+        "AAAAAQAAAAAAAAAAAAAAClBvb2xQYXJhbXMAAAAAAAkAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAANYXNzZXRzX2NvbmZpZwAAAAAAA+0AAAACAAAAEQAAABEAAAAAAAAACWRpcmVjdGlvbgAAAAAAB9AAAAAJRGlyZWN0aW9uAAAAAAAAAAAAAAtmZWVzX2NvbmZpZwAAAAPtAAAAAgAAAAQAAAAEAAAAAAAAAA9sb25nX3Nob3J0X3BhaXIAAAAAEwAAAAAAAAASbHBfdG9rZW5fd2FzbV9oYXNoAAAAAAPuAAAAIAAAAAAAAAAQcHJpdmlsZWdlZF9hZGRycwAAA+0AAAAGAAAAEwAAABMAAAATAAAAEwAAA+oAAAATAAAAEwAAAAAAAAAGcm91dGVyAAAAAAATAAAAAAAAAAZ0b2tlbnMAAAAAA+oAAAAT",
+        "AAAAAQAAAAAAAAAAAAAADlJhdGVUYWJsZUVudHJ5AAAAAAACAAAAAAAAAAlkZXZpYXRpb24AAAAAAAAKAAAAAAAAAARyYXRlAAAABA==",
         "AAAABAAAAAAAAAAAAAAACU1hdGhFcnJvcgAAAAAAAAkAAAAZTWF0aEVycm9yOiBOdW1iZXJPdmVyZmxvdwAAAAAAAA5OdW1iZXJPdmVyZmxvdwAAAAAB/gAAAB1NYXRoRXJyb3I6IEdlbmVyaWMgbWF0aCBlcnJvcgAAAAAAAAlNYXRoRXJyb3IAAAAAAAH/AAAALU1hdGhFcnJvcjogQWRkaXRpb24gb3BlcmF0aW9uIGNhdXNlZCBvdmVyZmxvdwAAAAAAABBBZGRpdGlvbk92ZXJmbG93AAACAAAAADFNYXRoRXJyb3I6IFN1YnRyYWN0aW9uIG9wZXJhdGlvbiBjYXVzZWQgdW5kZXJmbG93AAAAAAAAFFN1YnRyYWN0aW9uVW5kZXJmbG93AAACAQAAADNNYXRoRXJyb3I6IE11bHRpcGxpY2F0aW9uIG9wZXJhdGlvbiBjYXVzZWQgb3ZlcmZsb3cAAAAAFk11bHRpcGxpY2F0aW9uT3ZlcmZsb3cAAAAAAgIAAAAbTWF0aEVycm9yOiBEaXZpc2lvbiBieSB6ZXJvAAAAAA5EaXZpc2lvbkJ5WmVybwAAAAACAwAAACNNYXRoRXJyb3I6IFR5cGUgY29udmVyc2lvbiBvdmVyZmxvdwAAAAASQ29udmVyc2lvbk92ZXJmbG93AAAAAAIEAAAAP01hdGhFcnJvcjogQXR0ZW1wdGVkIHRvIGNvbnZlcnQgbmVnYXRpdmUgdmFsdWUgdG8gdW5zaWduZWQgdHlwZQAAAAASTmVnYXRpdmVUb1Vuc2lnbmVkAAAAAAIFAAAAKk1hdGhFcnJvcjogRml4ZWQtcG9pbnQgYXJpdGhtZXRpYyBvdmVyZmxvdwAAAAAAEkZpeGVkUG9pbnRPdmVyZmxvdwAAAAACBg==",
         "AAAABAAAAAAAAAAAAAAADFN0b3JhZ2VFcnJvcgAAAAQAAAAMU3RvcmFnZUVycm9yAAAAEkFscmVhZHlJbml0aWFsaXplZAAAAAAAyQAAAAAAAAATVmFsdWVOb3RJbml0aWFsaXplZAAAAAH1AAAAAAAAAAxWYWx1ZU1pc3NpbmcAAAH2AAAAAAAAABRWYWx1ZUNvbnZlcnNpb25FcnJvcgAAAfc=",
         "AAAABAAAAAAAAAAAAAAAD1ZhbGlkYXRpb25FcnJvcgAAAAADAAAAD1ZhbGlkYXRpb25FcnJvcgAAAAAMSW52YWxpZFRva2VuAAADIQAAAAAAAAARSW52YWxpZFBlcmNlbnRhZ2UAAAAAAAMiAAAAAAAAAApaZXJvQW1vdW50AAAAAAMk",
@@ -184,7 +245,8 @@ export class Client extends ContractClient {
     )
   }
   public readonly fromJSON = {
-    set_parameters: this.txFromJSON<null>,
+    get_params: this.txFromJSON<LinearLongShortPairParameters>,
+        set_parameters: this.txFromJSON<null>,
         percent_long_collateral: this.txFromJSON<u64>
   }
 }

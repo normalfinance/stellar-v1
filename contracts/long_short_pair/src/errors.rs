@@ -14,4 +14,6 @@ pub enum LongShortPairError {
     FailedToUpdateTokenScalingFactor = 208,
     FailedToGetOraclePrice = 209,
     PoolsNotSet = 210,
+    FundingRateRequiresPoolLiquidity = 211,
+    InvalidCalculatorValue = 212,
 }

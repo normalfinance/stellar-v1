@@ -9,8 +9,6 @@ pub trait LongShortPairFactoryTrait {
 pub trait AdminInterface {
     fn get_factory_config(e: Env) -> FactoryConfig;
 
-    fn get_token_factory(e: Env) -> Address;
-
     fn get_lsp_contract_wasm(e: Env) -> BytesN<32>;
 
     fn get_deployed_pairs(e: Env, operator: Address) -> Vec<Address>;

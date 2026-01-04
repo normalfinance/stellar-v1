@@ -29,9 +29,6 @@ pub(crate) mod rewards_gauge {
 }
 
 // Long Short Pair
-pub(crate) mod token_factory {
-    soroban_sdk::contractimport!(file = "../../wasm/token_factory.wasm");
-}
 pub(crate) mod normal_oracle {
     soroban_sdk::contractimport!(file = "../../wasm/normal_oracle.wasm");
 }

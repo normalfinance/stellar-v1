@@ -29,7 +29,6 @@ pub(crate) struct Setup<'a> {
     pub(crate) router: contracts::router::Client<'a>,
     pub(crate) pair_calculator: contracts::long_short_pair_calculator::Client<'a>,
     pub(crate) pair_factory: contracts::long_short_pair_factory::Client<'a>,
-    pub(crate) token_factory: contracts::token_factory::Client<'a>,
 
     // Tokens
     pub(crate) usdc_token: Address,
@@ -87,7 +86,6 @@ impl Setup<'_> {
         let pair_hash = e
             .deployer()
             .upload_contract_wasm(contracts::long_short_pair::WASM);
-        let token_factory = deploy_token_factory_contract(e.clone());
         let pair_calculator = deploy_pair_calculator_contract(e.clone());
         let pair_factory = deploy_pair_factory_contract(
             e.clone(),

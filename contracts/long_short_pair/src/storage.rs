@@ -2,7 +2,10 @@ use paste::paste;
 use soroban_sdk::{contracttype, panic_with_error, Address, Env};
 pub use utils::bump::bump_instance;
 use utils::bump::bump_persistent;
-use utils::constant::{ONE_HOUR, PERCENTAGE_PRECISION_U64};
+use utils::constant::{
+    ONE_HOUR, PERCENTAGE_PRECISION_U64, PERCENT_MULTIPLIER, PERCENT_MULTIPLIER_I128,
+    PERCENT_MULTIPLIER_I64, PERCENT_MULTIPLIER_U64,
+};
 use utils::errors::storage_errors::StorageError;
 use utils::generate_instance_storage_getter;
 use utils::{
@@ -36,8 +39,6 @@ pub struct FundingInfo {
 #[derive(Clone)]
 #[contracttype]
 pub enum DataKey {
-    TokenLong,
-    TokenShort,
     TokenCollateral,
 
     CollateralPerPair,
@@ -64,6 +65,7 @@ pub enum DataKey {
     Last24hAvgFundingRate, // estimate of last 24h of funding rate perp market (unit is quote per base)
     LastFundingRateTs,
     FundingPeriod,
+    FundingClamp, // max/min the
 
     LastUpdateTs,
 
@@ -132,7 +134,13 @@ generate_instance_storage_getter_and_setter_with_default!(
     funding_period,
     DataKey::FundingPeriod,
     u64,
-    ONE_HOUR * 8 // 8 hours
+    ONE_HOUR
+);
+generate_instance_storage_getter_and_setter_with_default!(
+    funding_clamp,
+    DataKey::FundingClamp,
+    i128,
+    PERCENT_MULTIPLIER_I128 // 100%
 );
 
 generate_instance_storage_getter_and_setter_with_default!(
@@ -147,7 +155,7 @@ generate_instance_storage_getter_and_setter_with_default!(
     collateral_per_pair,
     DataKey::CollateralPerPair,
     u128,
-    1000000000 // $100.00
+    0
 );
 generate_instance_storage_getter_and_setter_with_default!(
     collateral_percent_long,
@@ -195,23 +203,7 @@ generate_instance_storage_getter_and_setter_with_default!(
     PERCENTAGE_PRECISION_U64 / 10 // 10%
 );
 
-// Token Getters
-pub fn get_token_long(e: &Env) -> Address {
-    bump_instance(e);
-    match e.storage().instance().get(&DataKey::TokenLong) {
-        Some(v) => v,
-        None => panic_with_error!(e, StorageError::ValueNotInitialized),
-    }
-}
-
-pub fn get_token_short(e: &Env) -> Address {
-    bump_instance(e);
-    match e.storage().instance().get(&DataKey::TokenShort) {
-        Some(v) => v,
-        None => panic_with_error!(e, StorageError::ValueNotInitialized),
-    }
-}
-
+// Token
 pub fn get_token_collateral(e: &Env) -> Address {
     bump_instance(e);
     match e.storage().instance().get(&DataKey::TokenCollateral) {
@@ -221,16 +213,6 @@ pub fn get_token_collateral(e: &Env) -> Address {
 }
 
 // Token - Setters
-pub fn put_token_long(e: &Env, contract: Address) {
-    bump_instance(e);
-    e.storage().instance().set(&DataKey::TokenLong, &contract)
-}
-
-pub fn put_token_short(e: &Env, contract: Address) {
-    bump_instance(e);
-    e.storage().instance().set(&DataKey::TokenShort, &contract)
-}
-
 pub fn put_token_collateral(e: &Env, contract: Address) {
     bump_instance(e);
     e.storage()

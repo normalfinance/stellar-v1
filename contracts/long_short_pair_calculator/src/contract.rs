@@ -25,13 +25,13 @@ impl LongShortPairCalculatorTrait for LongShortPairCalculator {
 
         let params = get_params(&e, pair.clone());
 
-        if params.upper_bound != 0 || params.lower_bound != 0 {
+        if params.lower_bound != 0 || params.upper_bound != 0 {
             panic_with_error!(&e, CalculatorError::ParamsAlreadySet);
         }
 
         let new_params = LinearLongShortPairParameters {
-            upper_bound,
             lower_bound,
+            upper_bound,
         };
         set_params(&e, pair, new_params);
     }
@@ -63,9 +63,10 @@ impl LongShortPairCalculatorTrait for LongShortPairCalculator {
             return 0;
         }
 
-        // Scale result to 1e7 precision (0–1)
+        // Scale to percent with 1e4 precision
+        // 10_000 = 100%, 5_000 = 50%
         let fraction = numerator
-            .saturating_mul(1_0000000_u128)
+            .saturating_mul(10_000u128)
             .checked_div(denominator)
             .unwrap_or(0);
 

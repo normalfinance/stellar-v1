@@ -11,7 +11,6 @@ tasks:
 
   build:
     cmds:
-      - task -d ../token_factory build || exit 1
       - task -d ../long_short_pair build || exit 1
       - soroban contract build --package long_short_pair_factory
       - soroban contract optimize --wasm ../../target/wasm32v1-none/release/long_short_pair_factory.wasm --wasm-out ../../target/wasm32v1-none/release/long_short_pair_factory.wasm

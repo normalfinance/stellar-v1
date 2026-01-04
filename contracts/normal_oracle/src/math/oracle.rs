@@ -1,11 +1,11 @@
 use oracle::{
     errors::OracleError,
     math::{calculate_new_twap, sanitize_new_price},
-    state::{HistoricalOracleData, OraclePriceData, OracleValidity},
+    state::{HistoricalOracleData, OracleValidity},
 };
 use sep_40_oracle::{Asset, PriceFeedClient};
 use soroban_sdk::{panic_with_error, Address, Env, Symbol};
-use types::oracle::OracleSource;
+use types::oracle::{OraclePriceData, OracleSource};
 use utils::{
     constant::{FIVE_MINUTE, PERCENTAGE_PRECISION, PERCENTAGE_PRECISION_U64, PRICE_PRECISION},
     math::safe_math::{PrecisionMath, SafeConversion, SafeMath},

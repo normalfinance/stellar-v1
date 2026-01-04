@@ -3,10 +3,8 @@ use crate::interface::{AdminInterface, LongShortPairFactoryTrait};
 use crate::pair_utils::get_pair_salt;
 use crate::storage::get_is_killed_create;
 use crate::storage::get_lsp_contract_wasm;
-use crate::storage::get_token_factory;
 use crate::storage::set_is_killed_create;
 use crate::storage::set_lsp_contract_wasm;
-use crate::storage::set_token_factory;
 use crate::storage::{
     add_deployed_pair, get_all_deployed_pairs, get_contract_sequence, get_deployed_pairs,
     set_contract_sequence,
@@ -37,7 +35,6 @@ pub struct LongShortPairFactory;
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FactoryConfig {
-    pub token_factory: Address,
     pub lsp_contract_wasm: BytesN<32>,
 }
 
@@ -64,7 +61,6 @@ impl LongShortPairFactory {
     //   - e: The Soroban environment.
     //   - admin: The address to be assigned the Admin role.
     //   - emergency_admin: The address to be assigned the EmergencyAdmin role.
-    //   - token_factory: The address of the swap token_factory contract.
     //   - lsp_contract_wasm: The WASM hash (BytesN<32>) for the long short pair contract.
     pub fn __constructor(
         e: Env,
@@ -72,7 +68,6 @@ impl LongShortPairFactory {
         emergency_admin: Address,
         pause_admin: Address,
         emergency_pause_admin: Address,
-        token_factory: Address,
         lsp_contract_wasm: BytesN<32>,
     ) {
         let access_control = AccessControl::new(&e);
@@ -83,7 +78,6 @@ impl LongShortPairFactory {
         access_control.commit_transfer_ownership(&Role::EmergencyAdmin, &emergency_admin);
         access_control.apply_transfer_ownership(&Role::EmergencyAdmin);
 
-        set_token_factory(&e, &token_factory);
         set_lsp_contract_wasm(&e, &lsp_contract_wasm);
     }
 }
@@ -104,22 +98,6 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
     fn deploy_lsp_contract(e: Env, params: CreatorParams) -> Address {
         params.admin.require_auth();
 
-        let token_factory = get_token_factory(&e);
-
-        // Deploy the Long Token SAC
-        let token_long: Address = e.invoke_contract(
-            &token_factory,
-            &Symbol::new(&e, "create_token"),
-            Vec::from_array(&e, [params.serialized_long_asset.clone().into_val(&e)]),
-        );
-
-        // Deploy the Short Token SAC
-        let token_short: Address = e.invoke_contract(
-            &token_factory,
-            &Symbol::new(&e, "create_token"),
-            Vec::from_array(&e, [params.serialized_short_asset.clone().into_val(&e)]),
-        );
-
         // Deploy the Long Sh contract
         let sequence = get_contract_sequence(&e, params.admin.clone());
         set_contract_sequence(&e, params.admin.clone(), sequence + 1);
@@ -130,10 +108,6 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
             get_lsp_contract_wasm(&e),
             (e.current_contract_address(), params.clone()),
         );
-
-        // Give permissions to new lsp contract and then hand over ownership.
-        SorobanTokenAdminClient::new(&e, &token_long).set_admin(&pair_address);
-        SorobanTokenAdminClient::new(&e, &token_short).set_admin(&pair_address);
 
         // Add to LSP registry
         add_deployed_pair(&e, &params.admin, &pair_address);
@@ -164,14 +138,8 @@ impl AdminInterface for LongShortPairFactory {
     // Query Methods - Factory Configuration
     fn get_factory_config(e: Env) -> FactoryConfig {
         FactoryConfig {
-            token_factory: get_token_factory(&e),
             lsp_contract_wasm: get_lsp_contract_wasm(&e),
         }
-    }
-
-    // Individual getters for factory configuration
-    fn get_token_factory(e: Env) -> Address {
-        get_token_factory(&e)
     }
 
     fn get_lsp_contract_wasm(e: Env) -> BytesN<32> {

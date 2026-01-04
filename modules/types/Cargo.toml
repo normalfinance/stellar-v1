@@ -13,6 +13,7 @@ doctest = false
 [dependencies]
 soroban-sdk = { workspace = true }
 soroban-fixed-point-math = { workspace = true }
+utils = { workspace = true }
 
 [features]
 default = []

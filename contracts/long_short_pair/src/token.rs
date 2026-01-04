@@ -1,83 +1,36 @@
-use crate::storage::{get_token_collateral, get_token_long, get_token_short};
-use soroban_sdk::token::{
-    StellarAssetClient as SorobanTokenAdminClient, TokenClient as SorobanTokenClient,
-};
-use soroban_sdk::{Address, Env};
+use soroban_sdk::token::TokenClient as SorobanTokenClient;
+use soroban_sdk::xdr::ToXdr;
+use soroban_sdk::{Address, Bytes, BytesN, Env, Symbol};
+
+pub fn create_contract(
+    e: &Env,
+    token_wasm_hash: BytesN<32>,
+    asset: &Symbol,
+    token_collateral: &Address,
+    side: &Symbol,
+) -> Address {
+    let mut salt = Bytes::new(e);
+    salt.append(&asset.to_xdr(e));
+    salt.append(&token_collateral.to_xdr(e));
+    salt.append(&side.to_xdr(e));
+    let salt = e.crypto().sha256(&salt);
+    e.deployer()
+        .with_current_contract(salt)
+        .deploy_v2(token_wasm_hash, ())
+}
 
 // Transfer
 fn transfer(e: &Env, token: Address, from: &Address, to: &Address, amount: i128) {
     SorobanTokenClient::new(e, &token).transfer(from, to, &amount);
 }
 
-pub fn transfer_token_long(e: &Env, from: &Address, to: &Address, amount: u128) {
-    transfer(e, get_token_long(e), from, to, amount as i128);
-}
-
-pub fn transfer_token_short(e: &Env, from: &Address, to: &Address, amount: u128) {
-    transfer(e, get_token_short(e), from, to, amount as i128);
-}
-
-pub fn transfer_token_collateral(e: &Env, from: &Address, to: &Address, amount: u128) {
-    transfer(e, get_token_collateral(e), from, to, amount as i128);
-}
-
-// Contract balance
-pub fn get_token_long_balance(e: &Env) -> u128 {
-    SorobanTokenClient::new(&e, &get_token_long(e)).balance(&e.current_contract_address()) as u128
-}
-
-pub fn get_token_short_balance(e: &Env) -> u128 {
-    SorobanTokenClient::new(&e, &get_token_short(e)).balance(&e.current_contract_address()) as u128
-}
-
-pub fn get_token_collateral_balance(e: &Env) -> u128 {
-    SorobanTokenClient::new(&e, &get_token_collateral(e)).balance(&e.current_contract_address())
-        as u128
-}
-
-// Balance
-pub fn get_token_long_balance_of(e: &Env, user: &Address) -> u128 {
-    SorobanTokenClient::new(&e, &get_token_long(e)).balance(user) as u128
-}
-
-pub fn get_token_short_balance_of(e: &Env, user: &Address) -> u128 {
-    SorobanTokenClient::new(&e, &get_token_short(e)).balance(user) as u128
-}
-
-pub fn get_token_collateral_balance_of(e: &Env, user: &Address) -> u128 {
-    SorobanTokenClient::new(&e, &get_token_collateral(e)).balance(user) as u128
-}
-
-// Mint
-pub fn mint_token_long(e: &Env, to: &Address, amount: &i128) {
-    SorobanTokenAdminClient::new(e, &get_token_long(e)).mint(to, &amount);
-}
-
-pub fn mint_token_short(e: &Env, to: &Address, amount: &i128) {
-    SorobanTokenAdminClient::new(e, &get_token_short(e)).mint(to, &amount);
-}
-
-// Burn
-pub fn burn_token_long(e: &Env, account: &Address, amount: &i128) {
-    SorobanTokenClient::new(&e, &get_token_long(e)).burn(account, amount)
-}
-
-pub fn burn_token_short(e: &Env, account: &Address, amount: &i128) {
-    SorobanTokenClient::new(&e, &get_token_short(e)).burn(account, amount)
-}
-
-pub fn burn_token_long_from(e: &Env, from: &Address, amount: &i128) {
-    SorobanTokenClient::new(&e, &get_token_long(e)).burn_from(
-        &e.current_contract_address(),
-        from,
-        amount,
-    );
-}
-
-pub fn burn_token_short_from(e: &Env, from: &Address, amount: &i128) {
-    SorobanTokenClient::new(&e, &get_token_short(e)).burn_from(
-        &e.current_contract_address(),
-        from,
-        amount,
-    );
+fn transfer_from(
+    e: &Env,
+    token: Address,
+    spender: &Address,
+    from: &Address,
+    to: &Address,
+    amount: i128,
+) {
+    SorobanTokenClient::new(e, &token).transfer_from(spender, from, to, &amount);
 }

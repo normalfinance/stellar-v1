@@ -4,24 +4,24 @@ use crate::funding::FundingCheckpoint;
 use crate::interface::{
     AdminInterfaceTrait, LongShortPairTrait, OracleInterfaceTrait, UpgradeableContract,
 };
-use crate::pool_utils::{validate_pools_contracts, validate_tokens_contracts};
+use crate::storage::put_token_collateral;
 use crate::storage::{
     get_calculator, get_collateral_per_pair, get_collateral_percent_long,
     get_cumulative_funding_index_long, get_cumulative_funding_index_short, get_funding_period,
     get_is_killed_mint, get_is_killed_redeem, get_is_killed_update_funding,
     get_last_24h_avg_funding_rate, get_last_funding_rate, get_last_funding_rate_ts, get_oracle,
-    get_sanitize_clamp_denominator, get_user_funding_checkpoint, has_pools, set_calculator,
-    set_collateral_percent_long, set_cumulative_funding_index_long,
-    set_cumulative_funding_index_short, set_funding_period, set_is_killed_mint,
-    set_is_killed_redeem, set_is_killed_update_funding, set_last_funding_rate_ts, set_oracle,
-    set_pool_long, set_pool_plane, set_pool_short, CollateralInfo, FundingInfo,
+    get_sanitize_clamp_denominator, get_token_collateral, get_user_funding_checkpoint, has_pools,
+    set_calculator, set_collateral_per_pair, set_collateral_percent_long,
+    set_cumulative_funding_index_long, set_cumulative_funding_index_short, set_funding_period,
+    set_is_killed_mint, set_is_killed_redeem, set_is_killed_update_funding,
+    set_last_funding_rate_ts, set_oracle, set_pool_long, set_pool_plane, set_pool_short,
+    CollateralInfo, FundingInfo,
 };
-use crate::storage::{
-    get_token_long, get_token_short, put_token_collateral, put_token_long, put_token_short,
+use crate::token::create_contract;
+use soroban_sdk::token::{
+    StellarAssetClient as SorobanTokenAdminClient, TokenClient as SorobanTokenClient,
 };
-use crate::token::burn_token_short_from;
-use crate::token::{burn_token_long_from, get_token_long_balance_of, get_token_short_balance_of};
-use crate::token::{mint_token_long, mint_token_short, transfer_token_collateral};
+
 use access_control::access::{AccessControl, AccessControlTrait};
 use access_control::emergency::{get_emergency_mode, set_emergency_mode};
 use access_control::errors::AccessControlError;
@@ -32,19 +32,24 @@ use access_control::role::Role;
 use access_control::role::SymbolRepresentation;
 use access_control::transfer::TransferOwnershipTrait;
 use access_control::utils::{
-    require_operations_admin_or_owner, require_pause_admin_or_owner,
+    require_operations_admin_or_owner, require_owner, require_pause_admin_or_owner,
     require_pause_or_emergency_pause_admin_or_owner,
 };
 use oracle::get_oracle_price;
 use soroban_sdk::{
-    contract, contractimpl, contractmeta, log, panic_with_error, Address, BytesN, Env, IntoVal,
-    Map, Symbol, Vec,
+    contract, contractimpl, contractmeta, log, panic_with_error, symbol_short, Address, BytesN,
+    Env, IntoVal, Map, Symbol, Vec,
+};
+use token_pair::{
+    burn_long_tokens, burn_short_tokens, get_token_long, get_token_short, get_user_balance_long,
+    get_user_balance_short, mint_long_tokens, mint_short_tokens, put_token_long, put_token_short,
+    Client as PairTokenClient,
 };
 use types::pair::PairParams;
 use upgrade::events::Events as UpgradeEvents;
 use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
-use utils::constant::PRICE_PRECISION_I128;
-use utils::math::safe_math::SafeMath;
+use utils::constant::{PRICE_PRECISION, PRICE_PRECISION_I128};
+use utils::math::safe_math::{PrecisionMath, SafeMath};
 
 // Metadata that is added on to the WASM custom section
 contractmeta!(key = "Description", val = "");
@@ -63,23 +68,46 @@ impl LongShortPairTrait for LongShortPair {
         access_control.set_role_address(&Role::EmergencyAdmin, &params.privileged_addrs.0);
         access_control.set_role_address(&Role::PauseAdmin, &params.privileged_addrs.1);
 
-        if params.tokens.len() != 3 {
-            panic_with_error!(&e, LongShortPairError::WrongInputVecSize);
-        }
+        put_token_collateral(&e, params.collateral_token.clone());
 
-        validate_tokens_contracts(&e, params.tokens);
+        // Init pair tokens
+        let long_token_contract = create_contract(
+            &e,
+            params.pair_token_wasm_hash.clone(),
+            &params.asset,
+            &params.collateral_token,
+            &symbol_short!("LONG"),
+        );
+        PairTokenClient::new(&e, &long_token_contract).initialize(
+            &e.current_contract_address(),
+            &7u32,
+            &"Long Token".into_val(&e),
+            &"LONG".into_val(&e),
+        );
 
-        let token_long = params.tokens.get(0).unwrap();
-        let token_short = params.tokens.get(1).unwrap();
-        let token_collateral = params.tokens.get(2).unwrap();
+        let short_token_contract = create_contract(
+            &e,
+            params.pair_token_wasm_hash,
+            &params.asset,
+            &params.collateral_token,
+            &symbol_short!("SHORT"),
+        );
+        PairTokenClient::new(&e, &short_token_contract).initialize(
+            &e.current_contract_address(),
+            &7u32,
+            &"Short Token".into_val(&e),
+            &"SHORT".into_val(&e),
+        );
 
-        put_token_long(&e, token_long);
-        put_token_short(&e, token_short);
-        put_token_collateral(&e, token_collateral);
+        put_token_long(&e, long_token_contract);
+        put_token_short(&e, short_token_contract);
+
+        // TODO: validate oracle
 
         set_oracle(&e, &params.oracle);
         set_calculator(&e, &params.pair_calculator);
         set_pool_plane(&e, &params.pool_plane);
+        set_collateral_per_pair(&e, &params.collateral_per_pair);
 
         // Add the new pair's parameters to the Calculator
         e.invoke_contract(
@@ -116,12 +144,19 @@ impl LongShortPairTrait for LongShortPair {
 
         let current_time = e.ledger().timestamp();
 
-        let collateral_used = tokens_to_mint.safe_mul(&e, get_collateral_per_pair(&e));
+        let collateral_used =
+            tokens_to_mint.safe_fixed_mul_floor(&e, get_collateral_per_pair(&e), PRICE_PRECISION);
 
-        transfer_token_collateral(&e, &user, &e.current_contract_address(), collateral_used);
+        log!(&e, "collateral_used", collateral_used);
 
-        mint_token_long(&e, &user, &(tokens_to_mint as i128));
-        mint_token_short(&e, &user, &(tokens_to_mint as i128));
+        SorobanTokenClient::new(&e, &get_token_collateral(&e)).transfer(
+            &user,
+            &e.current_contract_address(),
+            &(collateral_used as i128),
+        );
+
+        mint_long_tokens(&e, &user, tokens_to_mint as i128);
+        mint_short_tokens(&e, &user, tokens_to_mint as i128);
 
         let mut checkpoint = get_user_funding_checkpoint(&e, &user);
         checkpoint.mint(&e, tokens_to_mint);
@@ -158,26 +193,32 @@ impl LongShortPairTrait for LongShortPair {
         // a) the price request has not resolved (either a normal expiration call or early expiration call) or b) If the
         // the contract was attempted to be settled early but the price returned is the ignore oracle price.
         // Note that we use the bool receivedSettlementPrice over checking for price != 0 as 0 is a valid price.
-        Self::update_oracle_price(e.clone());
+        // Self::sync_collateral_percent_long(e.clone());
+        let oracle_price_data = crate::utils::get_oracle_price(&e, &get_oracle(&e));
+        log!(&e, "price", oracle_price_data.price);
 
-        burn_token_long_from(&e, &user, &(tokens_to_redeem as i128));
-        burn_token_short_from(&e, &user, &(tokens_to_redeem as i128));
+        crate::utils::sync_collateral_percent_long(&e, oracle_price_data);
+
+        burn_long_tokens(&e, &user, tokens_to_redeem);
+        burn_short_tokens(&e, &user, tokens_to_redeem);
 
         let mut checkpoint = get_user_funding_checkpoint(&e, &user);
         let net_funding_delta = checkpoint.net_funding_delta(&e);
 
-        let collateral = tokens_to_redeem.safe_mul(&e, get_collateral_per_pair(&e));
+        let collateral =
+            tokens_to_redeem.safe_fixed_mul_floor(&e, get_collateral_per_pair(&e), PRICE_PRECISION);
         let multiplier = PRICE_PRECISION_I128.safe_add(&e, net_funding_delta as i128);
 
-        let collateral_adjusted = collateral.safe_mul(&e, multiplier as u128);
+        let collateral_adjusted = (collateral as i128)
+            .safe_mul(&e, multiplier)
+            .safe_div(&e, PRICE_PRECISION_I128) as u128;
 
         checkpoint.redeem(&e, tokens_to_redeem);
 
-        transfer_token_collateral(
-            &e,
-            &user,
+        SorobanTokenClient::new(&e, &get_token_collateral(&e)).transfer(
             &e.current_contract_address(),
-            collateral_adjusted,
+            &user,
+            &(collateral_adjusted as i128),
         );
 
         Events::new(&e).tokens_redeemed(
@@ -235,27 +276,11 @@ impl LongShortPairTrait for LongShortPair {
         to_checkpoint.save(&e);
     }
 
-    fn update_oracle_price(e: Env) {
-        let oracle_price_data = get_oracle_price(&e, &get_oracle(&e));
+    fn sync_collateral_percent_long(e: Env) {
+        let oracle_price_data = crate::utils::get_oracle_price(&e, &get_oracle(&e));
+        log!(&e, "price", oracle_price_data.price);
 
-        match e.try_invoke_contract::<u64, soroban_sdk::Error>(
-            &get_calculator(&e),
-            &Symbol::new(&e, "percent_long_collateral"),
-            Vec::from_array(
-                &e,
-                [
-                    e.current_contract_address().into_val(&e),
-                    oracle_price_data.price.into_val(&e),
-                ],
-            ),
-        ) {
-            Ok(Err(_)) | Err(_) => {
-                panic_with_error!(e, LongShortPairError::FailedToGetCalculatorPercent)
-            }
-            Ok(Ok(new_collateral_percent_long)) => {
-                set_collateral_percent_long(&e, &new_collateral_percent_long.min(1_u64));
-            }
-        }
+        crate::utils::sync_collateral_percent_long(&e, oracle_price_data);
     }
 
     fn get_tokens(e: Env) -> Vec<Address> {
@@ -266,8 +291,8 @@ impl LongShortPairTrait for LongShortPair {
         Vec::from_array(
             &e,
             [
-                get_token_long_balance_of(&e, &user),
-                get_token_short_balance_of(&e, &user),
+                get_user_balance_long(&e, &user),
+                get_user_balance_short(&e, &user),
             ],
         )
     }
@@ -301,20 +326,18 @@ impl AdminInterfaceTrait for LongShortPair {
     // Pools
     fn set_pool_plane(e: Env, admin: Address, plane: Address) {
         admin.require_auth();
-        require_operations_admin_or_owner(&e, &admin);
+        require_owner(&e, &admin);
 
-        set_pool_plane(&e, &plane);
+        crate::storage::set_pool_plane(&e, &plane);
     }
 
     fn set_pools(e: Env, admin: Address, pools: Vec<Address>) {
         admin.require_auth();
-        require_operations_admin_or_owner(&e, &admin);
+        require_owner(&e, &admin);
 
         if pools.len() != 2 {
             panic_with_error!(&e, LongShortPairError::WrongInputVecSize);
         }
-
-        validate_pools_contracts(&e, pools);
 
         let pool_long = pools.get(0).unwrap();
         let pool_short = pools.get(1).unwrap();
@@ -326,18 +349,25 @@ impl AdminInterfaceTrait for LongShortPair {
     // Funding
     fn update_funding_period(e: Env, admin: Address, funding_period: u64) {
         admin.require_auth();
-        require_operations_admin_or_owner(&e, &admin);
+        require_owner(&e, &admin);
 
         if funding_period <= 0 {
             panic_with_error!(&e, LongShortPairError::InvalidInput);
         }
 
-        set_funding_period(&e, &funding_period);
+        crate::storage::set_funding_period(&e, &funding_period);
+    }
+
+    fn update_funding_clamp(e: Env, admin: Address, clamp: i128) {
+        admin.require_auth();
+        require_owner(&e, &admin);
+
+        crate::storage::set_funding_clamp(&e, &clamp);
     }
 
     fn update_funding_rate(e: Env, admin: Address) {
         admin.require_auth();
-        require_operations_admin_or_owner(&e, &admin);
+        require_owner(&e, &admin);
 
         if !has_pools(&e) {
             panic_with_error!(&e, LongShortPairError::PoolsNotSet);
@@ -345,40 +375,26 @@ impl AdminInterfaceTrait for LongShortPair {
 
         let current_time = e.ledger().timestamp();
         let funding_paused = get_is_killed_update_funding(&e);
+        let funding_period = get_funding_period(&e);
 
-        let is_updated = crate::funding::update_funding_rate(&e, funding_paused, current_time);
+        // Sync price
+        let oracle_price_data = crate::utils::get_oracle_price(&e, &get_oracle(&e));
+        crate::utils::sync_collateral_percent_long(&e, oracle_price_data);
 
-        if !is_updated {
-            let last_update_ts = get_last_funding_rate_ts(&e);
-            let funding_period = get_funding_period(&e);
-
-            let time_until_next_update = crate::funding::on_the_hour_update(
-                &e,
-                current_time,
-                last_update_ts,
-                funding_period,
-            );
-            log!(
-                &e,
-                "time_until_next_update = {:?} seconds",
-                time_until_next_update
-            );
-
-            panic_with_error!(&e, LongShortPairError::FundingWasNotUpdated)
-        }
+        crate::funding::update_funding_rate(&e, funding_period, funding_paused, current_time);
     }
 
     // Calculator
     fn set_calculator(e: Env, admin: Address, calculator: Address) {
         admin.require_auth();
-        require_operations_admin_or_owner(&e, &admin);
+        require_owner(&e, &admin);
 
         set_calculator(&e, &calculator);
     }
 
     fn migrate_bounds(e: Env, admin: Address, lower_bound: u128, upper_bound: u128) {
         admin.require_auth();
-        require_operations_admin_or_owner(&e, &admin);
+        require_owner(&e, &admin);
 
         let current_time = e.ledger().timestamp();
 
@@ -450,7 +466,7 @@ impl AdminInterfaceTrait for LongShortPair {
 
     fn set_oracle(e: Env, admin: Address, oracle: Address) {
         admin.require_auth();
-        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
+        require_owner(&e, &admin);
 
         set_oracle(&e, &oracle);
     }
