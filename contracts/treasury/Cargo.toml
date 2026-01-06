@@ -1,6 +1,6 @@
 [package]
-name = "long_short_pair_factory"
-description = "Soroban token contract for LP shares"
+name = "treasury"
+description = "Soroban contract for a Long Short Pair"
 version.workspace = true
 edition = "2021"
 publish = false
@@ -15,12 +15,15 @@ soroban-sdk = { workspace = true }
 soroban-token-sdk = { workspace = true }
 paste = { workspace = true }
 access_control = { workspace = true }
+token_pair = { workspace = true }
 types = { workspace = true }
 utils = { workspace = true }
 upgrade = { workspace = true }
+oracle = { workspace = true }
 soroban-fixed-point-math = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 utils = { workspace = true, features = ["testutils"] }
 types = { workspace = true, features = ["testutils"] }
+sep-40-oracle = { workspace = true, features = ["testutils"] }

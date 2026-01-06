@@ -1,42 +1,46 @@
 #![allow(dead_code)]
 #![cfg(test)]
 extern crate std;
+use crate::testutils::long_short_pair::PairParams;
 use crate::testutils::normal_oracle::OracleSource;
-use crate::LongShortPairClient;
+use crate::TreasuryClient;
 
 use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPriceOracleWASM};
 use soroban_sdk::token::{
     StellarAssetClient as SorobanTokenAdminClient, TokenClient as SorobanTokenClient,
 };
 use soroban_sdk::xdr::{AccountId, AlphaNum12, Asset, AssetCode12, Limits, PublicKey, WriteXdr};
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Symbol, Vec};
-use soroban_sdk::{Bytes, IntoVal, String};
+use soroban_sdk::Bytes;
+use soroban_sdk::{testutils::Address as _, Address, Env, Symbol, Vec};
 use std::vec;
-use token_pair::token_contract::{Client as PairTokenClient, WASM};
-use types::oracle::OraclePriceData;
-use types::pair::PairParams;
 use utils::test_utils::jump;
 
+// Contracts
 pub mod long_short_pair_calculator {
     soroban_sdk::contractimport!(file = "../../wasm/long_short_pair_calculator.wasm");
 }
-
-pub fn create_pair_calculator_contract<'a>(e: &Env) -> long_short_pair_calculator::Client<'a> {
-    long_short_pair_calculator::Client::new(e, &e.register(long_short_pair_calculator::WASM, ()))
-}
-
 pub mod normal_oracle {
     soroban_sdk::contractimport!(file = "../../wasm/normal_oracle.wasm");
 }
+pub mod long_short_pair {
+    soroban_sdk::contractimport!(file = "../../wasm/long_short_pair.wasm");
+}
 
+// Utils
+pub fn create_pair_calculator_contract<'a>(e: &Env) -> long_short_pair_calculator::Client<'a> {
+    long_short_pair_calculator::Client::new(e, &e.register(long_short_pair_calculator::WASM, ()))
+}
 pub fn create_normal_oracle_contract<'a>(e: &Env) -> normal_oracle::Client<'a> {
     normal_oracle::Client::new(e, &e.register(normal_oracle::WASM, ()))
 }
-
-pub fn create_pair_contract<'a>(e: &Env) -> LongShortPairClient<'a> {
-    LongShortPairClient::new(e, &e.register(crate::LongShortPair {}, ()))
+pub fn create_long_short_pair_contract<'a>(e: &Env) -> long_short_pair::Client<'a> {
+    long_short_pair::Client::new(e, &e.register(long_short_pair::WASM, ()))
+}
+pub fn create_treasury_contract<'a>(e: &Env) -> TreasuryClient<'a> {
+    TreasuryClient::new(e, &e.register(crate::Treasury {}, ()))
 }
 
+// Setup
 pub(crate) struct TestConfig {
     pub(crate) users_count: u32,
 }
@@ -53,16 +57,15 @@ pub(crate) struct Setup<'a> {
     // Tokens
     pub(crate) token_long: SorobanTokenClient<'a>,
     pub(crate) token_long_admin_client: SorobanTokenAdminClient<'a>,
-
     pub(crate) token_short: SorobanTokenClient<'a>,
     pub(crate) token_short_admin_client: SorobanTokenAdminClient<'a>,
-
     pub(crate) token_usdc: SorobanTokenClient<'a>,
     pub(crate) token_usdc_admin_client: SorobanTokenAdminClient<'a>,
 
     // Contracts
-    pub(crate) pair: LongShortPairClient<'a>,
+    pub(crate) treasury: TreasuryClient<'a>,
     pub(crate) pair_calculator: long_short_pair_calculator::Client<'a>,
+    pub(crate) pair: long_short_pair::Client<'a>,
     pub(crate) oracle: normal_oracle::Client<'a>,
 
     // Oracle
@@ -74,7 +77,6 @@ pub(crate) struct Setup<'a> {
     pub(crate) admin: Address,
 
     // Other
-    pub(crate) start_time: u64,
     pub(crate) solana: Symbol,
 }
 
@@ -108,12 +110,7 @@ impl Setup<'_> {
 
         // Tokens
         let token_usdc = create_token_contract(&e, &admin);
-        let token_long = create_token_contract(&e, &admin);
-        let token_short = create_token_contract(&e, &admin);
-
         let token_usdc_admin_client = get_token_admin_client(&e, &token_usdc.address.clone());
-        let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
-        let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
 
         // Setup Oracle
         let sol_symbol = Symbol::new(&e, "SOL");
@@ -153,7 +150,7 @@ impl Setup<'_> {
         let pair_calculator = create_pair_calculator_contract(&e);
 
         // Setup Long Short Pair
-        let pair = create_pair_contract(&e);
+        let pair = create_long_short_pair_contract(&e);
 
         let token_long = create_token_contract(&e, &pair.address);
         let token_short = create_token_contract(&e, &pair.address);
@@ -162,24 +159,32 @@ impl Setup<'_> {
         let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
 
         // Initialize Pair
-        pair.initialize(
-            &(PairParams {
-                admin: admin.clone(),
-                asset: sol_symbol.clone(),
+        let params = PairParams {
+            admin: admin.clone(),
+            asset: sol_symbol.clone(),
+            collateral_token: token_usdc.address.clone(),
+            oracle: oracle.address.clone(),
+            pair_calculator: pair_calculator.address.clone(),
+            collateral_per_pair: 100_0000000,
+            long_token: token_long.address.clone(),
+            short_token: token_short.address.clone(),
+            lower_bound: 0_0000000,
+            upper_bound: 200_0000000, // 2x the current price
+        };
+        pair.initialize(&params);
 
-                collateral_token: token_usdc.address.clone(),
-                pair_calculator: pair_calculator.address.clone(),
-                collateral_per_pair: 100_0000000,
+        // Setup Treasury
+        let treasury = create_treasury_contract(&e);
+        treasury.initialize(&admin);
 
-                oracle: oracle.address.clone(),
-
-                long_token: token_long.address.clone(),
-                short_token: token_short.address.clone(),
-
-                lower_bound: 0_0000000,
-                upper_bound: 200_0000000,
-            }),
+        treasury.add_pair(
+            &admin,
+            &pair.address,
+            &token_usdc.address,
+            &token_long.address,
+            &token_short.address,
         );
+        treasury.set_pair_fee(&admin, &pair.address, &30_000_u128); // 0.30%
 
         Self {
             env: e,
@@ -195,6 +200,7 @@ impl Setup<'_> {
             // Contracts
             pair_calculator,
             pair,
+            treasury,
             oracle,
 
             // Oracle
@@ -206,7 +212,6 @@ impl Setup<'_> {
             users,
 
             // Other
-            start_time,
             solana: sol_symbol,
         }
     }
@@ -247,8 +252,4 @@ pub fn setup_reflector_price_feed_oracle<'a>(
     let oracle_client = MockPriceOracleClient::new(env, &oracle_addr);
     oracle_client.set_data(admin, base, assets, &decimals, &resolution);
     (oracle_addr, oracle_client)
-}
-
-pub fn install_pair_token_wasm(e: &Env) -> BytesN<32> {
-    e.deployer().upload_contract_wasm(WASM)
 }

@@ -14,15 +14,6 @@ pub fn install_pair_hash(e: &Env) -> BytesN<32> {
     e.deployer().upload_contract_wasm(long_short_pair::WASM)
 }
 
-pub mod token_factory {
-    soroban_sdk::contractimport!(file = "../../wasm/token_factory.wasm");
-}
-
-pub fn create_token_factory_contract<'a>(e: &Env) -> token_factory::Client<'a> {
-    let factory = token_factory::Client::new(e, &e.register(token_factory::WASM, ()));
-    factory
-}
-
 pub(crate) struct TestConfig {
     pub(crate) users_count: u32,
 }
@@ -37,14 +28,9 @@ pub(crate) struct Setup<'a> {
     pub(crate) env: Env,
     pub(crate) users: vec::Vec<Address>,
 
-    pub(crate) token_factory: token_factory::Client<'a>,
-
     pub(crate) factory: LongShortPairFactoryClient<'a>,
 
     pub(crate) admin: Address,
-    pub(crate) emergency_admin: Address,
-    pub(crate) pause_admin: Address,
-    pub(crate) emergency_pause_admin: Address,
 }
 
 impl Default for Setup<'_> {
@@ -69,26 +55,16 @@ impl Setup<'_> {
 
         let users = Self::generate_random_users(&e, config.users_count);
         let admin = users[0].clone();
-        let emergency_admin = Address::generate(&e);
-        let pause_admin = Address::generate(&e);
-        let emergency_pause_admin = Address::generate(&e);
-
-        let token_factory = create_token_factory_contract(&e);
 
         let pair_hash = install_pair_hash(&e);
 
-        let factory =
-            create_factory_contract(&e, &admin, &admin, &token_factory.address, &pair_hash);
+        let factory = create_factory_contract(&e, &admin, &pair_hash);
 
         Self {
             env: e,
             users,
-            token_factory,
             factory,
             admin,
-            emergency_admin,
-            pause_admin,
-            emergency_pause_admin,
         }
     }
 
@@ -104,16 +80,11 @@ impl Setup<'_> {
 pub fn create_factory_contract<'a>(
     e: &Env,
     admin: &Address,
-    emergency_admin: &Address,
-    token_factory: &Address,
-    lsp_contract_wasm: &BytesN<32>,
+    pair_contract_wasm: &BytesN<32>,
 ) -> LongShortPairFactoryClient<'a> {
     let factory = LongShortPairFactoryClient::new(
         e,
-        &e.register(
-            crate::LongShortPairFactory {},
-            (admin, emergency_admin, token_factory, lsp_contract_wasm),
-        ),
+        &e.register(crate::LongShortPairFactory {}, (admin, pair_contract_wasm)),
     );
     factory
 }

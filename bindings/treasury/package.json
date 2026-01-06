@@ -1,6 +1,6 @@
 {
   "version": "0.0.0",
-  "name": "token_long_short_pair",
+  "name": "treasury",
   "type": "module",
   "exports": "./dist/index.js",
   "typings": "dist/index.d.ts",

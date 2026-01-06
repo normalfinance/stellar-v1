@@ -4,10 +4,11 @@ mod contract;
 pub mod errors;
 mod events;
 mod interface;
+mod price;
 mod storage;
-mod test;
+// mod test;
 mod test_permissions;
+mod test_trading;
 mod testutils;
-mod utils;
 
-pub use contract::{LongShortPair, LongShortPairClient};
+pub use contract::{Treasury, TreasuryClient};

@@ -16,7 +16,7 @@ enum DataKey {
 }
 
 pub mod token {
-    soroban_sdk::contractimport!(file = "../../wasm/token_long_short_pair.wasm");
+    soroban_sdk::contractimport!(file = "../../wasm/soroban_token_contract.wasm");
 }
 pub use token::{self as token_contract, Client};
 use utils::errors::storage_errors::StorageError;
@@ -61,16 +61,14 @@ pub fn burn_long_tokens(e: &Env, from: &Address, amount: u128) {
     let total_share = get_total_long_shares(e);
     put_total_long_shares(e, total_share - amount);
 
-    let long_contract = get_token_long(e);
-    SorobanTokenClient::new(e, &long_contract).burn(from, &(amount as i128));
+    SorobanTokenClient::new(e, &get_token_long(e)).burn(from, &(amount as i128));
 }
 
 pub fn mint_long_tokens(e: &Env, to: &Address, amount: i128) {
     let total_share = get_total_long_shares(e);
     put_total_long_shares(e, total_share + (amount as u128));
 
-    let long_contract_id = get_token_long(e);
-    SorobanTokenAdminClient::new(e, &long_contract_id).mint(to, &amount);
+    SorobanTokenAdminClient::new(e, &get_token_long(e)).mint(to, &amount);
 }
 
 /**
@@ -113,14 +111,12 @@ pub fn burn_short_tokens(e: &Env, from: &Address, amount: u128) {
     let total_share = get_total_short_shares(e);
     put_total_short_shares(e, total_share - amount);
 
-    let short_contract = get_token_short(e);
-    SorobanTokenClient::new(e, &short_contract).burn(from, &(amount as i128));
+    SorobanTokenClient::new(e, &get_token_short(e)).burn(from, &(amount as i128));
 }
 
 pub fn mint_short_tokens(e: &Env, to: &Address, amount: i128) {
     let total_share = get_total_short_shares(e);
     put_total_short_shares(e, total_share + (amount as u128));
 
-    let short_contract_id = get_token_short(e);
-    SorobanTokenAdminClient::new(e, &short_contract_id).mint(to, &amount);
+    SorobanTokenAdminClient::new(e, &get_token_short(e)).mint(to, &amount);
 }

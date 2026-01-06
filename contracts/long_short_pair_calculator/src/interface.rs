@@ -12,5 +12,5 @@ pub trait LongShortPairCalculatorTrait {
         lower_bound: u128,
         upper_bound: u128,
         oracle_price: u128,
-    ) -> u64;
+    ) -> u128;
 }

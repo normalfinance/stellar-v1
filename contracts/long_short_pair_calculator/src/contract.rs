@@ -1,6 +1,7 @@
 use crate::errors::CalculatorError;
 use crate::interface::LongShortPairCalculatorTrait;
-use soroban_sdk::{contract, contractimpl, contractmeta, panic_with_error, Address, Env};
+use soroban_sdk::{contract, contractimpl, contractmeta, panic_with_error, Env};
+use utils::constant::PRICE_PRECISION;
 
 // Metadata that is added on to the WASM custom section
 contractmeta!(key = "Description", val = "");
@@ -21,9 +22,9 @@ impl LongShortPairCalculatorTrait for LongShortPairCalculator {
         oracle_price: u128,
         lower_bound: u128,
         upper_bound: u128,
-    ) -> u64 {
+    ) -> u128 {
         if upper_bound == 0 && lower_bound == 0 {
-            panic_with_error!(&e, CalculatorError::ParamsNotSetForCallingLSP);
+            panic_with_error!(&e, CalculatorError::ParamsNotSetForCallingPair);
         }
 
         let lower = lower_bound;
@@ -40,13 +41,13 @@ impl LongShortPairCalculatorTrait for LongShortPairCalculator {
             return 0;
         }
 
-        // Scale to percent with 1e4 precision
-        // 10_000 = 100%, 5_000 = 50%
+        // Scale to percent with 1e7 precision
+        // 10_000_000 = 100%, 5_000_000 = 50%
         let fraction = numerator
-            .saturating_mul(10_000u128)
+            .saturating_mul(PRICE_PRECISION)
             .checked_div(denominator)
             .unwrap_or(0);
 
-        fraction as u64
+        fraction
     }
 }

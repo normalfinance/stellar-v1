@@ -3,17 +3,17 @@ use soroban_sdk::contracterror;
 #[contracterror]
 #[derive(Copy, Clone)]
 #[repr(u32)]
-pub enum LongShortPairError {
+pub enum TreasuryError {
     AlreadyInitialized = 201,
+    WrongInputVecSize = 202,
     InvalidOracle = 203,
     InvalidInput = 204,
-    FailedToGetPoolReserves = 206,
     FailedToGetCalculatorPercent = 207,
-    FailedToUpdateTokenScalingFactor = 208,
     FailedToGetOraclePrice = 209,
-    PoolsNotSet = 210,
-    FundingRateRequiresPoolLiquidity = 211,
     InvalidCalculatorValue = 212,
-    MintingDisabled = 213,
-    InvalidStatus = 214,
+    ActionPaused = 213,
+    ZeroTvl = 214,
+    InsufficientInventory = 215,
+    Slippage = 216,
+    InsufficientShares = 217,
 }

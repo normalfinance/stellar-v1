@@ -1,8 +1,13 @@
 use soroban_sdk::{log, panic_with_error, Address, Env, IntoVal, Symbol, Vec};
 use types::oracle::OraclePriceData;
+use types::pair::PairStatus;
+use utils::constant::PRICE_PRECISION;
 
 use crate::errors::LongShortPairError;
-use crate::storage::{get_calculator, set_collateral_percent_long};
+use crate::storage::{
+    get_calculator, get_lower_bound, get_oracle, get_upper_bound, set_collateral_percent_long,
+    set_status,
+};
 
 pub fn get_oracle_price(e: &Env, oracle_addr: &Address) -> OraclePriceData {
     match e.try_invoke_contract::<OraclePriceData, soroban_sdk::Error>(
@@ -12,20 +17,28 @@ pub fn get_oracle_price(e: &Env, oracle_addr: &Address) -> OraclePriceData {
     ) {
         Ok(Err(_)) | Err(_) => panic_with_error!(e, LongShortPairError::FailedToGetOraclePrice),
         Ok(Ok(oracle_price_data)) => {
+            log!(e, "oracle_price_data", oracle_price_data.price);
             return oracle_price_data;
         }
     }
 }
 
-pub fn sync_collateral_percent_long(e: &Env, oracle_price_data: OraclePriceData) {
-    match e.try_invoke_contract::<u64, soroban_sdk::Error>(
+pub fn sync_collateral(e: &Env) {
+    let oracle_price_data = crate::utils::get_oracle_price(e, &get_oracle(e));
+
+    let price_bounds = Vec::from_array(e, [get_lower_bound(e), get_upper_bound(e)]);
+    let lower_bound = price_bounds.get(0).unwrap();
+    let upper_bound = price_bounds.get(1).unwrap();
+
+    match e.try_invoke_contract::<u128, soroban_sdk::Error>(
         &get_calculator(e),
         &Symbol::new(e, "percent_long_collateral"),
         Vec::from_array(
             e,
             [
-                e.current_contract_address().into_val(e),
                 oracle_price_data.price.into_val(e),
+                lower_bound.into_val(e),
+                upper_bound.into_val(e),
             ],
         ),
     ) {
@@ -38,28 +51,16 @@ pub fn sync_collateral_percent_long(e: &Env, oracle_price_data: OraclePriceData)
                 "new_collateral_percent_long",
                 new_collateral_percent_long
             );
-
             // TODO: enforce collateral invariant (long + short = 1)
-            if new_collateral_percent_long > 10_000 {
+            if new_collateral_percent_long > 10_000_000 {
                 panic_with_error!(e, LongShortPairError::InvalidCalculatorValue);
             }
 
             set_collateral_percent_long(e, &new_collateral_percent_long);
+
+            if oracle_price_data.price <= lower_bound || oracle_price_data.price >= upper_bound {
+                set_status(e, &PairStatus::Settlement);
+            }
         }
     }
-}
-
-pub fn block_operation(e: &Env, price_delta_pct: i64, now: u64) -> bool {
-    let is_spread_pct_too_divergent: bool = is_price_delta_too_divergent(e, price_delta_pct);
-
-    let seconds_since_update = now.saturating_sub(get_last_update_ts(e));
-
-    let funding_paused = get_is_killed_update_funding(e);
-
-    // block if pair hasnt been updated since over half the funding period (assuming slot ~= 500ms)
-    let block = seconds_since_update > get_funding_period(e)
-        || is_spread_pct_too_divergent
-        || funding_paused;
-
-    block
 }

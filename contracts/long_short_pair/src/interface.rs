@@ -1,7 +1,5 @@
-use soroban_sdk::{Address, BytesN, Env, Map, Symbol, Vec};
-use types::pair::PairParams;
-
-use crate::storage::CollateralInfo;
+use soroban_sdk::{Address, BytesN, Env, Symbol, Vec};
+use types::pair::{CollateralInfo, PairParams, PairSummary};
 
 pub trait LongShortPairTrait {
     // Initialize lsp
@@ -28,7 +26,9 @@ pub trait LongShortPairTrait {
      */
     fn redeem(e: Env, user: Address, tokens_to_redeem: u128) -> u128;
 
-    fn sync_collateral_percent_long(e: Env);
+    fn redeem_one(e: Env, user: Address, token: Address, tokens_to_redeem: u128) -> u128;
+
+    fn sync_collateral(e: Env);
 
     fn get_tokens(e: Env) -> Vec<Address>;
 
@@ -37,6 +37,8 @@ pub trait LongShortPairTrait {
     fn get_position_tokens(e: Env, user: Address) -> Vec<u128>;
 
     fn get_collateral_info(e: Env) -> CollateralInfo;
+
+    fn get_pair_summary(e: Env) -> PairSummary;
 }
 
 pub trait AdminInterfaceTrait {
@@ -45,12 +47,6 @@ pub trait AdminInterfaceTrait {
 
     // Calculator
     fn set_calculator(e: Env, admin: Address, calculator: Address);
-
-    // Set privileged addresses
-    fn set_privileged_addrs(e: Env, admin: Address, pause_admin: Address);
-
-    // Get map of privileged roles
-    fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>>;
 
     // Stop pair instantly
     fn kill_mint(e: Env, admin: Address);
@@ -67,21 +63,4 @@ pub trait AdminInterfaceTrait {
 
 pub trait OracleInterfaceTrait {
     fn get_price(e: Env) -> u128;
-}
-
-pub trait UpgradeableContract {
-    // Get contract version
-    fn version() -> u32;
-
-    // Get contract type symbolic name
-    fn contract_name(e: Env) -> Symbol;
-
-    // Upgrade contract with new wasm code
-    fn commit_upgrade(e: Env, admin: Address, new_wasm_hash: BytesN<32>);
-    fn apply_upgrade(e: Env, admin: Address) -> BytesN<32>;
-    fn revert_upgrade(e: Env, admin: Address);
-
-    // Emergency mode - bypass upgrade deadline
-    fn set_emergency_mode(e: Env, admin: Address, value: bool);
-    fn get_emergency_mode(e: Env) -> bool;
 }
