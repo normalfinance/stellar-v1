@@ -3,7 +3,6 @@ use crate::interface::LongShortPairCalculatorTrait;
 use soroban_sdk::{contract, contractimpl, contractmeta, panic_with_error, Env};
 use utils::constant::PRICE_PRECISION;
 
-// Metadata that is added on to the WASM custom section
 contractmeta!(key = "Description", val = "");
 
 #[contract]

@@ -10,13 +10,12 @@ use crate::storage::{
 };
 // Access
 use access_control::access::{AccessControl, AccessControlTrait};
-use access_control::management::{MultipleAddressesManagementTrait, SingleAddressManagementTrait};
+use access_control::management::SingleAddressManagementTrait;
 use access_control::role::Role;
 use soroban_sdk::token::TokenClient as SorobanTokenClient;
 use soroban_sdk::{contract, contractimpl, contractmeta, panic_with_error, Address, Env};
 use utils::math::safe_math::{PrecisionMath, SafeMath};
 
-// Metadata that is added on to the WASM custom section
 contractmeta!(key = "Description", val = "");
 
 #[contract]

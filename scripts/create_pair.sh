@@ -17,9 +17,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/load-env.sh" "$NETWORK"
 # Fetch the admin's address
 ADMIN_ADDRESS=$(soroban keys address $IDENTITY_STRING)
 
-echo "Setup Treasury..."
+# echo "Deploy pair via factory..."
 
-stellar contract invoke \
+PAIR_ADDR=$(stellar contract invoke \
     --id $FACTORY_ADDR \
     --source $IDENTITY_STRING \
     --network $NETWORK \
@@ -28,11 +28,15 @@ stellar contract invoke \
     --fee $STELLAR_BASE_FEE \
     -- \
     deploy_pair_contract \
-    --params $ADMIN_ADDRESS
+    --admin $ADMIN_ADDRESS \
+    --asset ETH
+)
 
-echo "Tokens and pool router deployed."
+echo "Pair deployed: $PAIR_ADDR"
 
 # get tokens
+
+echo "Adding pair to Treasury..."
 
 stellar contract invoke \
     --id $TREASURY_ADDR \

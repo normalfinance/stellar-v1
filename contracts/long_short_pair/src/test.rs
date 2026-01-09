@@ -21,7 +21,7 @@ fn initialize_already_initialized() {
         oracle: setup.oracle.address,
 
         collateral_token: setup.token_usdc.address,
-        pair_calculator: setup.pair_calculator.address,
+        calculator: setup.pair_calculator.address,
         collateral_per_pair: 100_0000000,
 
         long_token: setup.token_long.address,

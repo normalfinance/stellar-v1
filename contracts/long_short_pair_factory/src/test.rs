@@ -30,7 +30,7 @@ fn test_deploy_contract() {
         asset: Symbol::new(&setup.env, "Solana"),
 
         collateral_token,
-        pair_calculator,
+        calculator,
         collateral_per_pair: 100_0000000,
 
         oracle,

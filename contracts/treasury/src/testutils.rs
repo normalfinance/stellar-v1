@@ -164,7 +164,7 @@ impl Setup<'_> {
             asset: sol_symbol.clone(),
             collateral_token: token_usdc.address.clone(),
             oracle: oracle.address.clone(),
-            pair_calculator: pair_calculator.address.clone(),
+            calculator: pair_calculator.address.clone(),
             collateral_per_pair: 100_0000000,
             long_token: token_long.address.clone(),
             short_token: token_short.address.clone(),

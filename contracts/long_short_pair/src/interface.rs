@@ -34,7 +34,7 @@ pub trait LongShortPairTrait {
 
     fn get_price_bounds(e: Env) -> Vec<u128>;
 
-    fn get_position_tokens(e: Env, user: Address) -> Vec<u128>;
+    fn get_user_token_balances(e: Env, user: Address) -> Vec<u128>;
 
     fn get_collateral_info(e: Env) -> CollateralInfo;
 

@@ -48,8 +48,7 @@ PAIR_WASM_HASH=$(soroban contract upload \
     --fee $STELLAR_BASE_FEE
 )
 
-echo "Pair contracts deployed."
-
+# echo "Pair contract deployed."
 
 # Treasury
 TREASURY_ADDR=$(soroban contract deploy \
@@ -61,8 +60,7 @@ TREASURY_ADDR=$(soroban contract deploy \
     --fee $STELLAR_BASE_FEE
 )
 
-
-echo "Initialize Pair Factory..."
+# echo "Initialize Pair Factory..."
 
 CALCULATOR_ADDR=$(soroban contract deploy \
     --wasm long_short_pair_calculator.optimized.wasm \
@@ -101,5 +99,6 @@ echo "Initialization complete!"
 echo "Treasury Contract address: $TREASURY_ADDR"
 echo "Calculator Contract address: $CALCULATOR_ADDR"
 echo "Pair Factory Contract address: $FACTORY_ADDR"
+echo "Normal Oracle Contract address: $ORACLE_ADDR"
 
 echo "Pair wasm hash: $PAIR_WASM_HASH"

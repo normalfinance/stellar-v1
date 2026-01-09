@@ -1,33 +1,16 @@
 use crate::errors::LongShortPairError;
 use crate::events::{Events, LongShortPairEvents};
 use crate::interface::{AdminInterfaceTrait, LongShortPairTrait, OracleInterfaceTrait};
-use crate::storage::{
-    get_calculator, get_collateral_per_pair, get_collateral_percent_long, get_is_killed_mint,
-    get_is_killed_redeem, get_oracle, get_status, get_token_collateral, set_calculator,
-    set_collateral_per_pair, set_is_killed_mint, set_is_killed_redeem, set_oracle,
-};
-use crate::storage::{
-    get_lower_bound, get_upper_bound, set_lower_bound, set_status, set_token_collateral,
-    set_upper_bound,
-};
 use access_control::access::{AccessControl, AccessControlTrait};
 
-use access_control::management::{MultipleAddressesManagementTrait, SingleAddressManagementTrait};
+use access_control::management::SingleAddressManagementTrait;
 use access_control::role::Role;
-use access_control::utils::{
-    require_owner, require_pause_admin_or_owner, require_pause_or_emergency_pause_admin_or_owner,
-};
 use soroban_sdk::token::TokenClient as SorobanTokenClient;
-use soroban_sdk::{contract, contractimpl, contractmeta, log, panic_with_error, Address, Env, Vec};
-use token_pair::{
-    burn_long_tokens, burn_short_tokens, get_token_long, get_token_short, get_user_balance_long,
-    get_user_balance_short, mint_long_tokens, mint_short_tokens, put_token_long, put_token_short,
-};
+use soroban_sdk::{contract, contractimpl, contractmeta, panic_with_error, Address, Env, Vec};
 use types::pair::{CollateralInfo, PairParams, PairStatus, PairSummary};
 use utils::constant::PRICE_PRECISION;
 use utils::math::safe_math::{PrecisionMath, SafeMath};
 
-// Metadata that is added on to the WASM custom section
 contractmeta!(key = "Description", val = "");
 
 #[contract]
@@ -42,23 +25,24 @@ impl LongShortPairTrait for LongShortPair {
         }
         access_control.set_role_address(&Role::Admin, &params.admin);
 
+        crate::storage::set_asset(&e, &params.asset);
+        crate::storage::set_status(&e, &PairStatus::Active);
+
         // Collateral
-        set_token_collateral(&e, &params.collateral_token);
-        set_collateral_per_pair(&e, &params.collateral_per_pair);
+        crate::storage::set_collateral_token(&e, &params.collateral_token);
+        crate::storage::set_collateral_per_pair(&e, &params.collateral_per_pair);
 
         // Tokens
-        put_token_long(&e, params.long_token);
-        put_token_short(&e, params.short_token);
+        token_pair::put_token_long(&e, params.long_token);
+        token_pair::put_token_short(&e, params.short_token);
 
         // Addresses
-        set_oracle(&e, &params.oracle);
-        set_calculator(&e, &params.pair_calculator);
+        crate::storage::set_oracle(&e, &params.oracle);
+        crate::storage::set_calculator(&e, &params.calculator);
 
         // Price boundaries
-        set_lower_bound(&e, &params.lower_bound);
-        set_upper_bound(&e, &params.upper_bound);
-
-        set_status(&e, &PairStatus::Active);
+        crate::storage::set_lower_bound(&e, &params.lower_bound);
+        crate::storage::set_upper_bound(&e, &params.upper_bound);
     }
 
     /**
@@ -75,26 +59,32 @@ impl LongShortPairTrait for LongShortPair {
             panic_with_error!(&e, LongShortPairError::InvalidInput);
         }
 
-        let status = get_status(&e);
-
         // Do not allow minting unless pair is active
-        if status != PairStatus::Active {
+        if crate::storage::get_status(&e) != PairStatus::Active {
             panic_with_error!(&e, LongShortPairError::MintingDisabled);
         }
 
         let current_time = e.ledger().timestamp();
 
-        let collateral_used =
-            tokens_to_mint.safe_fixed_mul_floor(&e, get_collateral_per_pair(&e), PRICE_PRECISION);
+        let collateral_used = tokens_to_mint.safe_fixed_mul_floor(
+            &e,
+            crate::storage::get_collateral_per_pair(&e),
+            PRICE_PRECISION,
+        );
 
-        SorobanTokenClient::new(&e, &get_token_collateral(&e)).transfer(
+        SorobanTokenClient::new(&e, &crate::storage::get_collateral_token(&e)).transfer(
             &user,
             &e.current_contract_address(),
             &(collateral_used as i128),
         );
 
-        mint_long_tokens(&e, &user, tokens_to_mint as i128);
-        mint_short_tokens(&e, &user, tokens_to_mint as i128);
+        token_pair::mint_long_tokens(&e, &user, tokens_to_mint as i128);
+        token_pair::mint_short_tokens(&e, &user, tokens_to_mint as i128);
+
+        // Increment total collateral
+        let total_collateral = crate::storage::get_total_collateral(&e);
+        let new_total_collateral = total_collateral.safe_add(&e, collateral_used);
+        crate::storage::set_total_collateral(&e, &new_total_collateral);
 
         Events::new(&e).mint(
             user,
@@ -132,27 +122,39 @@ impl LongShortPairTrait for LongShortPair {
         // Note that we use the bool receivedSettlementPrice over checking for price != 0 as 0 is a valid price.
         crate::utils::sync_collateral(&e);
 
-        burn_long_tokens(&e, &user, tokens_to_redeem);
-        burn_short_tokens(&e, &user, tokens_to_redeem);
+        token_pair::burn_long_tokens(&e, &user, tokens_to_redeem);
+        token_pair::burn_short_tokens(&e, &user, tokens_to_redeem);
 
-        let collateral =
-            tokens_to_redeem.safe_fixed_mul_floor(&e, get_collateral_per_pair(&e), PRICE_PRECISION);
+        let collateral_to_return = tokens_to_redeem.safe_fixed_mul_floor(
+            &e,
+            crate::storage::get_collateral_per_pair(&e),
+            PRICE_PRECISION,
+        );
+        let total_collateral = crate::storage::get_total_collateral(&e);
 
-        SorobanTokenClient::new(&e, &get_token_collateral(&e)).transfer(
+        if collateral_to_return > total_collateral {
+            panic_with_error!(&e, LongShortPairError::InsufficientInventory);
+        }
+
+        SorobanTokenClient::new(&e, &crate::storage::get_collateral_token(&e)).transfer(
             &e.current_contract_address(),
             &user,
-            &(collateral as i128),
+            &(collateral_to_return as i128),
         );
+
+        // Decrement total collateral
+        let new_total_collateral = total_collateral.safe_sub(&e, collateral_to_return);
+        crate::storage::set_total_collateral(&e, &new_total_collateral);
 
         Events::new(&e).redemption(
             user,
             e.current_contract_address(),
-            collateral,
+            collateral_to_return,
             tokens_to_redeem,
             current_time,
         );
 
-        collateral
+        collateral_to_return
     }
 
     fn redeem_one(e: Env, user: Address, token: Address, tokens_to_redeem: u128) -> u128 {
@@ -166,10 +168,8 @@ impl LongShortPairTrait for LongShortPair {
 
         crate::utils::sync_collateral(&e);
 
-        let status = get_status(&e);
-
         // Enable single token redemption during settlement
-        if status != PairStatus::Settlement {
+        if crate::storage::get_status(&e) != PairStatus::Settlement {
             panic_with_error!(&e, LongShortPairError::InvalidStatus);
         }
 
@@ -182,31 +182,43 @@ impl LongShortPairTrait for LongShortPair {
         }
 
         if token == long_token {
-            burn_long_tokens(&e, &user, tokens_to_redeem);
+            token_pair::burn_long_tokens(&e, &user, tokens_to_redeem);
         }
 
         if token == short_token {
-            burn_short_tokens(&e, &user, tokens_to_redeem);
+            token_pair::burn_short_tokens(&e, &user, tokens_to_redeem);
         }
 
-        let collateral =
-            tokens_to_redeem.safe_fixed_mul_floor(&e, get_collateral_per_pair(&e), PRICE_PRECISION);
+        let collateral_to_return = tokens_to_redeem.safe_fixed_mul_floor(
+            &e,
+            crate::storage::get_collateral_per_pair(&e),
+            PRICE_PRECISION,
+        );
+        let total_collateral = crate::storage::get_total_collateral(&e);
 
-        SorobanTokenClient::new(&e, &get_token_collateral(&e)).transfer(
+        if collateral_to_return > total_collateral {
+            panic_with_error!(&e, LongShortPairError::InsufficientInventory);
+        }
+
+        SorobanTokenClient::new(&e, &crate::storage::get_collateral_token(&e)).transfer(
             &e.current_contract_address(),
             &user,
-            &(collateral as i128),
+            &(collateral_to_return as i128),
         );
+
+        // Decrement total collateral
+        let new_total_collateral = total_collateral.safe_sub(&e, collateral_to_return);
+        crate::storage::set_total_collateral(&e, &new_total_collateral);
 
         Events::new(&e).redemption(
             user,
             e.current_contract_address(),
-            collateral,
+            collateral_to_return,
             tokens_to_redeem,
             current_time,
         );
 
-        collateral
+        collateral_to_return
     }
 
     fn sync_collateral(e: Env) {
@@ -214,61 +226,75 @@ impl LongShortPairTrait for LongShortPair {
     }
 
     fn get_tokens(e: Env) -> Vec<Address> {
-        Vec::from_array(&e, [get_token_long(&e), get_token_short(&e)])
-    }
-
-    fn get_price_bounds(e: Env) -> Vec<u128> {
-        Vec::from_array(&e, [get_lower_bound(&e), get_upper_bound(&e)])
-    }
-
-    fn get_position_tokens(e: Env, user: Address) -> Vec<u128> {
         Vec::from_array(
             &e,
             [
-                get_user_balance_long(&e, &user),
-                get_user_balance_short(&e, &user),
+                token_pair::get_token_long(&e),
+                token_pair::get_token_short(&e),
+            ],
+        )
+    }
+
+    fn get_price_bounds(e: Env) -> Vec<u128> {
+        Vec::from_array(
+            &e,
+            [
+                crate::storage::get_lower_bound(&e),
+                crate::storage::get_upper_bound(&e),
+            ],
+        )
+    }
+
+    fn get_user_token_balances(e: Env, user: Address) -> Vec<u128> {
+        Vec::from_array(
+            &e,
+            [
+                token_pair::get_user_balance_long(&e, &user),
+                token_pair::get_user_balance_short(&e, &user),
             ],
         )
     }
 
     fn get_collateral_info(e: Env) -> CollateralInfo {
         CollateralInfo {
-            collateral_per_pair: get_collateral_per_pair(&e),
-            collateral_percent_long: get_collateral_percent_long(&e),
+            collateral_token: crate::storage::get_collateral_token(&e),
+            total_collateral: crate::storage::get_total_collateral(&e),
+            collateral_per_pair: crate::storage::get_collateral_per_pair(&e),
+            collateral_percent_long: crate::storage::get_collateral_percent_long(&e),
         }
     }
 
     fn get_pair_summary(e: Env) -> PairSummary {
         PairSummary {
-            collateral_token: get_token_collateral(&e),
-            long_token: get_token_long(&e),
-            status: get_status(&e),
-            price_bounds: (get_lower_bound(&e), get_upper_bound(&e)),
-            calculator: get_calculator(&e),
-            oracle: get_oracle(&e),
-            collateral: CollateralInfo {
-                collateral_per_pair: get_collateral_per_pair(&e),
-                collateral_percent_long: get_collateral_percent_long(&e),
-            },
+            asset: crate::storage::get_asset(&e),
+            status: crate::storage::get_status(&e),
+            collateral: Self::get_collateral_info(e.clone()),
+            long_token: token_pair::get_token_long(&e),
+            short_token: token_pair::get_token_short(&e),
+            price_bounds: (
+                crate::storage::get_lower_bound(&e),
+                crate::storage::get_upper_bound(&e),
+            ),
+            calculator: crate::storage::get_calculator(&e),
+            oracle: crate::storage::get_oracle(&e),
         }
     }
 }
 
 #[contractimpl]
 impl AdminInterfaceTrait for LongShortPair {
-    // Calculator
     fn set_calculator(e: Env, admin: Address, calculator: Address) {
         admin.require_auth();
-        require_owner(&e, &admin);
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        set_calculator(&e, &calculator);
+        crate::storage::set_calculator(&e, &calculator);
     }
 
     fn set_oracle(e: Env, admin: Address, oracle: Address) {
         admin.require_auth();
-        require_owner(&e, &admin);
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        set_oracle(&e, &oracle);
+        crate::storage::set_oracle(&e, &oracle);
     }
 
     // Stops the pair mints instantly.
@@ -278,9 +304,9 @@ impl AdminInterfaceTrait for LongShortPair {
     // * `admin` - The address of the admin.
     fn kill_mint(e: Env, admin: Address) {
         admin.require_auth();
-        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        set_is_killed_mint(&e, &true);
+        crate::storage::set_is_killed_mint(&e, &true);
         Events::new(&e).kill_mint();
     }
 
@@ -291,9 +317,9 @@ impl AdminInterfaceTrait for LongShortPair {
     // * `admin` - The address of the admin.
     fn kill_redeem(e: Env, admin: Address) {
         admin.require_auth();
-        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        set_is_killed_redeem(&e, &true);
+        crate::storage::set_is_killed_redeem(&e, &true);
         Events::new(&e).kill_redeem();
     }
 
@@ -304,9 +330,9 @@ impl AdminInterfaceTrait for LongShortPair {
     // * `admin` - The address of the admin.
     fn unkill_mint(e: Env, admin: Address) {
         admin.require_auth();
-        require_pause_admin_or_owner(&e, &admin);
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        set_is_killed_mint(&e, &false);
+        crate::storage::set_is_killed_mint(&e, &false);
         Events::new(&e).unkill_mint();
     }
 
@@ -317,26 +343,26 @@ impl AdminInterfaceTrait for LongShortPair {
     // * `admin` - The address of the admin.
     fn unkill_redeem(e: Env, admin: Address) {
         admin.require_auth();
-        require_pause_admin_or_owner(&e, &admin);
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        set_is_killed_redeem(&e, &false);
+        crate::storage::set_is_killed_redeem(&e, &false);
         Events::new(&e).unkill_redeem();
     }
 
     // Get create killswitch status.
     fn get_is_killed_mint(e: Env) -> bool {
-        get_is_killed_mint(&e)
+        crate::storage::get_is_killed_mint(&e)
     }
 
     // Get redeem killswitch status.
     fn get_is_killed_redeem(e: Env) -> bool {
-        get_is_killed_redeem(&e)
+        crate::storage::get_is_killed_redeem(&e)
     }
 }
 
 #[contractimpl]
 impl OracleInterfaceTrait for LongShortPair {
     fn get_price(e: Env) -> u128 {
-        get_collateral_percent_long(&e) as u128
+        crate::storage::get_collateral_percent_long(&e) as u128
     }
 }

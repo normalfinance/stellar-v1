@@ -11,7 +11,13 @@
     "contracts:bindings": "./scripts/generate-bindings.sh",
     "contracts:deploy": "./scripts/deploy.sh",
     "contracts:setup": "./scripts/setup.sh",
-    "contracts:create_pair": "./scripts/create_pair.sh"
+    "contracts:create_pair": "./scripts/create_pair.sh",
+    "sac:init": "./scripts/sac/init_asset.sh",
+    "sac:deploy": "./scripts/sac/deploy_sac.sh",
+    "sac:update": "./scripts/sac/update_sac_admin.sh",
+    "sac:lock": "./scripts/sac/lock_issuer.sh",
+    "sac:mint": "./scripts/sac/mint.sh",
+    "sac:trust": "./scripts/sac/add_trust.sh"
   },
   "repository": {
     "type": "git",

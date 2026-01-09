@@ -1,25 +1,17 @@
 use crate::events::{Events, FactoryConfigEvents, FactoryEvents};
 use crate::factory_interface::{AdminInterface, LongShortPairFactoryTrait};
 use crate::pair_interface::PairInterfaceTrait;
-use crate::pair_utils::get_pair_salt;
-use crate::storage::get_pair_contract_wasm;
-use crate::storage::set_is_killed_create;
-use crate::storage::set_pair_contract_wasm;
-use crate::storage::{add_deployed_pair, get_all_deployed_pairs};
-use crate::storage::{get_is_killed_create, get_pair, put_pair};
-use access_control::access::{AccessControl, AccessControlTrait};
-use access_control::emergency::{get_emergency_mode, set_emergency_mode};
-use access_control::errors::AccessControlError;
-use access_control::events::Events as AccessControlEvents;
-use access_control::interface::TransferableContract;
-use access_control::management::SingleAddressManagementTrait;
-use access_control::role::{Role, SymbolRepresentation};
-use access_control::transfer::TransferOwnershipTrait;
-use access_control::utils::require_pause_or_emergency_pause_admin_or_owner;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol, Vec,
+    contract, contractimpl, contractmeta, contracttype, Address, BytesN, Env, Symbol, Vec,
 };
-use soroban_sdk::{symbol_short, Bytes, IntoVal};
+use soroban_sdk::{symbol_short, IntoVal};
+
+// Access control
+use access_control::access::{AccessControl, AccessControlTrait};
+use access_control::management::SingleAddressManagementTrait;
+use access_control::role::Role;
+
+contractmeta!(key = "Description", val = "");
 
 #[contract]
 pub struct LongShortPairFactory;
@@ -44,7 +36,7 @@ impl LongShortPairFactory {
         let access_control = AccessControl::new(&e);
         access_control.set_role_address(&Role::Admin, &admin);
 
-        set_pair_contract_wasm(&e, &pair_contract_wasm);
+        crate::storage::set_pair_contract_wasm(&e, &pair_contract_wasm);
     }
 }
 
@@ -65,18 +57,17 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
         admin.require_auth();
 
         // Deploy the pair contract
-        let salt = get_pair_salt(&e, &asset);
+        let salt = crate::pair_utils::get_pair_salt(&e, &asset);
 
         let pair_address = e
             .deployer()
             .with_current_contract(salt.clone())
-            .deploy_v2(get_pair_contract_wasm(&e), ());
+            .deploy_v2(crate::storage::get_pair_contract_wasm(&e), ());
 
         // Add to pair registry
-        add_deployed_pair(&e, &pair_address);
-        put_pair(&e, salt, &pair_address);
+        crate::storage::add_deployed_pair(&e, &pair_address);
+        crate::storage::put_pair(&e, salt, &pair_address);
 
-        // Emit enhanced deployment event
         Events::new(&e).pair_deployed(e.ledger().timestamp(), admin.clone(), pair_address.clone());
 
         pair_address
@@ -88,14 +79,15 @@ impl PairInterfaceTrait for LongShortPairFactory {
     fn mint(e: Env, user: Address, asset: Symbol, tokens_to_mint: u128) -> u128 {
         user.require_auth();
 
-        let salt = get_pair_salt(&e, &asset);
-        let pair_address = get_pair(&e, salt);
+        let salt = crate::pair_utils::get_pair_salt(&e, &asset);
+        let pair_address = crate::storage::get_pair(&e, salt);
 
         let minted_tokens: u128 = e.invoke_contract(
             &pair_address,
             &symbol_short!("mint"),
             Vec::from_array(&e, [user.clone().into_val(&e), tokens_to_mint.into_val(&e)]),
         );
+
         Events::new(&e).mint(
             user,
             asset,
@@ -104,14 +96,15 @@ impl PairInterfaceTrait for LongShortPairFactory {
             tokens_to_mint,
             e.ledger().timestamp(),
         );
+
         minted_tokens
     }
 
     fn redeem(e: Env, user: Address, asset: Symbol, tokens_to_redeem: u128) -> u128 {
         user.require_auth();
 
-        let salt = get_pair_salt(&e, &asset);
-        let pair_address = get_pair(&e, salt);
+        let salt = crate::pair_utils::get_pair_salt(&e, &asset);
+        let pair_address = crate::storage::get_pair(&e, salt);
 
         let collateral: u128 = e.invoke_contract(
             &pair_address,
@@ -121,6 +114,7 @@ impl PairInterfaceTrait for LongShortPairFactory {
                 [user.clone().into_val(&e), tokens_to_redeem.into_val(&e)],
             ),
         );
+
         Events::new(&e).redeem(
             user,
             asset,
@@ -128,6 +122,7 @@ impl PairInterfaceTrait for LongShortPairFactory {
             collateral,
             e.ledger().timestamp(),
         );
+
         collateral
     }
 
@@ -140,8 +135,8 @@ impl PairInterfaceTrait for LongShortPairFactory {
     ) -> u128 {
         user.require_auth();
 
-        let salt = get_pair_salt(&e, &asset);
-        let pair_address = get_pair(&e, salt);
+        let salt = crate::pair_utils::get_pair_salt(&e, &asset);
+        let pair_address = crate::storage::get_pair(&e, salt);
 
         let collateral: u128 = e.invoke_contract(
             &pair_address,
@@ -155,6 +150,7 @@ impl PairInterfaceTrait for LongShortPairFactory {
                 ],
             ),
         );
+
         Events::new(&e).redeem_one(
             user,
             asset,
@@ -163,6 +159,7 @@ impl PairInterfaceTrait for LongShortPairFactory {
             tokens_to_redeem,
             e.ledger().timestamp(),
         );
+
         collateral
     }
 }
@@ -179,26 +176,26 @@ impl AdminInterface for LongShortPairFactory {
 
     fn get_factory_config(e: Env) -> FactoryConfig {
         FactoryConfig {
-            pair_contract_wasm: get_pair_contract_wasm(&e),
+            pair_contract_wasm: crate::storage::get_pair_contract_wasm(&e),
         }
     }
 
     fn get_pair_contract_wasm(e: Env) -> BytesN<32> {
-        get_pair_contract_wasm(&e)
+        crate::storage::get_pair_contract_wasm(&e)
     }
 
     fn get_all_deployed_pairs(e: Env) -> Vec<Address> {
-        get_all_deployed_pairs(&e)
+        crate::storage::get_all_deployed_pairs(&e)
     }
 
     fn get_total_pair_count(e: Env) -> u32 {
-        let all_pairs = get_all_deployed_pairs(&e);
+        let all_pairs = crate::storage::get_all_deployed_pairs(&e);
         all_pairs.len()
     }
 
     fn get_pair_by_asset(e: Env, asset: Symbol) -> Address {
-        let salt = get_pair_salt(&e, &asset);
-        get_pair(&e, salt)
+        let salt = crate::pair_utils::get_pair_salt(&e, &asset);
+        crate::storage::get_pair(&e, salt)
     }
 
     //   ________  _______  ___________  ___________  _______   _______    ________
@@ -220,8 +217,8 @@ impl AdminInterface for LongShortPairFactory {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        let old_wasm = get_pair_contract_wasm(&e);
-        set_pair_contract_wasm(&e, &pair_contract_wasm);
+        let old_wasm = crate::storage::get_pair_contract_wasm(&e);
+        crate::storage::set_pair_contract_wasm(&e, &pair_contract_wasm);
 
         let current_time = e.ledger().timestamp();
         Events::new(&e).pair_wasm_updated(
@@ -243,21 +240,21 @@ impl AdminInterface for LongShortPairFactory {
 
     fn kill_create(e: Env, admin: Address) {
         admin.require_auth();
-        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        set_is_killed_create(&e, &true);
+        crate::storage::set_is_killed_create(&e, &true);
         Events::new(&e).factory_paused(e.ledger().timestamp(), admin);
     }
 
     fn unkill_create(e: Env, admin: Address) {
         admin.require_auth();
-        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        set_is_killed_create(&e, &false);
+        crate::storage::set_is_killed_create(&e, &false);
         Events::new(&e).factory_unpaused(e.ledger().timestamp(), admin);
     }
 
     fn get_is_killed_create(e: Env) -> bool {
-        get_is_killed_create(&e)
+        crate::storage::get_is_killed_create(&e)
     }
 }

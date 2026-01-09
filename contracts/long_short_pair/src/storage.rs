@@ -1,5 +1,5 @@
 use paste::paste;
-use soroban_sdk::{contracttype, panic_with_error, Address, Env};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
 use types::pair::PairStatus;
 pub use utils::bump::bump_instance;
 use utils::constant::PERCENTAGE_PRECISION_U64;
@@ -14,13 +14,16 @@ use utils::{
 #[derive(Clone)]
 #[contracttype]
 pub enum DataKey {
-    TokenCollateral,
+    Asset,
+    Status,
 
+    // Price boundaries
     LowerBound,
     UpperBound,
 
-    Status,
-
+    // Collateral config
+    CollateralToken, // USDC
+    TotalCollateral, //
     CollateralPerPair,
     // Number between 0 and 1 to allocate collateral between long & short tokens at redemption. 0 entitles each short
     // to collateralPerPair and each long to 0. 1 makes each long worth collateralPerPair and short 0.
@@ -40,13 +43,16 @@ pub enum DataKey {
     IsKilledRedeem,
 }
 
+generate_instance_storage_getter_and_setter!(asset, DataKey::Asset, Symbol);
+
 generate_instance_storage_getter_and_setter_with_default!(
-    last_update_ts,
-    DataKey::LastUpdateTs,
-    u64,
-    0
+    status,
+    DataKey::Status,
+    PairStatus,
+    PairStatus::Inactive
 );
 
+// Price boundaries
 generate_instance_storage_getter_and_setter_with_default!(
     lower_bound,
     DataKey::LowerBound,
@@ -60,14 +66,14 @@ generate_instance_storage_getter_and_setter_with_default!(
     0
 );
 
-generate_instance_storage_getter_and_setter_with_default!(
-    status,
-    DataKey::Status,
-    PairStatus,
-    PairStatus::Inactive
-);
-
 // Collateral
+generate_instance_storage_getter_and_setter!(collateral_token, DataKey::CollateralToken, Address);
+generate_instance_storage_getter_and_setter_with_default!(
+    total_collateral,
+    DataKey::TotalCollateral,
+    u128,
+    0
+);
 generate_instance_storage_getter_and_setter_with_default!(
     collateral_per_pair,
     DataKey::CollateralPerPair,
@@ -95,9 +101,9 @@ generate_instance_storage_getter_and_setter_with_default!(
     false
 );
 
+// Addresses
 generate_instance_storage_getter_and_setter!(oracle, DataKey::Oracle, Address);
 generate_instance_storage_getter_and_setter!(calculator, DataKey::Calculator, Address);
-generate_instance_storage_getter_and_setter!(token_collateral, DataKey::TokenCollateral, Address);
 
 // Guard Rails
 generate_instance_storage_getter_and_setter_with_default!(

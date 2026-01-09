@@ -16,4 +16,5 @@ pub enum LongShortPairError {
     InvalidCalculatorValue = 212,
     MintingDisabled = 213,
     InvalidStatus = 214,
+    InsufficientInventory = 215,
 }
