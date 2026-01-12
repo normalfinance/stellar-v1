@@ -48,9 +48,9 @@ impl NormalOracleTrait for NormalOracle {
         access_control.set_role_address(&Role::PauseAdmin, &admin);
         access_control.set_role_address(&Role::EmergencyAdmin, &admin);
 
-        crate::storage::put_asset(&e, asset);
+        crate::storage::set_asset(&e, &asset);
         crate::storage::set_oracle_source(&e, &oracle_source);
-        crate::storage::put_oracle(&e, oracle_addr);
+        crate::storage::set_oracle(&e, &oracle_addr);
     }
 
     fn get_price(e: Env) -> OraclePriceData {

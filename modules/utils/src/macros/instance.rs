@@ -1,4 +1,4 @@
-use soroban_sdk::panic_with_error;
+use soroban_sdk::{panic_with_error, Symbol};
 
 #[macro_export]
 macro_rules! generate_instance_storage_setter {
@@ -8,7 +8,7 @@ macro_rules! generate_instance_storage_setter {
                 bump_instance(e);
                 e.storage()
                     .instance()
-                    .set(&$key, $attr_name)
+                    .set(&Symbol::new(e, $key), $attr_name)
             }
         }
     };
@@ -20,7 +20,7 @@ macro_rules! generate_instance_storage_getter {
         paste! {
             pub fn [<get_ $attr_name>](e: &Env) -> $data_type {
                 bump_instance(e);
-                let value_result = e.storage().instance().get(&$key);
+                let value_result = e.storage().instance().get(&Symbol::new(e, $key));
                 match value_result {
                     Some(value) => value,
                     None => {
@@ -38,7 +38,7 @@ macro_rules! generate_instance_storage_getter_with_default {
         paste! {
             pub fn [<get_ $attr_name>](e: &Env) -> $data_type {
                 bump_instance(e);
-                e.storage().instance().get(&$key).unwrap_or($default)
+                e.storage().instance().get(&Symbol::new(e, $key)).unwrap_or($default)
             }
         }
     };
@@ -57,15 +57,5 @@ macro_rules! generate_instance_storage_getter_and_setter_with_default {
     ($attr_name:ident, $key:expr, $data_type:ty, $default:expr) => {
         generate_instance_storage_getter_with_default!($attr_name, $key, $data_type, $default);
         generate_instance_storage_setter!($attr_name, $key, $data_type);
-    };
-}
-
-// A macro that validates a condition and panics with a specific error if the condition is false
-#[macro_export]
-macro_rules! validate {
-    ($env:expr, $condition:expr, $error:expr) => {
-        if !$condition {
-            panic_with_error!($env, $error) // Panic with the specified error
-        }
     };
 }

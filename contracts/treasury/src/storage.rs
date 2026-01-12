@@ -1,5 +1,5 @@
 use paste::paste;
-use soroban_sdk::{contracttype, panic_with_error, Address, Env};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
 pub use utils::bump::bump_instance;
 use utils::bump::bump_persistent;
 use utils::errors::storage_errors::StorageError;
@@ -8,6 +8,8 @@ use utils::{
     generate_instance_storage_getter_and_setter_with_default,
     generate_instance_storage_getter_with_default, generate_instance_storage_setter,
 };
+
+/********** Storage Types **********/
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -51,51 +53,60 @@ pub struct TreasuryFeeConfig {
     pub taker_fee: u128,
 }
 
+/********** Storage Key Types **********/
+
+const KEY_IS_KILLED_DEPOSIT: &str = "IsKilledDeposit";
+const KEY_IS_KILLED_WITHDRAW: &str = "IsKilledWithdraw";
+const KEY_IS_KILLED_TRADE: &str = "IsKilledTrade";
+
+#[contracttype]
+#[derive(Clone)]
+pub struct UserSharesKey {
+    pub pair: Address,
+    pub user: Address,
+}
+
 #[derive(Clone)]
 #[contracttype]
-pub enum DataKey {
-    // Store which tokens this pair uses, config, etc.
-    PairDetails(Address),  // pair
-    PairBalances(Address), // pair
-
-    // Total LP share supply per pair
-    TotalShares(Address), // pair
-
+pub enum TreasuryDataKey {
+    // map of pair to PairDetails
+    PairDetails(Address),
+    // map of pair to TreasuryPairBalances
+    PairBalances(Address),
+    // map of pair to Total LP share supply
+    TotalShares(Address),
     // LP share balance for (pair, user)
-    UserShares(Address, Address), // (pair, user)
-
-    FeeConfig(Address), // pair > TreasuryFeeConfig
+    UserShares(UserSharesKey),
+    // map of pair to TreasuryFeeConfig
+    FeeConfig(Address),
     ProtocolFees(Address),
-
-    // Paused ops
-    IsKilledDeposit,
-    IsKilledWithdraw,
-    IsKilledTrade,
 }
+
+/********** Storage **********/
 
 // Paused Ops
 generate_instance_storage_getter_and_setter_with_default!(
     is_killed_deposit,
-    DataKey::IsKilledDeposit,
+    KEY_IS_KILLED_DEPOSIT,
     bool,
     false
 );
 generate_instance_storage_getter_and_setter_with_default!(
     is_killed_withdraw,
-    DataKey::IsKilledWithdraw,
+    KEY_IS_KILLED_WITHDRAW,
     bool,
     false
 );
 generate_instance_storage_getter_and_setter_with_default!(
     is_killed_trade,
-    DataKey::IsKilledTrade,
+    KEY_IS_KILLED_TRADE,
     bool,
     false
 );
 
 // Pair details
 pub(crate) fn get_pair_details(env: &Env, pair: &Address) -> TreasuryPairDetails {
-    let key = DataKey::PairDetails(pair.clone());
+    let key = TreasuryDataKey::PairDetails(pair.clone());
     match env.storage().persistent().get(&key) {
         Some(details) => {
             bump_persistent(env, &key);
@@ -106,14 +117,14 @@ pub(crate) fn get_pair_details(env: &Env, pair: &Address) -> TreasuryPairDetails
 }
 
 pub(crate) fn set_pair_details(env: &Env, pair: &Address, details: &TreasuryPairDetails) {
-    let key = DataKey::PairDetails(pair.clone());
+    let key = TreasuryDataKey::PairDetails(pair.clone());
     env.storage().persistent().set(&key, details);
     bump_persistent(env, &key);
 }
 
 // Pair balances
 pub(crate) fn get_pair_balances(env: &Env, pair: &Address) -> TreasuryPairBalances {
-    let key = DataKey::PairBalances(pair.clone());
+    let key = TreasuryDataKey::PairBalances(pair.clone());
     match env.storage().persistent().get(&key) {
         Some(balances) => {
             bump_persistent(env, &key);
@@ -124,14 +135,14 @@ pub(crate) fn get_pair_balances(env: &Env, pair: &Address) -> TreasuryPairBalanc
 }
 
 pub(crate) fn set_pair_balances(env: &Env, pair: &Address, balances: &TreasuryPairBalances) {
-    let key = DataKey::PairBalances(pair.clone());
+    let key = TreasuryDataKey::PairBalances(pair.clone());
     env.storage().persistent().set(&key, balances);
     bump_persistent(env, &key);
 }
 
 // Shares
 pub(crate) fn get_total_shares(env: &Env, pair: &Address) -> u128 {
-    let key = DataKey::TotalShares(pair.clone());
+    let key = TreasuryDataKey::TotalShares(pair.clone());
     match env.storage().persistent().get(&key) {
         Some(total_shares) => {
             bump_persistent(env, &key);
@@ -142,14 +153,17 @@ pub(crate) fn get_total_shares(env: &Env, pair: &Address) -> u128 {
 }
 
 pub(crate) fn set_total_shares(env: &Env, pair: &Address, shares: u128) {
-    let key = DataKey::TotalShares(pair.clone());
+    let key = TreasuryDataKey::TotalShares(pair.clone());
     env.storage().persistent().set(&key, &shares);
     bump_persistent(env, &key);
 }
 
 // User Shares
 pub(crate) fn get_user_shares(env: &Env, pair: &Address, user: &Address) -> u128 {
-    let key = DataKey::UserShares(pair.clone(), user.clone());
+    let key = TreasuryDataKey::UserShares(UserSharesKey {
+        pair: pair.clone(),
+        user: user.clone(),
+    });
     match env.storage().persistent().get(&key) {
         Some(user_shares) => {
             bump_persistent(env, &key);
@@ -160,14 +174,17 @@ pub(crate) fn get_user_shares(env: &Env, pair: &Address, user: &Address) -> u128
 }
 
 pub(crate) fn set_user_shares(env: &Env, pair: &Address, user: &Address, shares: u128) {
-    let key = DataKey::UserShares(pair.clone(), user.clone());
+    let key = TreasuryDataKey::UserShares(UserSharesKey {
+        pair: pair.clone(),
+        user: user.clone(),
+    });
     env.storage().persistent().set(&key, &shares);
     bump_persistent(env, &key);
 }
 
 // Fee Config
 pub(crate) fn get_fee_config(env: &Env, pair: &Address) -> TreasuryFeeConfig {
-    let key = DataKey::FeeConfig(pair.clone());
+    let key = TreasuryDataKey::FeeConfig(pair.clone());
     match env.storage().persistent().get(&key) {
         Some(fee_config) => {
             bump_persistent(env, &key);
@@ -181,14 +198,14 @@ pub(crate) fn get_fee_config(env: &Env, pair: &Address) -> TreasuryFeeConfig {
 }
 
 pub(crate) fn set_fee_config(env: &Env, pair: &Address, fee_config: TreasuryFeeConfig) {
-    let key = DataKey::FeeConfig(pair.clone());
+    let key = TreasuryDataKey::FeeConfig(pair.clone());
     env.storage().persistent().set(&key, &fee_config);
     bump_persistent(env, &key);
 }
 
 // Protocol fee
 pub(crate) fn get_protocol_fees(env: &Env, pair: &Address) -> u128 {
-    let key = DataKey::ProtocolFees(pair.clone());
+    let key = TreasuryDataKey::ProtocolFees(pair.clone());
     match env.storage().persistent().get(&key) {
         Some(details) => {
             bump_persistent(env, &key);
@@ -199,7 +216,7 @@ pub(crate) fn get_protocol_fees(env: &Env, pair: &Address) -> u128 {
 }
 
 pub(crate) fn set_protocol_fees(env: &Env, pair: &Address, fees: &u128) {
-    let key = DataKey::ProtocolFees(pair.clone());
+    let key = TreasuryDataKey::ProtocolFees(pair.clone());
     env.storage().persistent().set(&key, fees);
     bump_persistent(env, &key);
 }

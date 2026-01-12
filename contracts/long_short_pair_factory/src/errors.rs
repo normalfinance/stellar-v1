@@ -4,5 +4,7 @@ use soroban_sdk::contracterror;
 #[derive(Copy, Clone)]
 #[repr(u32)]
 pub enum LongShortPairFactoryError {
-    ActionPaused = 201,
+    PairAlreadyExists = 401,
+    ActionPaused = 403,
+    PairNotFound = 404,
 }

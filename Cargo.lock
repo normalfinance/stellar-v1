@@ -1608,6 +1608,7 @@ dependencies = [
 name = "token_pair"
 version = "1.0.0"
 dependencies = [
+ "paste",
  "soroban-sdk",
  "utils",
 ]

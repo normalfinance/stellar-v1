@@ -1,5 +1,5 @@
 use paste::paste;
-use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{panic_with_error, Address, Env, Symbol};
 use types::pair::PairStatus;
 pub use utils::bump::bump_instance;
 use utils::errors::storage_errors::StorageError;
@@ -10,45 +10,31 @@ use utils::{
     generate_instance_storage_getter_with_default, generate_instance_storage_setter,
 };
 
-#[derive(Clone)]
-#[contracttype]
-pub enum DataKey {
-    Asset,
-    Status, // NOTE: Only update by appending value, DO NOT reorder them
+/********** Storage Key Types **********/
 
-    // Price boundaries
-    LowerBound,
-    UpperBound,
+const KEY_ASSET: &str = "Asset";
+const KEY_STATUS: &str = "Status"; // NOTE: Only update Status enum by appending value, DO NOT reorder it
+const KEY_LOWER_BOUND: &str = "LowerBound";
+const KEY_UPPER_BOUND: &str = "UpperBound";
+const KEY_COLLATERAL_TOKEN: &str = "CollateralToken";
+const KEY_TOTAL_COLLATERAL: &str = "TotalCollateral";
+const KEY_COLLATERAL_PER_PAIR: &str = "CollateralPerPair";
+const KEY_COLLATERAL_PERCENT_LONG: &str = "CollateralPercentLong";
+const KEY_CALCULATOR: &str = "Calculator";
+const KEY_ORACLE: &str = "Oracle";
+const KEY_MAX_PRICE_DIVERGENCE: &str = "MaxPriceDivergence";
+const KEY_LAST_UPDATE_TS: &str = "LastUpdateTs";
+const KEY_EXPERIRATION_TS: &str = "ExpirationTs";
+const KEY_IS_KILLED_MINT: &str = "IsKilledMint";
+const KEY_IS_KILLED_REDEEM: &str = "IsKilledRedeem";
 
-    // Collateral config
-    CollateralToken, // USDC
-    TotalCollateral,
-    CollateralPerPair,
-    // Number between 0 and 1 to allocate collateral between long & short tokens at redemption. 0 entitles each short
-    // to collateral_per_pair and each long to 0. 1 makes each long worth collateral_per_pair and short 0.
-    CollateralPercentLong,
+/********** Storage **********/
 
-    // Addresses
-    Calculator,
-
-    // Oracle
-    Oracle,
-    MaxPriceDivergence,
-
-    // Timestamps
-    LastUpdateTs,
-    ExpirationTs,
-
-    // Paused ops
-    IsKilledMint,
-    IsKilledRedeem,
-}
-
-generate_instance_storage_getter_and_setter!(asset, DataKey::Asset, Symbol);
+generate_instance_storage_getter_and_setter!(asset, KEY_ASSET, Symbol);
 
 generate_instance_storage_getter_and_setter_with_default!(
     status,
-    DataKey::Status,
+    KEY_STATUS,
     PairStatus,
     PairStatus::Inactive
 );
@@ -56,52 +42,47 @@ generate_instance_storage_getter_and_setter_with_default!(
 // Price boundaries
 generate_instance_storage_getter_and_setter_with_default!(
     lower_bound,
-    DataKey::LowerBound,
+    KEY_LOWER_BOUND,
     u128,
     1 // basically zero to maximize short value
 );
-generate_instance_storage_getter_and_setter_with_default!(
-    upper_bound,
-    DataKey::UpperBound,
-    u128,
-    0
-);
+generate_instance_storage_getter_and_setter_with_default!(upper_bound, KEY_UPPER_BOUND, u128, 0);
 
 // Collateral
-generate_instance_storage_getter_and_setter!(collateral_token, DataKey::CollateralToken, Address);
+generate_instance_storage_getter_and_setter!(collateral_token, KEY_COLLATERAL_TOKEN, Address);
 generate_instance_storage_getter_and_setter_with_default!(
     total_collateral,
-    DataKey::TotalCollateral,
+    KEY_TOTAL_COLLATERAL,
     u128,
     0
 );
 generate_instance_storage_getter_and_setter_with_default!(
     collateral_per_pair,
-    DataKey::CollateralPerPair,
+    KEY_COLLATERAL_PER_PAIR,
     u128,
     0
 );
 generate_instance_storage_getter_and_setter_with_default!(
     collateral_percent_long,
-    DataKey::CollateralPercentLong,
+    KEY_COLLATERAL_PERCENT_LONG,
     u128,
     5_000_000 // 50%
 );
 
 // Addresses
-generate_instance_storage_getter_and_setter!(oracle, DataKey::Oracle, Address);
-generate_instance_storage_getter_and_setter!(calculator, DataKey::Calculator, Address);
+generate_instance_storage_getter_and_setter!(oracle, KEY_ORACLE, Address);
+generate_instance_storage_getter_and_setter!(calculator, KEY_CALCULATOR, Address);
 
 // Timestamps
 generate_instance_storage_getter_and_setter_with_default!(
     last_update_ts,
-    DataKey::LastUpdateTs,
+    KEY_LAST_UPDATE_TS,
     u64,
     0
 );
 generate_instance_storage_getter_and_setter_with_default!(
     expiration_ts,
-    DataKey::ExpirationTs,
+    KEY_EXPERIRATION_TS,
     u64,
     0
 );
@@ -109,7 +90,7 @@ generate_instance_storage_getter_and_setter_with_default!(
 // Guard Rails
 generate_instance_storage_getter_and_setter_with_default!(
     max_price_divergence,
-    DataKey::MaxPriceDivergence,
+    KEY_MAX_PRICE_DIVERGENCE,
     u64,
     1_000_000 // 10%
 );
@@ -117,13 +98,13 @@ generate_instance_storage_getter_and_setter_with_default!(
 // Paused Ops
 generate_instance_storage_getter_and_setter_with_default!(
     is_killed_mint,
-    DataKey::IsKilledMint,
+    KEY_IS_KILLED_MINT,
     bool,
     false
 );
 generate_instance_storage_getter_and_setter_with_default!(
     is_killed_redeem,
-    DataKey::IsKilledRedeem,
+    KEY_IS_KILLED_REDEEM,
     bool,
     false
 );

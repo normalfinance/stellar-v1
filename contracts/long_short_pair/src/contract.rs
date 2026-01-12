@@ -8,7 +8,6 @@ use soroban_sdk::{
 };
 use types::pair::{CollateralInfo, PairParams, PairStatus, PairSummary, Side};
 use utils::constant::PRICE_PRECISION;
-use utils::errors::math_errors::MathError;
 use utils::math::safe_math::{PrecisionMath, SafeConversion, SafeMath};
 
 // Access control
@@ -55,8 +54,8 @@ impl LongShortPairTrait for LongShortPair {
         crate::storage::set_collateral_per_pair(&e, &params.collateral_per_pair);
 
         // Tokens
-        token_pair::put_token_long(&e, params.long_token);
-        token_pair::put_token_short(&e, params.short_token);
+        token_pair::set_token_long(&e, &params.long_token);
+        token_pair::set_token_short(&e, &params.short_token);
 
         // Addresses
         crate::storage::set_oracle(&e, &params.oracle);
@@ -99,8 +98,8 @@ impl LongShortPairTrait for LongShortPair {
             &collateral_used.safe_to_i128(&e),
         );
 
-        token_pair::mint_long_tokens(&e, &user, tokens_to_mint.safe_to_i128(&e));
-        token_pair::mint_short_tokens(&e, &user, tokens_to_mint.safe_to_i128(&e));
+        token_pair::mint_long_tokens(&e, &user, tokens_to_mint);
+        token_pair::mint_short_tokens(&e, &user, tokens_to_mint);
 
         // Increment total collateral
         let total_collateral = crate::storage::get_total_collateral(&e);

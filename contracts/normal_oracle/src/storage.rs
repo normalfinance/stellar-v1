@@ -11,22 +11,7 @@ use utils::{
     generate_instance_storage_getter_with_default, generate_instance_storage_setter,
 };
 
-#[derive(Clone)]
-#[contracttype]
-pub enum DataKey {
-    // Config
-    Asset, // symbol
-
-    // Oracle
-    OracleSource,
-    Oracle, // address
-
-    HistoricalData,
-
-    // Guard Rails
-    SecondsBeforeStale,
-    TooVolatileRatio,
-}
+/********** Storage Types **********/
 
 #[contracttype]
 #[derive(Copy, Clone, Debug)]
@@ -35,46 +20,34 @@ pub struct GuardRails {
     pub too_volatile_ratio: u64,
 }
 
-// Asset
-pub fn get_asset(e: &Env) -> Symbol {
-    bump_instance(e);
-    match e.storage().instance().get(&DataKey::Asset) {
-        Some(v) => v,
-        None => panic_with_error!(e, StorageError::ValueNotInitialized),
-    }
+/********** Storage Key Types **********/
+
+const KEY_ASSET: &str = "Asset";
+const KEY_ORACLE: &str = "Oracle";
+const KEY_ORACLE_SOURCE: &str = "OracleSource";
+const KEY_STALE: &str = "SecondsBeforeStale";
+const KEY_VOLATILE: &str = "TooVolatileRatio";
+
+#[derive(Clone)]
+#[contracttype]
+pub enum DataKey {
+    HistoricalData,
 }
 
-pub fn put_asset(e: &Env, asset: Symbol) {
-    bump_instance(e);
-    e.storage().instance().set(&DataKey::Asset, &asset)
-}
+/********** Storage **********/
 
-// Source
-generate_instance_storage_getter_and_setter!(oracle_source, DataKey::OracleSource, OracleSource);
-
-pub fn get_oracle(e: &Env) -> Address {
-    bump_instance(e);
-    match e.storage().instance().get(&DataKey::Oracle) {
-        Some(v) => v,
-        None => panic_with_error!(e, StorageError::ValueNotInitialized),
-    }
-}
-
-pub fn put_oracle(e: &Env, contract: Address) {
-    bump_instance(e);
-    e.storage().instance().set(&DataKey::Oracle, &contract)
-}
-
-// Guard Rails
+generate_instance_storage_getter_and_setter!(asset, KEY_ASSET, Symbol);
+generate_instance_storage_getter_and_setter!(oracle, KEY_ORACLE, Address);
+generate_instance_storage_getter_and_setter!(oracle_source, KEY_ORACLE_SOURCE, OracleSource);
 generate_instance_storage_getter_and_setter_with_default!(
     seconds_before_stale,
-    DataKey::SecondsBeforeStale,
+    KEY_STALE,
     u64,
     FIVE_MINUTE as u64
 );
 generate_instance_storage_getter_and_setter_with_default!(
     too_volatile_ratio,
-    DataKey::TooVolatileRatio,
+    KEY_VOLATILE,
     u64,
     PERCENTAGE_PRECISION_U64 / 5 // ±20%
 );
