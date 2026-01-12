@@ -29,12 +29,24 @@ pub mod normal_oracle {
     soroban_sdk::contractimport!(file = "../../wasm/normal_oracle.wasm");
 }
 
-pub fn create_normal_oracle_contract<'a>(e: &Env) -> normal_oracle::Client<'a> {
-    normal_oracle::Client::new(e, &e.register(normal_oracle::WASM, ()))
+pub fn create_normal_oracle_contract<'a>(
+    e: &Env,
+    admin: &Address,
+    asset: &Symbol,
+    oracle_source: &OracleSource,
+    oracle_addr: &Address,
+) -> normal_oracle::Client<'a> {
+    normal_oracle::Client::new(
+        e,
+        &e.register(
+            normal_oracle::WASM,
+            (admin, asset, oracle_source, oracle_addr),
+        ),
+    )
 }
 
-pub fn create_pair_contract<'a>(e: &Env) -> LongShortPairClient<'a> {
-    LongShortPairClient::new(e, &e.register(crate::LongShortPair {}, ()))
+pub fn create_pair_contract<'a>(e: &Env, params: &PairParams) -> LongShortPairClient<'a> {
+    LongShortPairClient::new(e, &e.register(crate::LongShortPair {}, (params,)))
 }
 
 pub(crate) struct TestConfig {
@@ -141,8 +153,8 @@ impl Setup<'_> {
         assert_eq!(result_1.price, prices_initial.get_unchecked(0));
 
         // Create Normal Oracle
-        let oracle = create_normal_oracle_contract(&e);
-        oracle.initialize(
+        let oracle = create_normal_oracle_contract(
+            &e,
             &admin,
             &sol_symbol.clone(),
             &OracleSource::Reflector,
@@ -153,16 +165,8 @@ impl Setup<'_> {
         let pair_calculator = create_pair_calculator_contract(&e);
 
         // Setup Long Short Pair
-        let pair = create_pair_contract(&e);
-
-        let token_long = create_token_contract(&e, &pair.address);
-        let token_short = create_token_contract(&e, &pair.address);
-
-        let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
-        let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
-
-        // Initialize Pair
-        pair.initialize(
+        let pair = create_pair_contract(
+            &e,
             &(PairParams {
                 admin: admin.clone(),
                 asset: sol_symbol.clone(),
@@ -180,6 +184,12 @@ impl Setup<'_> {
                 upper_bound: 200_0000000,
             }),
         );
+
+        let token_long = create_token_contract(&e, &pair.address);
+        let token_short = create_token_contract(&e, &pair.address);
+
+        let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
+        let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
 
         Self {
             env: e,

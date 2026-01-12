@@ -1,9 +1,10 @@
 use soroban_sdk::{Address, BytesN, Env, Symbol, Vec};
+use types::pair::PairParams;
 
 use crate::contract::FactoryConfig;
 
 pub trait LongShortPairFactoryTrait {
-    fn deploy_pair_contract(e: Env, admin: Address, asset: Symbol) -> Address;
+    fn deploy_pair_contract(e: Env, admin: Address, params: PairParams) -> Address;
 }
 
 pub trait AdminInterface {

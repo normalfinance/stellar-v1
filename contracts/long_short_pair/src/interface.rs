@@ -2,8 +2,6 @@ use soroban_sdk::{Address, Env, Vec};
 use types::pair::{CollateralInfo, PairParams, PairSummary, Side};
 
 pub trait LongShortPairTrait {
-    fn initialize(e: Env, params: PairParams);
-
     /// Creates a pair of long and short tokens equal in number to tokens_to_mint. Pulls the required collateral
     /// amount into this contract, defined by the collateral_per_pair value.
     /// @param tokens_to_mint number of long and short synthetic tokens to create.

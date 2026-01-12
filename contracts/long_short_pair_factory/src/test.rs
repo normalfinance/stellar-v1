@@ -19,12 +19,6 @@ fn test_deploy_contract() {
     let short_token = Address::generate(&setup.env);
 
     // Deploy pair
-    let pair_address = setup
-        .factory
-        .deploy_pair_contract(&admin, &Symbol::new(&setup.env, "Solana"));
-
-    let pair_client = testutils::long_short_pair::Client::new(&setup.env, &pair_address);
-
     let params = testutils::long_short_pair::PairParams {
         admin: admin.clone(),
         asset: Symbol::new(&setup.env, "Solana"),
@@ -41,7 +35,10 @@ fn test_deploy_contract() {
         lower_bound: 0_0000000,
         upper_bound: 200_0000000,
     };
-    pair_client.initialize(&params);
+
+    let pair_address = setup.factory.deploy_pair_contract(&admin, &params);
+
+    let pair_client = testutils::long_short_pair::Client::new(&setup.env, &pair_address);
 
     let pair_tokens = pair_client.get_tokens();
     assert_eq!(pair_tokens.len(), 2);

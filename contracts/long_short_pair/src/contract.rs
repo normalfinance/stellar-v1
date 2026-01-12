@@ -34,14 +34,11 @@ contractmeta!(
 pub struct LongShortPair;
 
 #[contractimpl]
-impl LongShortPairTrait for LongShortPair {
-    fn initialize(e: Env, params: PairParams) {
-        params.admin.require_auth();
-
+impl LongShortPair {
+    // __constructor
+    // Initializes the factory by setting the admin roles and storing critical parameters.
+    pub fn __constructor(e: Env, params: PairParams) {
         let access_control = AccessControl::new(&e);
-        if access_control.get_role_safe(&Role::Admin).is_some() {
-            panic_with_error!(&e, LongShortPairError::AlreadyInitialized);
-        }
         access_control.set_role_address(&Role::Admin, &params.admin);
         access_control.set_role_address(&Role::PauseAdmin, &params.admin);
         access_control.set_role_address(&Role::EmergencyAdmin, &params.admin);
@@ -65,7 +62,10 @@ impl LongShortPairTrait for LongShortPair {
         crate::storage::set_lower_bound(&e, &params.lower_bound);
         crate::storage::set_upper_bound(&e, &params.upper_bound);
     }
+}
 
+#[contractimpl]
+impl LongShortPairTrait for LongShortPair {
     /// Creates a pair of long and short tokens equal in number to tokens_to_mint. Pulls the required collateral
     /// amount into this contract, defined by the collateral_per_pair value.
     /// @param tokens_to_mint number of long and short synthetic tokens to create.

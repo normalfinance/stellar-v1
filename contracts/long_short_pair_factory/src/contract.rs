@@ -8,6 +8,7 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 use soroban_sdk::{symbol_short, IntoVal};
+use types::pair::PairParams;
 
 // Access control
 use access_control::access::{AccessControl, AccessControlTrait};
@@ -60,10 +61,10 @@ impl LongShortPairFactory {
 impl LongShortPairFactoryTrait for LongShortPairFactory {
     /// @notice Creates a Long Short Pair contract.
     /// @param params Constructor params used to initialize the LSP:
-    ///     - `admin`: Address to administrate the LSP contract.
-    ///     - `asset`: Symbol of the target asset.
+    ///     - `admin`: Address of the Factory admin.
+    ///     - `params`: Config parameters of the Long Short Pair contract.
     /// @return pair_address the deployed address of the new Long Short Pair contract.
-    fn deploy_pair_contract(e: Env, admin: Address, asset: Symbol) -> Address {
+    fn deploy_pair_contract(e: Env, admin: Address, params: PairParams) -> Address {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
@@ -76,12 +77,12 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
         }
 
         // Deploy the pair contract
-        let salt = crate::pair_utils::get_pair_salt(&e, &asset);
+        let salt = crate::pair_utils::get_pair_salt(&e, &params.asset);
 
         let pair_address = e
             .deployer()
             .with_current_contract(salt.clone())
-            .deploy_v2(crate::storage::get_pair_contract_wasm(&e), ());
+            .deploy_v2(crate::storage::get_pair_contract_wasm(&e), (params,));
 
         // Add to pair registry
         crate::storage::add_deployed_pair(&e, &pair_address);
