@@ -5,12 +5,11 @@ use crate::testutils::long_short_pair::PairParams;
 use crate::testutils::normal_oracle::OracleSource;
 use crate::TreasuryClient;
 
-use sep_40_oracle::testutils::{ Asset as MockAsset, MockPriceOracleClient, MockPriceOracleWASM };
+use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPriceOracleWASM};
 use soroban_sdk::token::{
-    StellarAssetClient as SorobanTokenAdminClient,
-    TokenClient as SorobanTokenClient,
+    StellarAssetClient as SorobanTokenAdminClient, TokenClient as SorobanTokenClient,
 };
-use soroban_sdk::{ testutils::Address as _, Address, Env, Symbol, Vec };
+use soroban_sdk::{testutils::Address as _, Address, Env, Symbol, Vec};
 use std::vec;
 use utils::test_utils::jump;
 
@@ -119,9 +118,12 @@ impl Setup<'_> {
             &e,
             &admin,
             &MockAsset::Other(Symbol::new(&e, "USD")),
-            &Vec::from_array(&e, [solana.clone(), MockAsset::Other(Symbol::new(&e, "USDC"))]),
+            &Vec::from_array(
+                &e,
+                [solana.clone(), MockAsset::Other(Symbol::new(&e, "USDC"))],
+            ),
             14,
-            300
+            300,
         );
 
         let solana_price = 100_00000000000000;
@@ -135,7 +137,12 @@ impl Setup<'_> {
 
         // Create Normal Oracle
         let oracle = create_normal_oracle_contract(&e);
-        oracle.initialize(&admin, &sol_symbol.clone(), &OracleSource::Reflector, &reflector_addr);
+        oracle.initialize(
+            &admin,
+            &sol_symbol.clone(),
+            &OracleSource::Reflector,
+            &reflector_addr,
+        );
 
         // Setup Calculator
         let pair_calculator = create_pair_calculator_contract(&e);
@@ -174,7 +181,7 @@ impl Setup<'_> {
             &token_long.address,
             &token_short.address,
             &30, // 0.30%
-            &40 // 0.40%
+            &40, // 0.40%
         );
 
         Self {
@@ -217,12 +224,16 @@ impl Setup<'_> {
 }
 
 pub(crate) fn create_token_contract<'a>(e: &Env, admin: &Address) -> SorobanTokenClient<'a> {
-    SorobanTokenClient::new(e, &e.register_stellar_asset_contract_v2(admin.clone()).address())
+    SorobanTokenClient::new(
+        e,
+        &e.register_stellar_asset_contract_v2(admin.clone())
+            .address(),
+    )
 }
 
 pub(crate) fn get_token_admin_client<'a>(
     e: &Env,
-    address: &Address
+    address: &Address,
 ) -> SorobanTokenAdminClient<'a> {
     SorobanTokenAdminClient::new(e, address)
 }
@@ -233,7 +244,7 @@ pub fn setup_reflector_price_feed_oracle<'a>(
     base: &MockAsset,
     assets: &Vec<MockAsset>,
     decimals: u32,
-    resolution: u32
+    resolution: u32,
 ) -> (Address, MockPriceOracleClient<'a>) {
     let oracle_addr = env.register(MockPriceOracleWASM, ());
     let oracle_client = MockPriceOracleClient::new(env, &oracle_addr);

@@ -1,5 +1,5 @@
-use soroban_sdk::{ Address, Env, Symbol };
-use types::oracle::{ OraclePriceData, OracleSource };
+use soroban_sdk::{Address, Env, Symbol};
+use types::oracle::{OraclePriceData, OracleSource};
 
 use crate::storage::GuardRails;
 
