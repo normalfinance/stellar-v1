@@ -35,11 +35,15 @@ pub struct LongShortPair;
 #[contractimpl]
 impl LongShortPairTrait for LongShortPair {
     fn initialize(e: Env, params: PairParams) {
+        params.admin.require_auth();
+
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
             panic_with_error!(&e, LongShortPairError::AlreadyInitialized);
         }
         access_control.set_role_address(&Role::Admin, &params.admin);
+        access_control.set_role_address(&Role::PauseAdmin, &params.admin);
+        access_control.set_role_address(&Role::EmergencyAdmin, &params.admin);
 
         crate::storage::set_asset(&e, &params.asset);
         crate::storage::set_status(&e, &PairStatus::Active);
