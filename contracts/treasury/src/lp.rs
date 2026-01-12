@@ -34,12 +34,14 @@ pub fn shares_to_mint(
     }
 
     // First deposit: bootstrap
+    // (https://app.almanax.ai/scan/13ca3512-fbc7-4909-929a-53855e07d7af/findings/76c2a564-876d-4409-9d7b-e2abfdf8feba)
     if total_shares_before == 0 {
-        // Require empty treasury (recommended)
-        // If you allow someone to "seed" shares when treasury already has assets,
-        // you can get weird edge cases / implicit donations.
+        // Require empty treasury
+        // If you allow someone to "seed" shares when treasury already has assets, you can get weird edge cases / implicit donations.
         let balances = crate::storage::get_pair_balances(&e, pair);
-        assert!(balances.token_long == 0 && balances.token_short == 0 && balances.token_quote == 0);
+        if balances.token_long != 0 || balances.token_short != 0 || balances.token_quote != 0 {
+            panic_with_error!(e, TreasuryError::InvalidBalance);
+        }
 
         return pairs_deposited;
     }

@@ -13,4 +13,5 @@ pub enum TreasuryError {
     InsufficientShares = 217,
     DepositTooSmall = 218,
     WithdrawTooSmall = 219,
+    InvalidBalance = 220,
 }

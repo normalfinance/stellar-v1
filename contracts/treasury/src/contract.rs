@@ -69,6 +69,13 @@ impl TreasuryTrait for Treasury {
         let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
         let balances = get_pair_balances(&e, &pair);
 
+        // Compute how many LP shares to mint
+        let total_shares = get_total_shares(&e, &pair);
+        let total_pairs =
+            crate::lp::total_pairs(&e, &balances, collateral_info.collateral_per_pair);
+        let shares_to_mint =
+            crate::lp::shares_to_mint(&e, &pair, total_pairs, total_shares, pairs_to_deposit);
+
         // Transfer long and short tokens
         SorobanTokenClient::new(&e, &pair_details.token_long).transfer(
             &user,
@@ -92,13 +99,6 @@ impl TreasuryTrait for Treasury {
             &treasury,
             &usdc_required.safe_to_i128(&e),
         );
-
-        // Compute how many LP shares to mint
-        let total_shares = get_total_shares(&e, &pair);
-        let total_pairs =
-            crate::lp::total_pairs(&e, &balances, collateral_info.collateral_per_pair);
-        let shares_to_mint =
-            crate::lp::shares_to_mint(&e, &pair, total_pairs, total_shares, pairs_to_deposit);
 
         // Update total shares
         let new_total_shares = total_shares.safe_add(&e, shares_to_mint);
