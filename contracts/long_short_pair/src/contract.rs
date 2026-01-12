@@ -413,6 +413,7 @@ impl OracleInterfaceTrait for LongShortPair {
 
         let scaled_price = price_bound_delta
             .safe_mul(&e, colleteral_percent_long)
+            .safe_div(&e, PRICE_PRECISION)
             .safe_add(&e, lower_bound);
 
         scaled_price
