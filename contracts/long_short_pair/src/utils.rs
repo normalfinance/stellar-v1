@@ -17,6 +17,12 @@ pub fn get_oracle_price(e: &Env, oracle_addr: &Address) -> OraclePriceData {
 }
 
 pub fn sync_collateral(e: &Env) {
+    let status = crate::storage::get_status(e);
+
+    if status == PairStatus::Expired {
+        panic_with_error!(e, LongShortPairError::PairExpired);
+    }
+
     let oracle_price_data = crate::utils::get_oracle_price(e, &crate::storage::get_oracle(e));
 
     let lower_bound = crate::storage::get_lower_bound(e);

@@ -6,7 +6,7 @@ use soroban_sdk::token::TokenClient as SorobanTokenClient;
 use soroban_sdk::{
     contract, contractimpl, contractmeta, panic_with_error, Address, BytesN, Env, Symbol, Vec,
 };
-use types::pair::{CollateralInfo, PairParams, PairStatus, PairSummary};
+use types::pair::{CollateralInfo, PairParams, PairStatus, PairSummary, Side};
 use utils::constant::PRICE_PRECISION;
 use utils::errors::math_errors::MathError;
 use utils::math::safe_math::{PrecisionMath, SafeConversion, SafeMath};
@@ -174,7 +174,7 @@ impl LongShortPairTrait for LongShortPair {
         collateral_returned
     }
 
-    fn redeem_one(e: Env, user: Address, token: Address, tokens_to_redeem: u128) -> u128 {
+    fn redeem_one(e: Env, user: Address, side: Side, tokens_to_redeem: u128) -> u128 {
         user.require_auth();
 
         if tokens_to_redeem <= 0 {
@@ -192,26 +192,40 @@ impl LongShortPairTrait for LongShortPair {
             panic_with_error!(&e, LongShortPairError::InvalidStatus);
         }
 
-        let long_token = token_pair::get_token_long(&e);
-        let short_token = token_pair::get_token_short(&e);
+        // Settlement allocation
+        let collateral_percent_long = crate::storage::get_collateral_percent_long(&e);
+        let collateral_percent_short = PRICE_PRECISION.safe_sub(&e, collateral_percent_long);
 
-        if token != long_token && token != short_token {
-            panic_with_error!(&e, LongShortPairError::InvalidInput);
+        let side_pct = if side == Side::Long {
+            collateral_percent_long
+        } else {
+            collateral_percent_short
+        };
+
+        // Forbid redeeming a worthless side (prevents “free burn for 0”)
+        if side_pct == 0 {
+            panic_with_error!(&e, LongShortPairError::InsufficientInventory);
         }
 
-        if token == long_token {
+        // Burn the redeemed token
+        if side == Side::Long {
             token_pair::burn_long_tokens(&e, &user, tokens_to_redeem);
-        }
-
-        if token == short_token {
+        } else {
             token_pair::burn_short_tokens(&e, &user, tokens_to_redeem);
         }
 
-        let collateral_to_return = tokens_to_redeem.safe_fixed_mul_floor(
+        let base = tokens_to_redeem.safe_fixed_mul_floor(
             &e,
             crate::storage::get_collateral_per_pair(&e),
             PRICE_PRECISION,
         );
+        let collateral_to_return = base.safe_fixed_mul_floor(&e, side_pct, PRICE_PRECISION);
+
+        // Forbid 0 payout (covers side_pct>0 but tiny amounts)
+        if collateral_to_return == 0 {
+            panic_with_error!(&e, LongShortPairError::InvalidInput);
+        }
+
         let total_collateral = crate::storage::get_total_collateral(&e);
 
         if collateral_to_return > total_collateral {
