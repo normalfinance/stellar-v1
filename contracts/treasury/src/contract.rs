@@ -655,7 +655,7 @@ impl TradingTrait for Treasury {
             false, // sell
             short_in,
             collateral_returned,
-            0, // TODO: price
+            PRICE_PRECISION.safe_sub(&e, collateral_info.collateral_percent_long), // short price
             fee_config.maker_fee,
             0,
             e.ledger().timestamp(),
@@ -758,7 +758,7 @@ impl TradingTrait for Treasury {
             false, // sell
             long_in,
             collateral_returned,
-            0, // TODO: price
+            collateral_info.collateral_percent_long, // long price
             fee_config.maker_fee,
             0,
             e.ledger().timestamp(),
