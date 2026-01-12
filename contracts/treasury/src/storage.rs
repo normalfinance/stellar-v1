@@ -75,10 +75,11 @@ pub enum TreasuryDataKey {
     PairBalances(Address),
     // map of pair to Total LP share supply
     TotalShares(Address),
-    // LP share balance for (pair, user)
+    // map of (pair, user) to LP share balance
     UserShares(UserSharesKey),
     // map of pair to TreasuryFeeConfig
     FeeConfig(Address),
+    // map of pair to collectable protocol fees
     ProtocolFees(Address),
 }
 
@@ -107,11 +108,9 @@ generate_instance_storage_getter_and_setter_with_default!(
 // Pair details
 pub(crate) fn get_pair_details(env: &Env, pair: &Address) -> TreasuryPairDetails {
     let key = TreasuryDataKey::PairDetails(pair.clone());
+    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(details) => {
-            bump_persistent(env, &key);
-            details
-        }
+        Some(details) => details,
         None => panic_with_error!(env, StorageError::ValueNotInitialized),
     }
 }
@@ -125,11 +124,9 @@ pub(crate) fn set_pair_details(env: &Env, pair: &Address, details: &TreasuryPair
 // Pair balances
 pub(crate) fn get_pair_balances(env: &Env, pair: &Address) -> TreasuryPairBalances {
     let key = TreasuryDataKey::PairBalances(pair.clone());
+    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(balances) => {
-            bump_persistent(env, &key);
-            balances
-        }
+        Some(balances) => balances,
         None => panic_with_error!(env, StorageError::ValueNotInitialized),
     }
 }
@@ -143,11 +140,9 @@ pub(crate) fn set_pair_balances(env: &Env, pair: &Address, balances: &TreasuryPa
 // Shares
 pub(crate) fn get_total_shares(env: &Env, pair: &Address) -> u128 {
     let key = TreasuryDataKey::TotalShares(pair.clone());
+    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(total_shares) => {
-            bump_persistent(env, &key);
-            total_shares
-        }
+        Some(total_shares) => total_shares,
         None => 0,
     }
 }
@@ -164,11 +159,9 @@ pub(crate) fn get_user_shares(env: &Env, pair: &Address, user: &Address) -> u128
         pair: pair.clone(),
         user: user.clone(),
     });
+    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(user_shares) => {
-            bump_persistent(env, &key);
-            user_shares
-        }
+        Some(user_shares) => user_shares,
         None => 0,
     }
 }
@@ -185,11 +178,9 @@ pub(crate) fn set_user_shares(env: &Env, pair: &Address, user: &Address, shares:
 // Fee Config
 pub(crate) fn get_fee_config(env: &Env, pair: &Address) -> TreasuryFeeConfig {
     let key = TreasuryDataKey::FeeConfig(pair.clone());
+    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(fee_config) => {
-            bump_persistent(env, &key);
-            fee_config
-        }
+        Some(fee_config) => fee_config,
         None => TreasuryFeeConfig {
             maker_fee: 0,
             taker_fee: 0,
@@ -206,11 +197,9 @@ pub(crate) fn set_fee_config(env: &Env, pair: &Address, fee_config: TreasuryFeeC
 // Protocol fee
 pub(crate) fn get_protocol_fees(env: &Env, pair: &Address) -> u128 {
     let key = TreasuryDataKey::ProtocolFees(pair.clone());
+    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(details) => {
-            bump_persistent(env, &key);
-            details
-        }
+        Some(details) => details,
         None => 0,
     }
 }

@@ -38,11 +38,9 @@ generate_instance_storage_getter_and_setter_with_default!(
 
 pub fn get_pair(e: &Env, salt: BytesN<32>) -> Address {
     let key = DataKey::AssetPair(salt);
+    bump_persistent(e, &key);
     match e.storage().persistent().get(&key) {
-        Some(address) => {
-            bump_persistent(e, &key);
-            address
-        }
+        Some(address) => address,
         None => panic_with_error!(&e, LongShortPairFactoryError::PairNotFound),
     }
 }
@@ -68,11 +66,9 @@ pub fn add_deployed_pair(env: &Env, pair_address: &Address) {
 
 pub fn get_all_deployed_pairs(env: &Env) -> Vec<Address> {
     let key = DataKey::AllDeployedPairs;
+    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(pairs) => {
-            bump_persistent(env, &key);
-            pairs
-        }
+        Some(pairs) => pairs,
         None => Vec::new(env),
     }
 }
