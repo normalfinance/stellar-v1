@@ -54,7 +54,7 @@ pub const PERCENT_MULTIPLIER_I64: i64 = FEE_MULTIPLIER as i64;
 pub const PERCENT_MULTIPLIER_U64: u64 = FEE_MULTIPLIER as u64;
 pub const PERCENT_MULTIPLIER_I128: i128 = FEE_MULTIPLIER as i128;
 
-pub const DEFAULT_MAX_TWAP_UPDATE_PRICE_BAND_DENOMINATOR: u64 = 3; // '3' here means clamp new data point to 33% (1/3) divergence from current twap (if twap > 0)
+pub const DEFAULT_MAX_TWAP_UPDATE_PRICE_BAND_DENOMINATOR: u128 = 3; // '3' here means clamp new data point to 33% (1/3) divergence from current twap (if twap > 0)
 
 // Minimum liquidity locked permanently on first deposit to prevent dust attacks
 pub const MIN_LIQUIDITY: u128 = 1_000;

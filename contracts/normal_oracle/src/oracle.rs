@@ -5,7 +5,7 @@ use oracle::{
 };
 use sep_40_oracle::{Asset, PriceFeedClient};
 use soroban_sdk::{panic_with_error, Address, Env, Symbol};
-use types::oracle::{OraclePriceData, OracleSource};
+use types::oracle::OraclePriceData;
 use utils::{
     constant::{FIVE_MINUTE, PERCENTAGE_PRECISION, PERCENTAGE_PRECISION_U64, PRICE_PRECISION},
     math::safe_math::{PrecisionMath, SafeConversion, SafeMath},
@@ -14,10 +14,7 @@ use utils::{
 
 use crate::{
     errors::NormalOracleError,
-    storage::{
-        get_historical_data, get_oracle, get_oracle_source, get_seconds_before_stale,
-        get_too_volatile_ratio, put_historical_data,
-    },
+    storage::{get_seconds_before_stale, get_too_volatile_ratio, put_historical_data},
 };
 
 pub fn get_reflector_oracle_price(
@@ -47,6 +44,7 @@ pub fn get_reflector_oracle_price(
                 .price
                 .safe_to_u128(e)
                 .safe_div(&e, PRICE_PRECISION);
+
             published_ts = oracle_price_data.timestamp;
 
             let oracle_delay = Delay::from_timestamp_diff_expect(e, now, published_ts);
@@ -56,30 +54,6 @@ pub fn get_reflector_oracle_price(
                 delay: oracle_delay,
             }
         }
-    }
-}
-
-// Fetches the latest oracle price and timestamp for a given asset.
-//
-// Wraps the `PriceFeedClient` to retrieve the last published price and calculates
-// the delay since publication based on the current timestamp.
-//
-// # Arguments
-// * `e` - Soroban environment reference.
-// * `oracle` - Address of the price oracle contract.
-// * `asset` - Address of the asset being queried.
-// * `now` - Current timestamp.
-//
-// # Returns
-// - `OraclePriceData` containing the price and delay since last update.
-pub fn get_oracle_price(e: &Env, asset: &Symbol, now: u64) -> OraclePriceData {
-    assert!(now > 0, "now timestamp must be positive");
-
-    let oracle_addr = get_oracle(e);
-    let oracle_source = get_oracle_source(e);
-
-    match oracle_source {
-        OracleSource::Reflector => get_reflector_oracle_price(e, &oracle_addr, asset, now),
     }
 }
 
@@ -98,9 +72,9 @@ pub fn update_twap(
     e: &Env,
     historical_oracle_data: &HistoricalOracleData,
     oracle_price_data: &OraclePriceData,
-    sanitize_clamp_denominator: u64,
+    sanitize_clamp_denominator: u128,
     now: u64,
-) {
+) -> HistoricalOracleData {
     let capped_oracle_update_price = sanitize_new_price(
         e,
         oracle_price_data.price,
@@ -117,14 +91,15 @@ pub fn update_twap(
         FIVE_MINUTE as u64,
     );
 
-    put_historical_data(
-        e,
-        &(HistoricalOracleData {
-            last_price_twap: oracle_price_twap.safe_to_u128(e),
-            last_price: oracle_price_data.price,
-            last_update_ts: now,
-        }),
-    );
+    let new_historical_oracle_data = HistoricalOracleData {
+        last_price_twap: oracle_price_twap.safe_to_u128(e),
+        last_price: oracle_price_data.price,
+        last_update_ts: now,
+        last_delay_ts: oracle_price_data.delay.as_seconds(),
+    };
+    put_historical_data(e, &new_historical_oracle_data);
+
+    new_historical_oracle_data
 }
 
 // Classifies the current oracle price data as valid, stale, or invalid.
@@ -143,8 +118,8 @@ pub fn update_twap(
 // - `OracleValidity` enum indicating the health of the oracle data.
 pub fn oracle_validity(
     e: &Env,
-    last_oracle_twap: u128,
     oracle_price_data: &OraclePriceData,
+    last_oracle_twap: u128,
 ) -> OracleValidity {
     let OraclePriceData {
         price: oracle_price,
@@ -184,34 +159,4 @@ pub fn oracle_validity(
     };
 
     oracle_validity
-}
-
-pub fn get_oracle_price_with_validity(
-    e: &Env,
-    asset: &Symbol,
-    current_time: u64,
-) -> HistoricalOracleData {
-    let oracle_price_data = get_oracle_price(&e, &asset, current_time);
-
-    let historical_oracle_data = get_historical_data(e);
-
-    let oracle_validity = oracle_validity(
-        &e,
-        historical_oracle_data.last_price_twap,
-        &oracle_price_data,
-    );
-
-    if oracle_validity != OracleValidity::Valid {
-        panic_with_error!(e, OracleError::OracleInvalid);
-    }
-
-    update_twap(
-        e,
-        &historical_oracle_data,
-        &oracle_price_data,
-        1,
-        current_time,
-    );
-
-    get_historical_data(e)
 }

@@ -21,7 +21,6 @@ const KEY_COLLATERAL_PER_PAIR: &str = "CollateralPerPair";
 const KEY_COLLATERAL_PERCENT_LONG: &str = "CollateralPercentLong";
 const KEY_CALCULATOR: &str = "Calculator";
 const KEY_ORACLE: &str = "Oracle";
-const KEY_MAX_PRICE_DIVERGENCE: &str = "MaxPriceDivergence";
 const KEY_LAST_UPDATE_TS: &str = "LastUpdateTs";
 const KEY_EXPERIRATION_TS: &str = "ExpirationTs";
 const KEY_IS_KILLED_MINT: &str = "IsKilledMint";
@@ -84,14 +83,6 @@ generate_instance_storage_getter_and_setter_with_default!(
     KEY_EXPERIRATION_TS,
     u64,
     0
-);
-
-// Guard Rails
-generate_instance_storage_getter_and_setter_with_default!(
-    max_price_divergence,
-    KEY_MAX_PRICE_DIVERGENCE,
-    u64,
-    1_000_000 // 10%
 );
 
 // Paused Ops

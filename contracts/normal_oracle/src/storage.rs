@@ -1,7 +1,7 @@
 use oracle::state::HistoricalOracleData;
 use paste::paste;
 use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
-use types::oracle::OracleSource;
+use types::oracle::{OraclePriceData, OracleSource};
 use utils::bump::{bump_instance, bump_persistent};
 use utils::constant::{FIVE_MINUTE, PERCENTAGE_PRECISION_U64};
 use utils::errors::storage_errors::StorageError;
@@ -18,6 +18,7 @@ use utils::{
 pub struct GuardRails {
     pub seconds_before_stale: u64,
     pub too_volatile_ratio: u64,
+    pub sanitize_clamp_denominator: u128,
 }
 
 /********** Storage Key Types **********/
@@ -25,6 +26,7 @@ pub struct GuardRails {
 const KEY_ASSET: &str = "Asset";
 const KEY_ORACLE: &str = "Oracle";
 const KEY_ORACLE_SOURCE: &str = "OracleSource";
+const KEY_SANITIZE_CLAMP_DENOMINATOR: &str = "SanitizeClampDenominator";
 const KEY_STALE: &str = "SecondsBeforeStale";
 const KEY_VOLATILE: &str = "TooVolatileRatio";
 
@@ -40,6 +42,12 @@ generate_instance_storage_getter_and_setter!(asset, KEY_ASSET, Symbol);
 generate_instance_storage_getter_and_setter!(oracle, KEY_ORACLE, Address);
 generate_instance_storage_getter_and_setter!(oracle_source, KEY_ORACLE_SOURCE, OracleSource);
 generate_instance_storage_getter_and_setter_with_default!(
+    sanitize_clamp_denominator,
+    KEY_SANITIZE_CLAMP_DENOMINATOR,
+    u128,
+    10 // ±10% allowed price move per update
+);
+generate_instance_storage_getter_and_setter_with_default!(
     seconds_before_stale,
     KEY_STALE,
     u64,
@@ -53,14 +61,16 @@ generate_instance_storage_getter_and_setter_with_default!(
 );
 
 // Historical Data
-pub(crate) fn get_historical_data(e: &Env) -> HistoricalOracleData {
+pub(crate) fn get_historical_data(
+    e: &Env,
+    oracle_price_data: &OraclePriceData,
+    now: u64,
+) -> HistoricalOracleData {
     let key = DataKey::HistoricalData;
+    bump_persistent(e, &key);
     match e.storage().persistent().get(&key) {
-        Some(value) => {
-            bump_persistent(e, &key);
-            value
-        }
-        None => HistoricalOracleData::default_quote_oracle(),
+        Some(data) => data,
+        None => HistoricalOracleData::default(*oracle_price_data, now),
     }
 }
 

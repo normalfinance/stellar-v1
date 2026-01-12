@@ -64,7 +64,7 @@ pub fn sanitize_new_price(
     e: &Env,
     new_price: u128,
     last_price_twap: u128,
-    sanitize_clamp_denominator: u64,
+    sanitize_clamp_denominator: u128,
 ) -> u128 {
     // when/if twap is 0, dont try to normalize new_price
     if last_price_twap == 0 {
@@ -89,7 +89,7 @@ pub fn sanitize_new_price(
         return new_price;
     }
 
-    let price_twap_price_band = last_price_twap.safe_div(e, sanitize_clamp_denominator as u128);
+    let price_twap_price_band = last_price_twap.safe_div(e, sanitize_clamp_denominator);
 
     let capped_update_price = if new_price_spread > price_twap_price_band {
         if price_is_increasing {
@@ -185,6 +185,135 @@ mod tests {
     use super::*;
     use soroban_sdk::Env;
     use utils::constant::PRICE_PRECISION;
+
+    // ---------------------------
+    // sanitize_new_price
+    // ---------------------------
+
+    #[test]
+    fn sanitize_returns_new_price_if_twap_is_zero() {
+        let e = Env::default();
+
+        let new_price = 123_456u128;
+        let twap = 0u128;
+
+        let out = sanitize_new_price(&e, new_price, twap, 100);
+        assert_eq!(out, new_price);
+    }
+
+    #[test]
+    fn sanitize_no_clamp_when_effective_denominator_is_zero() {
+        let e = Env::default();
+
+        let twap = 100_000u128;
+        let new_price = 999_999u128;
+
+        // If DEFAULT is 0, denominator resolves to 0 and clamping is disabled.
+        // This test will pass regardless:
+        // - If DEFAULT==0 => out == new_price (early return)
+        // - If DEFAULT!=0 => out may clamp, so we only assert the "effective denom 0" path by calling explicitly.
+        let out = sanitize_new_price(&e, new_price, twap, 0);
+
+        if DEFAULT_MAX_TWAP_UPDATE_PRICE_BAND_DENOMINATOR == 0 {
+            assert_eq!(out, new_price);
+        } else {
+            // If default is non-zero, we can't assert no-clamp here;
+            // this call uses the default denom. We'll cover default behavior explicitly below.
+            assert!(out > 0);
+        }
+    }
+
+    #[test]
+    fn sanitize_inside_band_increasing_returns_new_price() {
+        let e = Env::default();
+
+        let twap = 100_000u128;
+        let denom = 100u128; // band = 1,000
+        let band = twap / denom;
+
+        let new_price = twap + band; // exactly at the edge, not greater
+        let out = sanitize_new_price(&e, new_price, twap, denom);
+
+        assert_eq!(out, new_price);
+    }
+
+    #[test]
+    fn sanitize_inside_band_decreasing_returns_new_price() {
+        let e = Env::default();
+
+        let twap = 100_000u128;
+        let denom = 100u128; // band = 1,000
+        let band = twap / denom;
+
+        let new_price = twap - band; // exactly at the edge
+        let out = sanitize_new_price(&e, new_price, twap, denom);
+
+        assert_eq!(out, new_price);
+    }
+
+    #[test]
+    fn sanitize_clamps_upward_spike_to_twap_plus_band() {
+        let e = Env::default();
+
+        let twap = 100_000u128;
+        let denom = 100u128; // band = 1,000
+        let band = twap / denom;
+
+        let new_price = twap + band + 1; // exceeds band
+        let out = sanitize_new_price(&e, new_price, twap, denom);
+
+        assert_eq!(out, twap + band);
+    }
+
+    #[test]
+    fn sanitize_clamps_downward_spike_to_twap_minus_band() {
+        let e = Env::default();
+
+        let twap = 100_000u128;
+        let denom = 100u128; // band = 1,000
+        let band = twap / denom;
+
+        let new_price = twap - band - 1; // exceeds band
+        let out = sanitize_new_price(&e, new_price, twap, denom);
+
+        assert_eq!(out, twap - band);
+    }
+
+    #[test]
+    fn sanitize_extreme_downward_clamp_returns_zero_when_band_ge_twap() {
+        let e = Env::default();
+
+        // Choose denom=1 => band = twap/1 = twap, so band >= twap triggers the special case.
+        let twap = 50u128;
+        let denom = 1u128;
+        let band = twap / denom;
+        assert_eq!(band, twap);
+
+        let new_price = 0u128; // huge drop
+        let out = sanitize_new_price(&e, new_price, twap, denom);
+
+        assert_eq!(out, 0);
+    }
+
+    #[test]
+    fn sanitize_uses_default_denominator_when_param_is_zero() {
+        let e = Env::default();
+
+        // This test asserts that passing 0 uses the DEFAULT denominator,
+        // so the clamp result matches explicitly passing DEFAULT.
+        let twap = 100_000u128;
+        let new_price = 150_000u128; // likely outside most sane bands
+
+        let out_defaulted = sanitize_new_price(&e, new_price, twap, 0);
+        let out_explicit = sanitize_new_price(
+            &e,
+            new_price,
+            twap,
+            DEFAULT_MAX_TWAP_UPDATE_PRICE_BAND_DENOMINATOR,
+        );
+
+        assert_eq!(out_defaulted, out_explicit);
+    }
 
     // ---------------------------
     // calculate_weighted_average

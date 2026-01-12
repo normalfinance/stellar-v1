@@ -1,6 +1,5 @@
 use soroban_sdk::contracttype;
 use types::oracle::OraclePriceData;
-use utils::constant::PRICE_PRECISION;
 
 use crate::errors::OracleError;
 
@@ -33,31 +32,17 @@ impl OracleValidity {
 pub struct HistoricalOracleData {
     pub last_price: u128,
     pub last_price_twap: u128,
-    pub last_update_ts: u64, // unix_timestamp of last snapshot.
+    pub last_update_ts: u64, // the last ts the Normal oracle was updated
+    pub last_delay_ts: u64,  // delay from the oracle provider
 }
 
 impl HistoricalOracleData {
-    pub fn default_quote_oracle() -> Self {
+    pub fn default(oracle_price_data: OraclePriceData, now: u64) -> Self {
         HistoricalOracleData {
-            last_price: PRICE_PRECISION,
-            last_price_twap: PRICE_PRECISION,
-            ..HistoricalOracleData::default()
-        }
-    }
-
-    pub fn default_price(price: u128) -> Self {
-        HistoricalOracleData {
-            last_price: price,
-            last_price_twap: price,
-            ..HistoricalOracleData::default()
-        }
-    }
-
-    pub fn default_with_current_oracle(price_data: OraclePriceData) -> Self {
-        HistoricalOracleData {
-            last_price: price_data.price,
-            last_price_twap: price_data.price,
-            ..HistoricalOracleData::default()
+            last_price: oracle_price_data.price,
+            last_price_twap: oracle_price_data.price,
+            last_update_ts: now,
+            last_delay_ts: oracle_price_data.delay.as_seconds(),
         }
     }
 }
