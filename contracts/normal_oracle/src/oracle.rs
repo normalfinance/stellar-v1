@@ -31,7 +31,14 @@ pub fn get_reflector_oracle_price(
 
     let oracle_price_data = oracle_client.lastprice(&oracle_asset).unwrap();
 
-    oracle_price = (oracle_price_data.price as u128).safe_div(&e, PRICE_PRECISION);
+    if oracle_price_data.price < 0 {
+        panic_with_error!(e, OracleError::OracleNonPositive);
+    }
+
+    oracle_price = oracle_price_data
+        .price
+        .safe_to_u128(e)
+        .safe_div(&e, PRICE_PRECISION);
     published_ts = oracle_price_data.timestamp;
 
     let oracle_delay = Delay::from_timestamp_diff_expect(
