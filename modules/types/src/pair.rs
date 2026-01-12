@@ -22,10 +22,17 @@ pub struct PairParams {
 }
 
 #[contracttype]
-#[derive(Clone)]
-pub enum Direction {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Side {
     Long,
     Short,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Direction {
+    Buy,
+    Sell,
 }
 
 // NOTE: Only update by appending value, DO NOT reorder them

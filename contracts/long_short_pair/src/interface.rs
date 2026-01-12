@@ -1,5 +1,5 @@
 use soroban_sdk::{Address, Env, Vec};
-use types::pair::{CollateralInfo, PairParams, PairSummary};
+use types::pair::{CollateralInfo, PairParams, PairSummary, Side};
 
 pub trait LongShortPairTrait {
     fn initialize(e: Env, params: PairParams);
@@ -18,7 +18,7 @@ pub trait LongShortPairTrait {
     /// @return collateral_returned total collateral returned in exchange for the pair of synthetics.
     fn redeem(e: Env, user: Address, tokens_to_redeem: u128) -> u128;
 
-    fn redeem_one(e: Env, user: Address, token: Address, tokens_to_redeem: u128) -> u128;
+    fn redeem_one(e: Env, user: Address, side: Side, tokens_to_redeem: u128) -> u128;
 
     fn sync_collateral(e: Env);
 

@@ -15,6 +15,7 @@ use soroban_sdk::{
     contract, contractimpl, contractmeta, panic_with_error, vec, Address, BytesN, Env, IntoVal,
     Symbol, Vec,
 };
+use types::pair::{Direction, Side};
 use utils::constant::PRICE_PRECISION;
 use utils::math::safe_math::{PrecisionMath, SafeConversion, SafeMath};
 
@@ -441,8 +442,8 @@ impl TradingTrait for Treasury {
             user,
             pair,
             true,
-            true, // long
-            true, // buy
+            Side::Long,
+            Direction::Buy,
             usdc_in,
             tokens_to_mint,
             long_price,
@@ -548,8 +549,8 @@ impl TradingTrait for Treasury {
             user,
             pair,
             true,
-            false, // short
-            true,  // buy
+            Side::Short,
+            Direction::Buy,
             usdc_in,
             tokens_to_mint,
             short_price,
@@ -651,8 +652,8 @@ impl TradingTrait for Treasury {
             user,
             pair,
             true,
-            false, // short
-            false, // sell
+            Side::Short,
+            Direction::Sell,
             short_in,
             collateral_returned,
             PRICE_PRECISION.safe_sub(&e, collateral_info.collateral_percent_long), // short price
@@ -754,8 +755,8 @@ impl TradingTrait for Treasury {
             user,
             pair,
             true,
-            true,  // long
-            false, // sell
+            Side::Long,
+            Direction::Sell,
             long_in,
             collateral_returned,
             collateral_info.collateral_percent_long, // long price
@@ -831,8 +832,8 @@ impl TradingTrait for Treasury {
             user,
             pair,
             false,
-            true, // long
-            true, // buy
+            Side::Long,
+            Direction::Buy,
             usdc_in,
             long_out,
             prices.0,
@@ -906,8 +907,8 @@ impl TradingTrait for Treasury {
             user,
             pair,
             false,
-            true,  // long
-            false, // sell
+            Side::Long,
+            Direction::Sell,
             long_in,
             usdc_out,
             prices.0,
@@ -983,8 +984,8 @@ impl TradingTrait for Treasury {
             user,
             pair,
             false,
-            false, // short
-            true,  // buy
+            Side::Short,
+            Direction::Buy,
             usdc_in,
             short_out,
             prices.1,
@@ -1064,8 +1065,8 @@ impl TradingTrait for Treasury {
             user,
             pair,
             false,
-            false, // short
-            false, // sell
+            Side::Short,
+            Direction::Sell,
             short_in,
             usdc_out,
             prices.1,

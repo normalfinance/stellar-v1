@@ -1,4 +1,5 @@
 use soroban_sdk::{Address, Env, Symbol};
+use types::pair::{Direction, Side};
 use utils::math::safe_math::SafeConversion;
 
 #[derive(Clone)]
@@ -50,8 +51,8 @@ pub(crate) trait TreasuryEvents {
         user: Address,
         pair: Address,
         combined: bool,
-        side: bool,
-        direction: bool,
+        side: Side,
+        direction: Direction,
         in_amount: u128,
         out_amount: u128,
         price: u128,
@@ -138,8 +139,8 @@ impl TreasuryEvents for Events {
         user: Address,
         pair: Address,
         combined: bool,
-        side: bool,
-        direction: bool,
+        side: Side,
+        direction: Direction,
         in_amount: u128,
         out_amount: u128,
         price: u128,
