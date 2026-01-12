@@ -20,6 +20,7 @@ use access_control::transfer::TransferOwnershipTrait;
 use upgrade::events::Events as UpgradeEvents;
 use upgrade::interface::UpgradeableContract;
 use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
+use utils::constant::{PERCENTAGE_PRECISION_U64, TWENTY_FOUR_HOUR};
 
 contractmeta!(
     key = "Description",
@@ -80,12 +81,20 @@ impl NormalOracleTrait for NormalOracle {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
+        if stale_limit == 0 || stale_limit > TWENTY_FOUR_HOUR {
+            panic_with_error!(&e, NormalOracleError::InvalidInput);
+        }
+
         crate::storage::set_seconds_before_stale(&e, &stale_limit);
     }
 
     fn set_too_volatile_ratio(e: Env, admin: Address, too_volatile_ratio: u64) {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+
+        if too_volatile_ratio <= PERCENTAGE_PRECISION_U64 {
+            panic_with_error!(&e, NormalOracleError::InvalidInput);
+        }
 
         crate::storage::set_too_volatile_ratio(&e, &too_volatile_ratio);
     }

@@ -8,4 +8,5 @@ pub enum NormalOracleError {
     InvalidToken = 202,
     InsufficientBalance = 203,
     FailedToGetOraclePrice = 204,
+    InvalidInput = 205,
 }
