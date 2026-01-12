@@ -42,7 +42,11 @@ impl LongShortPairCalculatorTrait for LongShortPairCalculator {
         upper_bound: u128,
     ) -> u128 {
         if upper_bound == 0 && lower_bound == 0 {
-            panic_with_error!(&e, CalculatorError::ParamsNotSetForCallingPair);
+            panic_with_error!(&e, CalculatorError::InvalidBounds);
+        }
+
+        if lower_bound <= upper_bound {
+            panic_with_error!(&e, CalculatorError::InvalidBounds);
         }
 
         let lower = lower_bound;
