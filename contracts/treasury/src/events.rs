@@ -164,7 +164,7 @@ impl TreasuryEvents for Events {
     ) {
         self.env().events().publish(
             (Symbol::new(self.env(), "claim_protocol_fee"), pair, token),
-            (destination, amount.safe_to_i128(&self.env())),
+            (destination, amount),
         );
     }
 
