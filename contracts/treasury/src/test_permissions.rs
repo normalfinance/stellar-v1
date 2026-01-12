@@ -111,7 +111,7 @@ fn test_add_pair() {
         assert_eq!(
             setup
                 .treasury
-                .try_add_pair(&addr, &pair, &token, &token, &token)
+                .try_add_pair(&addr, &pair, &token, &token, &token, &10, &10)
                 .is_ok(),
             is_ok
         );

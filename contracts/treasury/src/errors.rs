@@ -5,15 +5,12 @@ use soroban_sdk::contracterror;
 #[repr(u32)]
 pub enum TreasuryError {
     AlreadyInitialized = 201,
-    WrongInputVecSize = 202,
-    InvalidOracle = 203,
     InvalidInput = 204,
-    FailedToGetCalculatorPercent = 207,
-    FailedToGetOraclePrice = 209,
-    InvalidCalculatorValue = 212,
+    FailedToCallPairContract = 209,
     ActionPaused = 213,
-    ZeroTvl = 214,
     InsufficientInventory = 215,
     Slippage = 216,
     InsufficientShares = 217,
+    DepositTooSmall = 218,
+    WithdrawTooSmall = 219,
 }

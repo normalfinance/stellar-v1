@@ -1,29 +1,21 @@
-use soroban_sdk::{Address, BytesN, Env, Symbol, Vec};
+use soroban_sdk::{Address, Env, Vec};
 use types::pair::{CollateralInfo, PairParams, PairSummary};
 
 pub trait LongShortPairTrait {
-    // Initialize lsp
     fn initialize(e: Env, params: PairParams);
 
-    /**
-     * @notice Creates a pair of long and short tokens equal in number to tokensToCreate. Pulls the required collateral
-     * amount into this contract, defined by the collateralPerPair value.
-     * @dev The caller must approve this contract to transfer `tokensToCreate * collateralPerPair` amount of collateral.
-     * @param tokensToCreate number of long and short synthetic tokens to create.
-     * @return collateralUsed total collateral used to mint the synthetics.
-     */
+    /// Creates a pair of long and short tokens equal in number to tokens_to_mint. Pulls the required collateral
+    /// amount into this contract, defined by the collateral_per_pair value.
+    /// @param tokens_to_mint number of long and short synthetic tokens to create.
+    /// @return collateral_used total collateral used to mint the synthetics.
     fn mint(e: Env, user: Address, tokens_to_mint: u128) -> u128;
 
-    /**
-     * @notice Redeems a pair of long and short tokens equal in number to tokensToRedeem. Returns the commensurate
-     * amount of collateral to the caller for the pair of tokens, defined by the collateralPerPair value.
-     * @dev This contract must have the `Burner` role for the `longToken` and `shortToken` in order to call `burnFrom`.
-     * @dev The caller does not need to approve this contract to transfer any amount of `tokensToRedeem` since long
-     * and short tokens are burned, rather than transferred, from the caller.
-     * @dev This method can be called either pre or post expiration.
-     * @param tokensToRedeem number of long and short synthetic tokens to redeem.
-     * @return collateralReturned total collateral returned in exchange for the pair of synthetics.
-     */
+    /// Redeems a pair of long and short tokens equal in number to tokens_to_redeem. Returns the commensurate
+    /// amount of collateral to the caller for the pair of tokens, defined by the collateral_per_pair value.
+    /// and short tokens are burned, rather than transferred, from the caller.
+    /// @dev This method can be called either pre or post expiration.
+    /// @param tokens_to_redeem number of long and short synthetic tokens to redeem.
+    /// @return collateral_returned total collateral returned in exchange for the pair of synthetics.
     fn redeem(e: Env, user: Address, tokens_to_redeem: u128) -> u128;
 
     fn redeem_one(e: Env, user: Address, token: Address, tokens_to_redeem: u128) -> u128;
@@ -36,16 +28,15 @@ pub trait LongShortPairTrait {
 
     fn get_user_token_balances(e: Env, user: Address) -> Vec<u128>;
 
+    fn get_total_token_supplies(e: Env) -> Vec<u128>;
+
     fn get_collateral_info(e: Env) -> CollateralInfo;
 
     fn get_pair_summary(e: Env) -> PairSummary;
 }
 
 pub trait AdminInterfaceTrait {
-    // Oracle
     fn set_oracle(e: Env, admin: Address, oracle: Address);
-
-    // Calculator
     fn set_calculator(e: Env, admin: Address, calculator: Address);
 
     // Stop pair instantly
@@ -63,4 +54,5 @@ pub trait AdminInterfaceTrait {
 
 pub trait OracleInterfaceTrait {
     fn get_price(e: Env) -> u128;
+    fn get_scaled_price(e: Env) -> u128;
 }

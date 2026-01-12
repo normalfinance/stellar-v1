@@ -31,9 +31,9 @@ pub enum Direction {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PairStatus {
-    Active,
-    Settlement,
     Inactive,
+    Active,
+    Expired,
 }
 
 #[contracttype]

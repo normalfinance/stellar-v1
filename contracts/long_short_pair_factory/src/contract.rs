@@ -2,16 +2,30 @@ use crate::events::{Events, FactoryConfigEvents, FactoryEvents};
 use crate::factory_interface::{AdminInterface, LongShortPairFactoryTrait};
 use crate::pair_interface::PairInterfaceTrait;
 use soroban_sdk::{
-    contract, contractimpl, contractmeta, contracttype, Address, BytesN, Env, Symbol, Vec,
+    contract, contractimpl, contractmeta, contracttype, panic_with_error, Address, BytesN, Env,
+    Symbol, Vec,
 };
 use soroban_sdk::{symbol_short, IntoVal};
 
 // Access control
 use access_control::access::{AccessControl, AccessControlTrait};
+use access_control::emergency::{get_emergency_mode, set_emergency_mode};
+use access_control::errors::AccessControlError;
+use access_control::events::Events as AccessControlEvents;
+use access_control::interface::TransferableContract;
 use access_control::management::SingleAddressManagementTrait;
-use access_control::role::Role;
+use access_control::role::{Role, SymbolRepresentation};
+use access_control::transfer::TransferOwnershipTrait;
 
-contractmeta!(key = "Description", val = "");
+// Upgrade
+use upgrade::events::Events as UpgradeEvents;
+use upgrade::interface::UpgradeableContract;
+use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
+
+contractmeta!(
+    key = "Description",
+    val = "Factory for creating and interacting with Long Short Pair contracts"
+);
 
 #[contract]
 pub struct LongShortPairFactory;
@@ -42,17 +56,11 @@ impl LongShortPairFactory {
 
 #[contractimpl]
 impl LongShortPairFactoryTrait for LongShortPairFactory {
-    /**
-     * @notice Creates a longShortPair contract and associated long and short tokens.
-     * @param params Constructor params used to initialize the LSP. Key-valued object with the following structure:
-     *     - `pairName`: Name of the long short pair contract.
-     *     - `collateralPerPair`: How many units of collateral are required to mint one pair of synthetic tokens.
-     *     - `collateralToken`: ERC20 token used as collateral in the LSP.
-     *     - `calculator`: Contract providing settlement payout logic.
-     * @return lspAddress the deployed address of the new long short pair contract.
-     * @notice Created LSP is not registered within the registry as the LSP uses the Optimistic Oracle for settlement.
-     * @notice The LSP constructor does a number of validations on input params. These are not repeated here.
-     */
+    /// @notice Creates a Long Short Pair contract.
+    /// @param params Constructor params used to initialize the LSP:
+    ///     - `admin`: Address to administrate the LSP contract.
+    ///     - `asset`: Symbol of the target asset.
+    /// @return pair_address the deployed address of the new Long Short Pair contract.
     fn deploy_pair_contract(e: Env, admin: Address, asset: Symbol) -> Address {
         admin.require_auth();
 
@@ -166,14 +174,6 @@ impl PairInterfaceTrait for LongShortPairFactory {
 
 #[contractimpl]
 impl AdminInterface for LongShortPairFactory {
-    //   _______    _______  ___________  ___________  _______   _______    ________
-    //  /" _   "|  /"     "|("     _   ")("     _   ")/"     "| /"      \  /"       )
-    // (: ( \___) (: ______) )__/  \\__/  )__/  \\__/(: ______)|:        |(:   \___/
-    //  \/ \       \/    |      \\_ /        \\_ /    \/    |  |_____/   ) \___  \
-    //  //  \ ___  // ___)_     |.  |        |.  |    // ___)_  //      /   __/  \\
-    // (:   _(  _|(:      "|    \:  |        \:  |   (:      "||:  __   \  /" \   :)
-    //  \_______)  \_______)     \__|         \__|    \_______)|__|  \___)(_______/
-
     fn get_factory_config(e: Env) -> FactoryConfig {
         FactoryConfig {
             pair_contract_wasm: crate::storage::get_pair_contract_wasm(&e),
@@ -197,14 +197,6 @@ impl AdminInterface for LongShortPairFactory {
         let salt = crate::pair_utils::get_pair_salt(&e, &asset);
         crate::storage::get_pair(&e, salt)
     }
-
-    //   ________  _______  ___________  ___________  _______   _______    ________
-    //  /"       )/"     "|("     _   ")("     _   ")/"     "| /"      \  /"       )
-    // (:   \___/(: ______) )__/  \\__/  )__/  \\__/(: ______)|:        |(:   \___/
-    //  \___  \   \/    |      \\_ /        \\_ /    \/    |  |_____/   ) \___  \
-    //   __/  \\  // ___)_     |.  |        |.  |    // ___)_  //      /   __/  \\
-    //  /" \   :)(:      "|    \:  |        \:  |   (:      "||:  __   \  /" \   :)
-    // (_______/  \_______)     \__|         \__|    \_______)|__|  \___)(_______/
 
     // set_pair_contract_wasm
     // Updates the WASM hash for the long short pair contract.
@@ -230,14 +222,6 @@ impl AdminInterface for LongShortPairFactory {
         );
     }
 
-    //    _______     __       ____  ____   ________  _______  ________
-    //   |   __ "\   /""\     ("  _||_ " | /"       )/"     "||"      "\
-    //   (. |__) :) /    \    |   (  ) : |(:   \___/(: ______)(.  ___  :)
-    //   |:  ____/ /' /\  \   (:  |  | . ) \___  \   \/    |  |: \   ) ||
-    //   (|  /    //  __'  \   \\ \__/ //   __/  \\  // ___)_ (| (___\ ||
-    //  /|__/ \  /   /  \\  \  /\\ __ //\  /" \   :)(:      "||:       :)
-    // (_______)(___/    \___)(__________)(_______/  \_______)(________/
-
     fn kill_create(e: Env, admin: Address) {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
@@ -256,5 +240,182 @@ impl AdminInterface for LongShortPairFactory {
 
     fn get_is_killed_create(e: Env) -> bool {
         crate::storage::get_is_killed_create(&e)
+    }
+}
+
+#[contractimpl]
+impl UpgradeableContract for LongShortPairFactory {
+    // version
+    // Returns the current version number of the contract.
+    //
+    // Returns:
+    //   - A u32 representing the version.
+    fn version() -> u32 {
+        100
+    }
+
+    // Get contract type symbolic name
+    fn contract_name(e: Env) -> Symbol {
+        Symbol::new(&e, "LongShortPairFactory")
+    }
+
+    // commit_upgrade
+    // Commits a new WASM hash as a pending upgrade.
+    //
+    // Arguments:
+    //   - e: The Soroban environment.
+    //   - admin: The admin address (must be authorized).
+    //   - new_wasm_hash: The new WASM hash (BytesN<32>) to be committed.
+    fn commit_upgrade(e: Env, admin: Address, new_wasm_hash: BytesN<32>) {
+        admin.require_auth();
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        commit_upgrade(&e, &new_wasm_hash);
+        UpgradeEvents::new(&e).commit_upgrade(Vec::from_array(&e, [new_wasm_hash.clone()]));
+    }
+
+    // apply_upgrade
+    // Applies the previously committed upgrade.
+    //
+    // Arguments:
+    //   - e: The Soroban environment.
+    //   - admin: The admin address (must be authorized).
+    //
+    // Returns:
+    //   - The new WASM hash (BytesN<32>) that was applied.
+    fn apply_upgrade(e: Env, admin: Address) -> BytesN<32> {
+        admin.require_auth();
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        let new_wasm_hash = apply_upgrade(&e);
+        UpgradeEvents::new(&e).apply_upgrade(Vec::from_array(&e, [new_wasm_hash.clone()]));
+        new_wasm_hash
+    }
+
+    // revert_upgrade
+    // Reverts a pending upgrade that has not yet been applied.
+    //
+    // Arguments:
+    //   - e: The Soroban environment.
+    //   - admin: The admin address (must be authorized).
+    fn revert_upgrade(e: Env, admin: Address) {
+        admin.require_auth();
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        revert_upgrade(&e);
+        UpgradeEvents::new(&e).revert_upgrade();
+    }
+
+    // set_emergency_mode
+    // Sets or unsets emergency mode for instant upgrades.
+    //
+    // Arguments:
+    //   - e: The Soroban environment.
+    //   - emergency_admin: The emergency admin address (must be authorized).
+    //   - value: Boolean indicating whether to enable (true) or disable (false) emergency mode.
+    fn set_emergency_mode(e: Env, emergency_admin: Address, value: bool) {
+        emergency_admin.require_auth();
+        AccessControl::new(&e).assert_address_has_role(&emergency_admin, &Role::EmergencyAdmin);
+        set_emergency_mode(&e, &value);
+
+        let current_time = e.ledger().timestamp();
+        // Emit factory pause/unpause events based on emergency mode
+        if value {
+            Events::new(&e).factory_paused(current_time, emergency_admin.clone());
+        } else {
+            Events::new(&e).factory_unpaused(current_time, emergency_admin.clone());
+        }
+
+        AccessControlEvents::new(&e).set_emergency_mode(value);
+    }
+
+    // get_emergency_mode
+    // Returns the current emergency mode state.
+    //
+    // Arguments:
+    //   - e: The Soroban environment.
+    //
+    // Returns:
+    //   - A boolean indicating whether emergency mode is active.
+    fn get_emergency_mode(e: Env) -> bool {
+        get_emergency_mode(&e)
+    }
+}
+
+// The `TransferableContract` trait provides the interface for transferring ownership of the contract.
+#[contractimpl]
+impl TransferableContract for LongShortPairFactory {
+    // Commits an ownership transfer.
+    //
+    // # Arguments
+    //
+    // * `admin` - The address of the admin.
+    // * `role_name` - The name of the role to transfer ownership of. The role must be one of the following:
+    //     * `Admin`
+    //     * `EmergencyAdmin`
+    // * `new_address` - New address for the role
+    fn commit_transfer_ownership(e: Env, admin: Address, role_name: Symbol, new_address: Address) {
+        admin.require_auth();
+        let access_control = AccessControl::new(&e);
+        access_control.assert_address_has_role(&admin, &Role::Admin);
+
+        let role = Role::from_symbol(&e, role_name);
+        access_control.commit_transfer_ownership(&role, &new_address);
+        AccessControlEvents::new(&e).commit_transfer_ownership(role, new_address);
+    }
+
+    // Applies the committed ownership transfer.
+    //
+    // # Arguments
+    //
+    // * `admin` - The address of the admin.
+    // * `role_name` - The name of the role to transfer ownership of. The role must be one of the following:
+    //     * `Admin`
+    //     * `EmergencyAdmin`
+    fn apply_transfer_ownership(e: Env, admin: Address, role_name: Symbol) {
+        admin.require_auth();
+        let access_control = AccessControl::new(&e);
+        access_control.assert_address_has_role(&admin, &Role::Admin);
+
+        let role = Role::from_symbol(&e, role_name);
+        let new_address = access_control.apply_transfer_ownership(&role);
+        AccessControlEvents::new(&e).apply_transfer_ownership(role, new_address);
+    }
+
+    // Reverts the committed ownership transfer.
+    //
+    // # Arguments
+    //
+    // * `admin` - The address of the admin.
+    // * `role_name` - The name of the role to transfer ownership of. The role must be one of the following:
+    //     * `Admin`
+    //     * `EmergencyAdmin`
+    fn revert_transfer_ownership(e: Env, admin: Address, role_name: Symbol) {
+        admin.require_auth();
+        let access_control = AccessControl::new(&e);
+        access_control.assert_address_has_role(&admin, &Role::Admin);
+
+        let role = Role::from_symbol(&e, role_name);
+        access_control.revert_transfer_ownership(&role);
+        AccessControlEvents::new(&e).revert_transfer_ownership(role);
+    }
+
+    // Returns the future address for the role.
+    // The future address is the address that the ownership of the role will be transferred to.
+    // The future address is set using the `commit_transfer_ownership` function.
+    // The address will be defaulted to the current address if the transfer is not committed.
+    //
+    // # Arguments
+    //
+    // * `role_name` - The name of the role to get the future address for. The role must be one of the following:
+    //    * `Admin`
+    //    * `EmergencyAdmin`
+    fn get_future_address(e: Env, role_name: Symbol) -> Address {
+        let access_control = AccessControl::new(&e);
+        let role = Role::from_symbol(&e, role_name);
+        match access_control.get_transfer_ownership_deadline(&role) {
+            0 => match access_control.get_role_safe(&role) {
+                Some(address) => address,
+                None => panic_with_error!(&e, AccessControlError::RoleNotFound),
+            },
+            _ => access_control.get_future_address(&role),
+        }
     }
 }

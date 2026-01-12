@@ -1,40 +1,20 @@
 use soroban_sdk::{Address, BytesN, Env, Symbol};
 
 use crate::storage::{
-    TreasuryPairBalances, TreasuryPairDetails, TreasuryPairSummary, TreasuryUserPairSummary,
+    TreasuryFeeConfig, TreasuryPairBalances, TreasuryPairDetails, TreasuryPairSummary,
+    TreasuryUserPairSummary,
 };
 
 pub trait TreasuryTrait {
     fn initialize(e: Env, admin: Address);
 
-    fn deposit(
-        e: Env,
-        user: Address,
-        pair: Address,
-        amt_long: u128,
-        amt_short: u128,
-        amt_quote: u128,
-    ) -> u128;
+    fn deposit(e: Env, user: Address, pair: Address, pairs_to_deposit: u128) -> u128;
 
-    fn withdraw(
-        e: Env,
-        user: Address,
-        pair: Address,
-        shares: u128,
-        min_usdc: u128,
-        min_long: u128,
-        min_short: u128,
-    ) -> (u128, u128, u128);
-
-    fn buy_long(e: Env, user: Address, pair: Address, usdc_in: u128, min_long_out: u128) -> u128;
-    fn sell_long(e: Env, user: Address, pair: Address, long_in: u128, min_usdc_out: u128) -> u128;
-    fn buy_short(e: Env, user: Address, pair: Address, usdc_in: u128, min_short_out: u128) -> u128;
-    fn sell_short(e: Env, user: Address, pair: Address, short_in: u128, min_usdc_out: u128)
-        -> u128;
+    fn withdraw(e: Env, user: Address, pair: Address, shares: u128) -> (u128, u128, u128);
 
     fn get_pair_details(e: Env, pair: Address) -> TreasuryPairDetails;
 
-    fn get_tvl(e: Env, pair: Address) -> u128;
+    fn get_total_pairs(e: Env, pair: Address) -> u128;
 
     fn get_prices(e: Env, pair: Address) -> (u128, u128);
 
@@ -44,15 +24,37 @@ pub trait TreasuryTrait {
 
     fn get_user_shares(e: Env, pair: Address, user: Address) -> u128;
 
-    fn get_pair_fee(e: Env, pair: Address) -> u128;
+    fn get_pair_fee_config(e: Env, pair: Address) -> TreasuryFeeConfig;
 
     fn get_pair_summary(e: Env, pair: Address) -> TreasuryPairSummary;
 
     fn get_user_with_pair_summary(e: Env, pair: Address, user: Address) -> TreasuryUserPairSummary;
 }
 
+pub trait TradingTrait {
+    fn estimate_trade(
+        e: Env,
+        pair: Address,
+        side: bool,
+        direction: bool,
+        amount_in: u128,
+        taker_fee: bool,
+    ) -> (u128, u128);
+
+    fn buy_long(e: Env, user: Address, pair: Address, usdc_in: u128, min_long_out: u128) -> u128;
+    fn sell_long(e: Env, user: Address, pair: Address, long_in: u128, min_usdc_out: u128) -> u128;
+    fn buy_short(e: Env, user: Address, pair: Address, usdc_in: u128, min_short_out: u128) -> u128;
+    fn sell_short(e: Env, user: Address, pair: Address, short_in: u128, min_usdc_out: u128)
+        -> u128;
+
+    fn mint_and_sell_short(e: Env, user: Address, pair: Address, usdc_in: u128) -> u128;
+    fn mint_and_sell_long(e: Env, user: Address, pair: Address, usdc_in: u128) -> u128;
+
+    fn buy_long_and_redeem(e: Env, user: Address, pair: Address, short_in: u128) -> u128;
+    fn buy_short_and_redeem(e: Env, user: Address, pair: Address, long_in: u128) -> u128;
+}
+
 pub trait AdminInterfaceTrait {
-    // Pair
     fn add_pair(
         e: Env,
         admin: Address,
@@ -60,9 +62,11 @@ pub trait AdminInterfaceTrait {
         quote_token: Address,
         long_token: Address,
         short_token: Address,
+        maker_fee: u128,
+        taker_fee: u128,
     );
 
-    fn set_pair_fee(e: Env, admin: Address, pair: Address, fee: u128);
+    fn set_fee_config(e: Env, admin: Address, pair: Address, maker_fee: u128, taker_fee: u128);
 
     fn get_protocol_fees(e: Env, pair: Address) -> u128;
 

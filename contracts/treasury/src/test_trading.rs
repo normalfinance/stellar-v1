@@ -112,13 +112,9 @@ fn test_buy_long() {
     );
 
     // Deposit liquidity
-    setup.treasury.deposit(
-        &admin,
-        &setup.pair.address,
-        &pair_tokens_to_deposit,
-        &pair_tokens_to_deposit,
-        &usdc_to_deposit,
-    );
+    setup
+        .treasury
+        .deposit(&admin, &setup.pair.address, &pair_tokens_to_deposit);
     assert_eq!(setup.token_usdc.balance(&admin), 0);
     assert_eq!(setup.token_long.balance(&admin), 0);
     assert_eq!(setup.token_short.balance(&admin), 0);
@@ -126,8 +122,9 @@ fn test_buy_long() {
     // Test
     // ================================================================================
 
-    let fee = setup.treasury.get_pair_fee(&setup.pair.address);
-    let usdc_less_fee = (usdc_to_trade * (PRICE_PRECISION - fee)) / PRICE_PRECISION;
+    let fee_config = setup.treasury.get_pair_fee_config(&setup.pair.address);
+    let usdc_less_fee =
+        (usdc_to_trade * (PRICE_PRECISION - fee_config.taker_fee)) / PRICE_PRECISION;
     let usdc_fee = usdc_to_trade - usdc_less_fee;
 
     // Trade
@@ -279,13 +276,9 @@ fn test_buy_short() {
     );
 
     // Deposit liquidity
-    setup.treasury.deposit(
-        &admin,
-        &setup.pair.address,
-        &pair_tokens_to_deposit,
-        &pair_tokens_to_deposit,
-        &usdc_to_deposit,
-    );
+    setup
+        .treasury
+        .deposit(&admin, &setup.pair.address, &pair_tokens_to_deposit);
     assert_eq!(setup.token_usdc.balance(&admin), 0);
     assert_eq!(setup.token_long.balance(&admin), 0);
     assert_eq!(setup.token_short.balance(&admin), 0);
@@ -293,8 +286,9 @@ fn test_buy_short() {
     // Test
     // ================================================================================
 
-    let fee = setup.treasury.get_pair_fee(&setup.pair.address);
-    let usdc_less_fee = (usdc_to_trade * (PRICE_PRECISION - fee)) / PRICE_PRECISION;
+    let fee_config = setup.treasury.get_pair_fee_config(&setup.pair.address);
+    let usdc_less_fee =
+        (usdc_to_trade * (PRICE_PRECISION - fee_config.taker_fee)) / PRICE_PRECISION;
     let usdc_fee = usdc_to_trade - usdc_less_fee;
 
     // Trade

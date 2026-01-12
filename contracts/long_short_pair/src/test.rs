@@ -52,7 +52,7 @@ fn test_mint_invalid_status() {
 
     // Set additional test configuration
     setup.env.as_contract(&setup.pair.address, || {
-        set_status(&setup.env, &PairStatus::Settlement);
+        set_status(&setup.env, &PairStatus::Expired);
     });
 
     setup.pair.mint(&setup.users[1], &tokens_to_mint);
@@ -261,7 +261,7 @@ fn test_redeem_one_invalid_token() {
 
     // Set required status
     setup.env.as_contract(&setup.pair.address, || {
-        set_status(&setup.env, &PairStatus::Settlement);
+        set_status(&setup.env, &PairStatus::Expired);
     });
 
     setup
@@ -332,7 +332,7 @@ fn test_redeem_one_long_when_price_at_upper_bound() {
 
     setup.env.as_contract(&setup.pair.address, || {
         // [x] Status is automatically updated to Settlement
-        assert_eq!(get_status(&setup.env), PairStatus::Settlement);
+        assert_eq!(get_status(&setup.env), PairStatus::Expired);
 
         // [x] Long and Short total shares updated
         assert_eq!(get_total_long_shares(&setup.env), 0);

@@ -103,10 +103,12 @@ export type Delay = readonly [u64];
 export interface Client {
   /**
    * Construct and simulate a percent_long_collateral transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * * @notice Returns a number between 0 and 1 to indicate how much collateral each long and short token is entitled
-   *      * to per collateralPerPair.
-   *      * @param oracle_price price from the optimistic oracle for the LSP price identifier.
-   *      * @return expiryPercentLong to indicate how much collateral should be sent between long and short tokens.
+   * Returns a number between 0 and 1 to indicate how much collateral each long and short token is entitled
+   * to per collateral_per_pair.
+   * @param oracle_price price from the oracle for the target asset.
+   * @param lower_bound lower price boundary from the Long Short Pair.
+   * @param upper_bound upper price boundary from the Long Short Pair.
+   * @return expiryPercentLong to indicate how much collateral should be sent between long and short tokens.
    */
   percent_long_collateral: ({oracle_price, lower_bound, upper_bound}: {oracle_price: u128, lower_bound: u128, upper_bound: u128}, options?: {
     /**
@@ -143,7 +145,7 @@ export class Client extends ContractClient {
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAAAAAAAVoqIEBub3RpY2UgUmV0dXJucyBhIG51bWJlciBiZXR3ZWVuIDAgYW5kIDEgdG8gaW5kaWNhdGUgaG93IG11Y2ggY29sbGF0ZXJhbCBlYWNoIGxvbmcgYW5kIHNob3J0IHRva2VuIGlzIGVudGl0bGVkCiAgICAgKiB0byBwZXIgY29sbGF0ZXJhbFBlclBhaXIuCiAgICAgKiBAcGFyYW0gb3JhY2xlX3ByaWNlIHByaWNlIGZyb20gdGhlIG9wdGltaXN0aWMgb3JhY2xlIGZvciB0aGUgTFNQIHByaWNlIGlkZW50aWZpZXIuCiAgICAgKiBAcmV0dXJuIGV4cGlyeVBlcmNlbnRMb25nIHRvIGluZGljYXRlIGhvdyBtdWNoIGNvbGxhdGVyYWwgc2hvdWxkIGJlIHNlbnQgYmV0d2VlbiBsb25nIGFuZCBzaG9ydCB0b2tlbnMuAAAAAAAXcGVyY2VudF9sb25nX2NvbGxhdGVyYWwAAAAAAwAAAAAAAAAMb3JhY2xlX3ByaWNlAAAACgAAAAAAAAALbG93ZXJfYm91bmQAAAAACgAAAAAAAAALdXBwZXJfYm91bmQAAAAACgAAAAEAAAAK",
+      new ContractSpec([ "AAAAAAAAAa5SZXR1cm5zIGEgbnVtYmVyIGJldHdlZW4gMCBhbmQgMSB0byBpbmRpY2F0ZSBob3cgbXVjaCBjb2xsYXRlcmFsIGVhY2ggbG9uZyBhbmQgc2hvcnQgdG9rZW4gaXMgZW50aXRsZWQKdG8gcGVyIGNvbGxhdGVyYWxfcGVyX3BhaXIuCkBwYXJhbSBvcmFjbGVfcHJpY2UgcHJpY2UgZnJvbSB0aGUgb3JhY2xlIGZvciB0aGUgdGFyZ2V0IGFzc2V0LgpAcGFyYW0gbG93ZXJfYm91bmQgbG93ZXIgcHJpY2UgYm91bmRhcnkgZnJvbSB0aGUgTG9uZyBTaG9ydCBQYWlyLgpAcGFyYW0gdXBwZXJfYm91bmQgdXBwZXIgcHJpY2UgYm91bmRhcnkgZnJvbSB0aGUgTG9uZyBTaG9ydCBQYWlyLgpAcmV0dXJuIGV4cGlyeVBlcmNlbnRMb25nIHRvIGluZGljYXRlIGhvdyBtdWNoIGNvbGxhdGVyYWwgc2hvdWxkIGJlIHNlbnQgYmV0d2VlbiBsb25nIGFuZCBzaG9ydCB0b2tlbnMuAAAAAAAXcGVyY2VudF9sb25nX2NvbGxhdGVyYWwAAAAAAwAAAAAAAAAMb3JhY2xlX3ByaWNlAAAACgAAAAAAAAALbG93ZXJfYm91bmQAAAAACgAAAAAAAAALdXBwZXJfYm91bmQAAAAACgAAAAEAAAAK",
         "AAAABAAAAAAAAAAAAAAAD0NhbGN1bGF0b3JFcnJvcgAAAAAEAAAAAAAAABJBbHJlYWR5SW5pdGlhbGl6ZWQAAAAAAMkAAAAAAAAADUludmFsaWRCb3VuZHMAAAAAAADKAAAAAAAAABBQYXJhbXNBbHJlYWR5U2V0AAAAywAAAAAAAAAaUGFyYW1zTm90U2V0Rm9yQ2FsbGluZ1BhaXIAAAAAAMw=",
         "AAAABAAAAAAAAAAAAAAACU1hdGhFcnJvcgAAAAAAAAkAAAAZTWF0aEVycm9yOiBOdW1iZXJPdmVyZmxvdwAAAAAAAA5OdW1iZXJPdmVyZmxvdwAAAAAB/gAAAB1NYXRoRXJyb3I6IEdlbmVyaWMgbWF0aCBlcnJvcgAAAAAAAAlNYXRoRXJyb3IAAAAAAAH/AAAALU1hdGhFcnJvcjogQWRkaXRpb24gb3BlcmF0aW9uIGNhdXNlZCBvdmVyZmxvdwAAAAAAABBBZGRpdGlvbk92ZXJmbG93AAACAAAAADFNYXRoRXJyb3I6IFN1YnRyYWN0aW9uIG9wZXJhdGlvbiBjYXVzZWQgdW5kZXJmbG93AAAAAAAAFFN1YnRyYWN0aW9uVW5kZXJmbG93AAACAQAAADNNYXRoRXJyb3I6IE11bHRpcGxpY2F0aW9uIG9wZXJhdGlvbiBjYXVzZWQgb3ZlcmZsb3cAAAAAFk11bHRpcGxpY2F0aW9uT3ZlcmZsb3cAAAAAAgIAAAAbTWF0aEVycm9yOiBEaXZpc2lvbiBieSB6ZXJvAAAAAA5EaXZpc2lvbkJ5WmVybwAAAAACAwAAACNNYXRoRXJyb3I6IFR5cGUgY29udmVyc2lvbiBvdmVyZmxvdwAAAAASQ29udmVyc2lvbk92ZXJmbG93AAAAAAIEAAAAP01hdGhFcnJvcjogQXR0ZW1wdGVkIHRvIGNvbnZlcnQgbmVnYXRpdmUgdmFsdWUgdG8gdW5zaWduZWQgdHlwZQAAAAASTmVnYXRpdmVUb1Vuc2lnbmVkAAAAAAIFAAAAKk1hdGhFcnJvcjogRml4ZWQtcG9pbnQgYXJpdGhtZXRpYyBvdmVyZmxvdwAAAAAAEkZpeGVkUG9pbnRPdmVyZmxvdwAAAAACBg==",
         "AAAABAAAAAAAAAAAAAAADFN0b3JhZ2VFcnJvcgAAAAQAAAAMU3RvcmFnZUVycm9yAAAAEkFscmVhZHlJbml0aWFsaXplZAAAAAAAyQAAAAAAAAATVmFsdWVOb3RJbml0aWFsaXplZAAAAAH1AAAAAAAAAAxWYWx1ZU1pc3NpbmcAAAH2AAAAAAAAABRWYWx1ZUNvbnZlcnNpb25FcnJvcgAAAfc=",

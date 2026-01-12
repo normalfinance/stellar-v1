@@ -9,8 +9,6 @@ use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPr
 use soroban_sdk::token::{
     StellarAssetClient as SorobanTokenAdminClient, TokenClient as SorobanTokenClient,
 };
-use soroban_sdk::xdr::{AccountId, AlphaNum12, Asset, AssetCode12, Limits, PublicKey, WriteXdr};
-use soroban_sdk::Bytes;
 use soroban_sdk::{testutils::Address as _, Address, Env, Symbol, Vec};
 use std::vec;
 use utils::test_utils::jump;
@@ -183,8 +181,9 @@ impl Setup<'_> {
             &token_usdc.address,
             &token_long.address,
             &token_short.address,
+            &30, // 0.30%
+            &40, // 0.40%
         );
-        treasury.set_pair_fee(&admin, &pair.address, &30_000_u128); // 0.30%
 
         Self {
             env: e,

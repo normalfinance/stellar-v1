@@ -3,9 +3,8 @@ use soroban_sdk::{contracttype, panic_with_error, Address, Env};
 pub use utils::bump::bump_instance;
 use utils::bump::bump_persistent;
 use utils::errors::storage_errors::StorageError;
-use utils::generate_instance_storage_getter;
 use utils::{
-    generate_instance_storage_getter_and_setter,
+    generate_instance_storage_getter, generate_instance_storage_getter_and_setter,
     generate_instance_storage_getter_and_setter_with_default,
     generate_instance_storage_getter_with_default, generate_instance_storage_setter,
 };
@@ -33,9 +32,9 @@ pub struct TreasuryPairSummary {
     pub details: TreasuryPairDetails,
     pub balances: TreasuryPairBalances,
     pub prices: (u128, u128),
-    pub tvl: u128,
+    pub total_pairs: u128,
     pub total_shares: u128,
-    pub fee: u128,
+    pub fee_config: TreasuryFeeConfig,
 }
 
 #[contracttype]
@@ -43,6 +42,13 @@ pub struct TreasuryPairSummary {
 pub struct TreasuryUserPairSummary {
     pub pair_summary: TreasuryPairSummary,
     pub user_shares: u128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TreasuryFeeConfig {
+    pub maker_fee: u128,
+    pub taker_fee: u128,
 }
 
 #[derive(Clone)]
@@ -58,7 +64,7 @@ pub enum DataKey {
     // LP share balance for (pair, user)
     UserShares(Address, Address), // (pair, user)
 
-    PairFee(Address), // pair
+    FeeConfig(Address), // pair > TreasuryFeeConfig
     ProtocolFees(Address),
 
     // Paused ops
@@ -159,21 +165,24 @@ pub(crate) fn set_user_shares(env: &Env, pair: &Address, user: &Address, shares:
     bump_persistent(env, &key);
 }
 
-// Fee
-pub(crate) fn get_fee(env: &Env, pair: &Address) -> u128 {
-    let key = DataKey::PairFee(pair.clone());
+// Fee Config
+pub(crate) fn get_fee_config(env: &Env, pair: &Address) -> TreasuryFeeConfig {
+    let key = DataKey::FeeConfig(pair.clone());
     match env.storage().persistent().get(&key) {
-        Some(fee) => {
+        Some(fee_config) => {
             bump_persistent(env, &key);
-            fee
+            fee_config
         }
-        None => 0,
+        None => TreasuryFeeConfig {
+            maker_fee: 0,
+            taker_fee: 0,
+        },
     }
 }
 
-pub(crate) fn set_fee(env: &Env, pair: &Address, fee: u128) {
-    let key = DataKey::PairFee(pair.clone());
-    env.storage().persistent().set(&key, &fee);
+pub(crate) fn set_fee_config(env: &Env, pair: &Address, fee_config: TreasuryFeeConfig) {
+    let key = DataKey::FeeConfig(pair.clone());
+    env.storage().persistent().set(&key, &fee_config);
     bump_persistent(env, &key);
 }
 

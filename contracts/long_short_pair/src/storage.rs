@@ -23,20 +23,22 @@ pub enum DataKey {
 
     // Collateral config
     CollateralToken, // USDC
-    TotalCollateral, //
+    TotalCollateral,
     CollateralPerPair,
     // Number between 0 and 1 to allocate collateral between long & short tokens at redemption. 0 entitles each short
-    // to collateralPerPair and each long to 0. 1 makes each long worth collateralPerPair and short 0.
+    // to collateral_per_pair and each long to 0. 1 makes each long worth collateral_per_pair and short 0.
     CollateralPercentLong,
 
     // Addresses
     Calculator,
+
+    // Oracle
     Oracle,
+    MaxPriceDivergence,
 
-    // Guard Rails
-    MaxRatioPercentDivergence,
-
+    // Timestamps
     LastUpdateTs,
+    ExpirationTs,
 
     // Paused ops
     IsKilledMint,
@@ -87,6 +89,32 @@ generate_instance_storage_getter_and_setter_with_default!(
     5_000_000 // 50%
 );
 
+// Addresses
+generate_instance_storage_getter_and_setter!(oracle, DataKey::Oracle, Address);
+generate_instance_storage_getter_and_setter!(calculator, DataKey::Calculator, Address);
+
+// Timestamps
+generate_instance_storage_getter_and_setter_with_default!(
+    last_update_ts,
+    DataKey::LastUpdateTs,
+    u64,
+    0
+);
+generate_instance_storage_getter_and_setter_with_default!(
+    expiration_ts,
+    DataKey::ExpirationTs,
+    u64,
+    0
+);
+
+// Guard Rails
+generate_instance_storage_getter_and_setter_with_default!(
+    max_price_divergence,
+    DataKey::MaxPriceDivergence,
+    u64,
+    1_000_000 // 10%
+);
+
 // Paused Ops
 generate_instance_storage_getter_and_setter_with_default!(
     is_killed_mint,
@@ -99,16 +127,4 @@ generate_instance_storage_getter_and_setter_with_default!(
     DataKey::IsKilledRedeem,
     bool,
     false
-);
-
-// Addresses
-generate_instance_storage_getter_and_setter!(oracle, DataKey::Oracle, Address);
-generate_instance_storage_getter_and_setter!(calculator, DataKey::Calculator, Address);
-
-// Guard Rails
-generate_instance_storage_getter_and_setter_with_default!(
-    max_ratio_percent_divergence,
-    DataKey::MaxRatioPercentDivergence,
-    u64,
-    PERCENTAGE_PRECISION_U64 / 10 // 10%
 );

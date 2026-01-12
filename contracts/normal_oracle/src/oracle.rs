@@ -138,7 +138,7 @@ pub fn oracle_validity(
         delay: oracle_delay,
     } = *oracle_price_data;
 
-    // Get guard rails
+    // Guard rails
     let too_volatile_ratio = get_too_volatile_ratio(e);
     let seconds_before_stale = get_seconds_before_stale(e);
 
@@ -148,7 +148,6 @@ pub fn oracle_validity(
     // Volatility
     // if Δprice <= 0.80 or 1.20 <= Δprice → too volatile
     let lower_bound = PERCENTAGE_PRECISION_U64.safe_sub(e, too_volatile_ratio);
-
     let upper_bound = too_volatile_ratio.safe_add(e, PERCENTAGE_PRECISION_U64);
 
     // Use round-to-nearest for volatility calculation (fair assessment)
@@ -156,17 +155,17 @@ pub fn oracle_validity(
         .safe_fixed_div_round(e, last_oracle_twap, PERCENTAGE_PRECISION)
         .safe_to_u64(e);
 
-    let is_oracle_price_too_volatile = price_delta <= lower_bound || upper_bound <= price_delta;
+    let is_price_too_volatile = price_delta <= lower_bound || upper_bound <= price_delta;
 
-    // StaleForPool
-    let is_stale_for_pool = oracle_delay.as_seconds().ge(&seconds_before_stale);
+    // StaleForPair
+    let is_stale = oracle_delay.as_seconds().ge(&seconds_before_stale);
 
     let oracle_validity = if is_oracle_price_nonpositive {
         OracleValidity::NonPositive
-    } else if is_oracle_price_too_volatile {
+    } else if is_price_too_volatile {
         OracleValidity::TooVolatile
-    } else if is_stale_for_pool {
-        OracleValidity::StaleForPool
+    } else if is_stale {
+        OracleValidity::StaleForPair
     } else {
         OracleValidity::Valid
     };
