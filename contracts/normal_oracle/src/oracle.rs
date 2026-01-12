@@ -12,9 +12,12 @@ use utils::{
     temporal::Delay,
 };
 
-use crate::storage::{
-    get_historical_data, get_oracle, get_oracle_source, get_seconds_before_stale,
-    get_too_volatile_ratio, put_historical_data,
+use crate::{
+    errors::NormalOracleError,
+    storage::{
+        get_historical_data, get_oracle, get_oracle_source, get_seconds_before_stale,
+        get_too_volatile_ratio, put_historical_data,
+    },
 };
 
 pub fn get_reflector_oracle_price(
@@ -29,27 +32,34 @@ pub fn get_reflector_oracle_price(
     let oracle_price: u128;
     let published_ts: u64;
 
-    let oracle_price_data = oracle_client.lastprice(&oracle_asset).unwrap();
+    match oracle_client.try_lastprice(&oracle_asset) {
+        Ok(Err(_)) | Err(_) => {
+            panic_with_error!(e, NormalOracleError::FailedToGetOraclePrice);
+        }
+        Ok(Ok(result)) => {
+            let oracle_price_data = result.unwrap();
 
-    if oracle_price_data.price < 0 {
-        panic_with_error!(e, OracleError::OracleNonPositive);
-    }
+            if oracle_price_data.price < 0 {
+                panic_with_error!(e, OracleError::OracleNonPositive);
+            }
 
-    oracle_price = oracle_price_data
-        .price
-        .safe_to_u128(e)
-        .safe_div(&e, PRICE_PRECISION);
-    published_ts = oracle_price_data.timestamp;
+            oracle_price = oracle_price_data
+                .price
+                .safe_to_u128(e)
+                .safe_div(&e, PRICE_PRECISION);
+            published_ts = oracle_price_data.timestamp;
 
-    let oracle_delay = Delay::from_timestamp_diff_expect(
-        now,
-        published_ts,
-        "Oracle published timestamp exceeds allowed clock drift tolerance",
-    );
+            let oracle_delay = Delay::from_timestamp_diff_expect(
+                now,
+                published_ts,
+                "Oracle published timestamp exceeds allowed clock drift tolerance",
+            );
 
-    OraclePriceData {
-        price: oracle_price,
-        delay: oracle_delay,
+            OraclePriceData {
+                price: oracle_price,
+                delay: oracle_delay,
+            }
+        }
     }
 }
 
