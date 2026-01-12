@@ -424,8 +424,8 @@ impl TradingTrait for Treasury {
 
         // Transfer the USDC proceeds from the "sale" of short token(s) back to the user
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
-            &user,
             &treasury,
+            &user,
             &usdc_to_return.safe_to_i128(&e),
         );
 
