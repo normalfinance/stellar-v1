@@ -1099,6 +1099,10 @@ impl AdminInterfaceTrait for Treasury {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
+        if maker_fee > PRICE_PRECISION || taker_fee > PRICE_PRECISION {
+            panic_with_error!(&e, TreasuryError::InvalidInput);
+        }
+
         // Initialize pair details, balances, and fees
         set_pair_details(
             &e,
