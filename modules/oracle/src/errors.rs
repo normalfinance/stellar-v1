@@ -10,4 +10,5 @@ pub enum OracleError {
     OracleStaleForPair = 603,
     OracleInvalid = 604,
     FailedToGetOraclePrice = 605,
+    InvalidInput = 606,
 }

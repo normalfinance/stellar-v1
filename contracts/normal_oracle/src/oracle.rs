@@ -114,11 +114,11 @@ pub fn update_twap(
 
     let oracle_price_twap = calculate_new_twap(
         e,
-        capped_oracle_update_price as i128,
-        now as i64,
-        historical_oracle_data.last_price_twap as i128,
-        historical_oracle_data.last_update_ts as i64,
-        FIVE_MINUTE as i64,
+        capped_oracle_update_price,
+        now,
+        historical_oracle_data.last_price_twap,
+        historical_oracle_data.last_update_ts,
+        FIVE_MINUTE as u64,
     );
 
     put_historical_data(
