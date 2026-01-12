@@ -1,6 +1,7 @@
 use crate::errors::LongShortPairError;
 use crate::events::{Events, LongShortPairEvents};
 use crate::interface::{AdminInterfaceTrait, LongShortPairTrait, OracleInterfaceTrait};
+use crate::storage::{get_is_killed_mint, get_is_killed_redeem};
 use soroban_sdk::token::TokenClient as SorobanTokenClient;
 use soroban_sdk::{
     contract, contractimpl, contractmeta, panic_with_error, Address, BytesN, Env, Symbol, Vec,
@@ -76,6 +77,10 @@ impl LongShortPairTrait for LongShortPair {
             panic_with_error!(&e, LongShortPairError::InvalidInput);
         }
 
+        if get_is_killed_mint(&e) {
+            panic_with_error!(&e, LongShortPairError::ActionPaused);
+        }
+
         // Do not allow minting unless pair is active
         if crate::storage::get_status(&e) != PairStatus::Active {
             panic_with_error!(&e, LongShortPairError::MintingDisabled);
@@ -125,7 +130,9 @@ impl LongShortPairTrait for LongShortPair {
             panic_with_error!(&e, LongShortPairError::InvalidInput);
         }
 
-        let current_time = e.ledger().timestamp();
+        if get_is_killed_redeem(&e) {
+            panic_with_error!(&e, LongShortPairError::ActionPaused);
+        }
 
         // Get the oracle price and store it. Also sets collateral_percent_long. Reverts if either:
         // a) the price request has not resolved (either a normal expiration call or early expiration call) or b) If the
@@ -162,7 +169,7 @@ impl LongShortPairTrait for LongShortPair {
             e.current_contract_address(),
             collateral_returned,
             tokens_to_redeem,
-            current_time,
+            e.ledger().timestamp(),
         );
 
         collateral_returned
@@ -175,7 +182,9 @@ impl LongShortPairTrait for LongShortPair {
             panic_with_error!(&e, LongShortPairError::InvalidInput);
         }
 
-        let current_time = e.ledger().timestamp();
+        if get_is_killed_redeem(&e) {
+            panic_with_error!(&e, LongShortPairError::ActionPaused);
+        }
 
         crate::utils::sync_collateral(&e);
 
@@ -225,7 +234,7 @@ impl LongShortPairTrait for LongShortPair {
             e.current_contract_address(),
             collateral_to_return,
             tokens_to_redeem,
-            current_time,
+            e.ledger().timestamp(),
         );
 
         collateral_to_return

@@ -17,4 +17,5 @@ pub enum LongShortPairError {
     MintingDisabled = 213,
     InvalidStatus = 214,
     InsufficientInventory = 215,
+    ActionPaused = 216,
 }
