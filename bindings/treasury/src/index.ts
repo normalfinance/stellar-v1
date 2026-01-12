@@ -459,7 +459,7 @@ export interface Client {
   /**
    * Construct and simulate a estimate_trade transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  estimate_trade: ({pair, side, direction, amount_in, taker_fee}: {pair: string, side: boolean, direction: boolean, amount_in: u128, taker_fee: boolean}, options?: {
+  estimate_trade: ({pair, direction, side, amount_in, taker_fee}: {pair: string, direction: Direction, side: Side, amount_in: u128, taker_fee: boolean}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -1146,7 +1146,7 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAATZ2V0X3BhaXJfZmVlX2NvbmZpZwAAAAABAAAAAAAAAARwYWlyAAAAEwAAAAEAAAfQAAAAEVRyZWFzdXJ5RmVlQ29uZmlnAAAA",
         "AAAAAAAAAAAAAAAQZ2V0X3BhaXJfc3VtbWFyeQAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAB9AAAAATVHJlYXN1cnlQYWlyU3VtbWFyeQA=",
         "AAAAAAAAAAAAAAAaZ2V0X3VzZXJfd2l0aF9wYWlyX3N1bW1hcnkAAAAAAAIAAAAAAAAABHBhaXIAAAATAAAAAAAAAAR1c2VyAAAAEwAAAAEAAAfQAAAAF1RyZWFzdXJ5VXNlclBhaXJTdW1tYXJ5AA==",
-        "AAAAAAAAAAAAAAAOZXN0aW1hdGVfdHJhZGUAAAAAAAUAAAAAAAAABHBhaXIAAAATAAAAAAAAAARzaWRlAAAAAQAAAAAAAAAJZGlyZWN0aW9uAAAAAAAAAQAAAAAAAAAJYW1vdW50X2luAAAAAAAACgAAAAAAAAAJdGFrZXJfZmVlAAAAAAAAAQAAAAEAAAPtAAAAAgAAAAoAAAAK",
+        "AAAAAAAAAAAAAAAOZXN0aW1hdGVfdHJhZGUAAAAAAAUAAAAAAAAABHBhaXIAAAATAAAAAAAAAAlkaXJlY3Rpb24AAAAAAAfQAAAACURpcmVjdGlvbgAAAAAAAAAAAAAEc2lkZQAAB9AAAAAEU2lkZQAAAAAAAAAJYW1vdW50X2luAAAAAAAACgAAAAAAAAAJdGFrZXJfZmVlAAAAAAAAAQAAAAEAAAPtAAAAAgAAAAoAAAAK",
         "AAAAAAAAAAAAAAATbWludF9hbmRfc2VsbF9zaG9ydAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAB3VzZGNfaW4AAAAACgAAAAEAAAAK",
         "AAAAAAAAAAAAAAASbWludF9hbmRfc2VsbF9sb25nAAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAB3VzZGNfaW4AAAAACgAAAAEAAAAK",
         "AAAAAAAAAAAAAAATYnV5X2xvbmdfYW5kX3JlZGVlbQAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAACHNob3J0X2luAAAACgAAAAEAAAAK",

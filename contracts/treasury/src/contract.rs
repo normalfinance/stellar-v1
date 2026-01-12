@@ -160,14 +160,14 @@ impl TreasuryTrait for Treasury {
         let balances = get_pair_balances(&e, &pair);
         let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
 
-        // --- Compute withdrawable pairs (inventory-based, not pro-rata token balances) ---
+        // Compute withdrawable pairs (inventory-based, not pro-rata token balances)
         let withdrawable_pairs =
             crate::lp::total_pairs(&e, &balances, collateral_info.collateral_per_pair);
 
         // Convert shares -> pairs_out pro-rata
         let pairs_out = crate::lp::pairs_for_withdraw(&e, withdrawable_pairs, total_shares, shares);
 
-        // Strong recommendation: never withdraw more pairs than inventory says is withdrawable
+        // Never withdraw more pairs than inventory says is withdrawable
         if pairs_out > withdrawable_pairs {
             panic_with_error!(&e, TreasuryError::InsufficientInventory);
         }
@@ -307,8 +307,8 @@ impl TradingTrait for Treasury {
     fn estimate_trade(
         e: Env,
         pair: Address,
-        side: bool,
-        direction: bool,
+        direction: Direction,
+        side: Side,
         amount_in: u128,
         taker_fee: bool,
     ) -> (u128, u128) {
@@ -317,6 +317,7 @@ impl TradingTrait for Treasury {
         }
 
         get_pair_details(&e, &pair); // call to ensure pair exists
+
         let fee_config = get_fee_config(&e, &pair);
         let fee = if taker_fee {
             fee_config.taker_fee
@@ -326,23 +327,19 @@ impl TradingTrait for Treasury {
 
         let (long_price, short_price) = crate::price::get_prices(&e, &pair);
 
-        // Buy long
-        if side == true && direction == true {
+        if direction == Direction::Buy && side == Side::Long {
             return crate::price::quote_buy_token(&e, amount_in, long_price, fee);
         }
 
-        // Buy short
-        if side == false && direction == true {
+        if direction == Direction::Buy && side == Side::Short {
             return crate::price::quote_buy_token(&e, amount_in, short_price, fee);
         }
 
-        // Sell long
-        if side == true && direction == false {
+        if direction == Direction::Sell && side == Side::Long {
             return crate::price::quote_sell_token(&e, amount_in, long_price, fee);
         }
 
-        // Sell short
-        if side == false && direction == false {
+        if direction == Direction::Sell && side == Side::Short {
             return crate::price::quote_sell_token(&e, amount_in, short_price, fee);
         }
 

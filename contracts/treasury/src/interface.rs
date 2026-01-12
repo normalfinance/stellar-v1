@@ -1,4 +1,5 @@
 use soroban_sdk::{Address, BytesN, Env, Symbol};
+use types::pair::{Direction, Side};
 
 use crate::storage::{
     TreasuryFeeConfig, TreasuryPairBalances, TreasuryPairDetails, TreasuryPairSummary,
@@ -35,8 +36,8 @@ pub trait TradingTrait {
     fn estimate_trade(
         e: Env,
         pair: Address,
-        side: bool,
-        direction: bool,
+        direction: Direction,
+        side: Side,
         amount_in: u128,
         taker_fee: bool,
     ) -> (u128, u128);
