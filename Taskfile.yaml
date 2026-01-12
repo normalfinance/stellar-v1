@@ -18,13 +18,11 @@ tasks:
 
   build:
     cmds:
-      # DEX
-      - task -d contracts/liquidity_pool_router build || exit 1
-      - task -d contracts/rewards_gauge build || exit 1
       # LSP
+      - task -d contracts/token build || exit 1
       - task -d contracts/normal_oracle build || exit 1
-      - task -d contracts/token_long_short_pair build || exit 1
       - task -d contracts/long_short_pair_factory build || exit 1
+      - task -d contracts/treasury build || exit 1
       - cp ./target/wasm32v1-none/release/*.wasm ./wasm
 
   test:

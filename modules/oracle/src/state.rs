@@ -17,7 +17,7 @@ use crate::errors::OracleError;
 pub enum OracleValidity {
     NonPositive,
     TooVolatile,
-    StaleForPool,
+    StaleForPair,
     Frozen,
     #[default]
     Valid,
@@ -28,7 +28,7 @@ impl OracleValidity {
         match self {
             OracleValidity::NonPositive => OracleError::OracleNonPositive,
             OracleValidity::TooVolatile => OracleError::OracleTooVolatile,
-            OracleValidity::StaleForPool => OracleError::OracleStaleForPool,
+            OracleValidity::StaleForPair => OracleError::OracleStaleForPair,
             OracleValidity::Frozen => unreachable!(),
             OracleValidity::Valid => unreachable!(),
         }

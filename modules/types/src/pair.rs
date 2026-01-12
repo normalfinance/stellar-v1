@@ -1,16 +1,22 @@
-use soroban_sdk::{contracttype, Address, Bytes, BytesN, Symbol, Vec};
+use soroban_sdk::{contracttype, Address, Symbol};
 
 #[contracttype]
 pub struct PairParams {
+    // Config
     pub admin: Address,
-    pub privileged_addrs: (Address, Address),
     pub asset: Symbol,
-    pub collateral_token: Address,
-    pub pair_token_wasm_hash: BytesN<32>,
     pub oracle: Address,
-    pub pool_plane: Address,
-    pub pair_calculator: Address,
+
+    // Collateral
+    pub collateral_token: Address,
     pub collateral_per_pair: u128,
+    pub calculator: Address,
+
+    // Pair tokens
+    pub long_token: Address,
+    pub short_token: Address,
+
+    // Price boundaries
     pub lower_bound: u128,
     pub upper_bound: u128,
 }
@@ -24,7 +30,30 @@ pub enum Direction {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct LinearLongShortPairParameters {
-    pub lower_bound: u128,
-    pub upper_bound: u128,
+pub enum PairStatus {
+    Inactive,
+    Active,
+    Expired,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CollateralInfo {
+    pub collateral_token: Address,
+    pub total_collateral: u128,
+    pub collateral_per_pair: u128,
+    pub collateral_percent_long: u128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PairSummary {
+    pub asset: Symbol,
+    pub status: PairStatus,
+    pub long_token: Address,
+    pub short_token: Address,
+    pub price_bounds: (u128, u128),
+    pub collateral: CollateralInfo,
+    pub calculator: Address,
+    pub oracle: Address,
 }

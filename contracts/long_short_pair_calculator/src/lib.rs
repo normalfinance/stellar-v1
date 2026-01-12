@@ -3,7 +3,6 @@
 mod contract;
 pub mod errors;
 mod interface;
-mod storage;
 mod test;
 mod testutils;
 

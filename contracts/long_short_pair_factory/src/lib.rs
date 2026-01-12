@@ -2,7 +2,8 @@
 
 mod contract;
 mod events;
-mod interface;
+mod factory_interface;
+mod pair_interface;
 mod pair_utils;
 mod storage;
 mod test;

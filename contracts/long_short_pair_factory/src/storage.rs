@@ -1,5 +1,5 @@
 use paste::paste;
-use soroban_sdk::{contracttype, panic_with_error, Address, BytesN, Env, Vec};
+use soroban_sdk::{contracterror, contracttype, panic_with_error, Address, BytesN, Env, Vec};
 use utils::bump::{bump_instance, bump_persistent};
 use utils::{
     errors::storage_errors::StorageError, generate_instance_storage_getter,
@@ -11,24 +11,41 @@ use utils::{
 #[derive(Clone)]
 #[contracttype]
 pub enum DataKey {
-    TokenFactory,
-
-    LongShortPairContractWASM, // wasm of the Long Short Pair contract
-
-    ContractSequence(Address),
-
-    // LSP registry storage
-    DeployedLSPs(Address), // manager -> Vec<Address>
-    AllDeployedLSPs,       // global registry -> Vec<Address>
-
+    PairContractWASM,      // wasm of the Long Short Pair contract
+    AssetPair(BytesN<32>), // asset > pair address
+    AllDeployedPairs,      // global registry -> Vec<Address>
+    // paused ops
     IsKilledCreate,
 }
 
-generate_instance_storage_getter_and_setter!(token_factory, DataKey::TokenFactory, Address);
+#[contracterror]
+#[derive(Copy, Clone)]
+#[repr(u32)]
+pub enum FactoryError {
+    PairAlreadyExists = 401,
+    PairNotFound = 404,
+}
+
+pub fn get_pair(e: &Env, salt: BytesN<32>) -> Address {
+    let key = DataKey::AssetPair(salt);
+    match e.storage().persistent().get(&key) {
+        Some(address) => {
+            bump_persistent(e, &key);
+            address
+        }
+        None => panic_with_error!(&e, FactoryError::PairNotFound),
+    }
+}
+
+pub fn put_pair(e: &Env, salt: BytesN<32>, pair: &Address) {
+    let key = DataKey::AssetPair(salt);
+    e.storage().persistent().set(&key, pair);
+    bump_persistent(e, &key);
+}
 
 generate_instance_storage_getter_and_setter!(
-    lsp_contract_wasm,
-    DataKey::LongShortPairContractWASM,
+    pair_contract_wasm,
+    DataKey::PairContractWASM,
     BytesN<32>
 );
 
@@ -40,59 +57,20 @@ generate_instance_storage_getter_and_setter_with_default!(
     false
 );
 
-pub(crate) fn get_contract_sequence(env: &Env, manager: Address) -> u32 {
-    let key = DataKey::ContractSequence(manager);
-    match env.storage().persistent().get(&key) {
-        Some(sequence) => {
-            bump_persistent(env, &key);
-            sequence
-        }
-        None => 0,
-    }
-}
-
-pub(crate) fn set_contract_sequence(env: &Env, manager: Address, sequence: u32) {
-    let key = DataKey::ContractSequence(manager);
-    env.storage().persistent().set(&key, &sequence);
-    bump_persistent(env, &key);
-}
-
-// Index registry functions
-pub fn add_deployed_pair(env: &Env, manager: &Address, index_address: &Address) {
-    // Add to manager's list
-    let manager_key: DataKey = DataKey::DeployedLSPs(manager.clone());
-    let mut manager_pairs: Vec<Address> = match env.storage().persistent().get(&manager_key) {
-        Some(pairs) => pairs,
-        None => Vec::new(env),
-    };
-    manager_pairs.push_back(index_address.clone());
-    env.storage().persistent().set(&manager_key, &manager_pairs);
-    bump_persistent(env, &manager_key);
-
+pub fn add_deployed_pair(env: &Env, pair_address: &Address) {
     // Add to global list
-    let global_key = DataKey::AllDeployedLSPs;
+    let global_key = DataKey::AllDeployedPairs;
     let mut all_pairs: Vec<Address> = match env.storage().persistent().get(&global_key) {
         Some(pairs) => pairs,
         None => Vec::new(env),
     };
-    all_pairs.push_back(index_address.clone());
+    all_pairs.push_back(pair_address.clone());
     env.storage().persistent().set(&global_key, &all_pairs);
     bump_persistent(env, &global_key);
 }
 
-pub fn get_deployed_pairs(env: &Env, manager: &Address) -> Vec<Address> {
-    let key = DataKey::DeployedLSPs(manager.clone());
-    match env.storage().persistent().get(&key) {
-        Some(pairs) => {
-            bump_persistent(env, &key);
-            pairs
-        }
-        None => Vec::new(env),
-    }
-}
-
 pub fn get_all_deployed_pairs(env: &Env) -> Vec<Address> {
-    let key = DataKey::AllDeployedLSPs;
+    let key = DataKey::AllDeployedPairs;
     match env.storage().persistent().get(&key) {
         Some(pairs) => {
             bump_persistent(env, &key);

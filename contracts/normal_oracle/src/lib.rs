@@ -3,7 +3,7 @@
 mod contract;
 pub mod errors;
 mod interface;
-mod math;
+mod oracle;
 mod storage;
 mod test;
 mod test_permissions;

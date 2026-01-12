@@ -1,14 +1,13 @@
 use crate::events::{Events, FactoryConfigEvents, FactoryEvents};
-use crate::interface::{AdminInterface, LongShortPairFactoryTrait};
-use crate::pair_utils::get_pair_salt;
-use crate::storage::get_is_killed_create;
-use crate::storage::get_lsp_contract_wasm;
-use crate::storage::set_is_killed_create;
-use crate::storage::set_lsp_contract_wasm;
-use crate::storage::{
-    add_deployed_pair, get_all_deployed_pairs, get_contract_sequence, get_deployed_pairs,
-    set_contract_sequence,
+use crate::factory_interface::{AdminInterface, LongShortPairFactoryTrait};
+use crate::pair_interface::PairInterfaceTrait;
+use soroban_sdk::{
+    contract, contractimpl, contractmeta, contracttype, panic_with_error, Address, BytesN, Env,
+    Symbol, Vec,
 };
+use soroban_sdk::{symbol_short, IntoVal};
+
+// Access control
 use access_control::access::{AccessControl, AccessControlTrait};
 use access_control::emergency::{get_emergency_mode, set_emergency_mode};
 use access_control::errors::AccessControlError;
@@ -17,16 +16,16 @@ use access_control::interface::TransferableContract;
 use access_control::management::SingleAddressManagementTrait;
 use access_control::role::{Role, SymbolRepresentation};
 use access_control::transfer::TransferOwnershipTrait;
-use access_control::utils::require_pause_or_emergency_pause_admin_or_owner;
-use soroban_sdk::token::StellarAssetClient as SorobanTokenAdminClient;
-use soroban_sdk::IntoVal;
-use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol, Vec,
-};
-use soroban_sdk::{Bytes, Map};
+
+// Upgrade
 use upgrade::events::Events as UpgradeEvents;
 use upgrade::interface::UpgradeableContract;
 use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
+
+contractmeta!(
+    key = "Description",
+    val = "Factory for creating and interacting with Long Short Pair contracts"
+);
 
 #[contract]
 pub struct LongShortPairFactory;
@@ -35,21 +34,7 @@ pub struct LongShortPairFactory;
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FactoryConfig {
-    pub lsp_contract_wasm: BytesN<32>,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CreatorParams {
-    pub admin: Address,
-    pub pair_name: Symbol,
-    pub collateral_per_pair: u128,
-    pub serialized_long_asset: Bytes,
-    pub serialized_short_asset: Bytes,
-    pub collateral_token: Address,
-    pub oracle: Address,
-    pub pair_calculator: Address,
-    pub pool: Address,
+    pub pair_contract_wasm: BytesN<32>,
 }
 
 #[contractimpl]
@@ -60,223 +45,201 @@ impl LongShortPairFactory {
     // Arguments:
     //   - e: The Soroban environment.
     //   - admin: The address to be assigned the Admin role.
-    //   - emergency_admin: The address to be assigned the EmergencyAdmin role.
-    //   - lsp_contract_wasm: The WASM hash (BytesN<32>) for the long short pair contract.
-    pub fn __constructor(
-        e: Env,
-        admin: Address,
-        emergency_admin: Address,
-        pause_admin: Address,
-        emergency_pause_admin: Address,
-        lsp_contract_wasm: BytesN<32>,
-    ) {
+    //   - pair_contract_wasm: The WASM hash (BytesN<32>) for the long short pair contract.
+    pub fn __constructor(e: Env, admin: Address, pair_contract_wasm: BytesN<32>) {
         let access_control = AccessControl::new(&e);
         access_control.set_role_address(&Role::Admin, &admin);
-        access_control.set_role_address(&Role::PauseAdmin, &pause_admin);
-        access_control.set_role_address(&Role::EmergencyPauseAdmin, &emergency_pause_admin);
 
-        access_control.commit_transfer_ownership(&Role::EmergencyAdmin, &emergency_admin);
-        access_control.apply_transfer_ownership(&Role::EmergencyAdmin);
-
-        set_lsp_contract_wasm(&e, &lsp_contract_wasm);
+        crate::storage::set_pair_contract_wasm(&e, &pair_contract_wasm);
     }
 }
 
 #[contractimpl]
 impl LongShortPairFactoryTrait for LongShortPairFactory {
-    /**
-     * @notice Creates a longShortPair contract and associated long and short tokens.
-     * @param params Constructor params used to initialize the LSP. Key-valued object with the following structure:
-     *     - `pairName`: Name of the long short pair contract.
-     *     - `collateralPerPair`: How many units of collateral are required to mint one pair of synthetic tokens.
-     *     - `collateralToken`: ERC20 token used as collateral in the LSP.
-     *     - `calculator`: Contract providing settlement payout logic.
-     * @return lspAddress the deployed address of the new long short pair contract.
-     * @notice Created LSP is not registered within the registry as the LSP uses the Optimistic Oracle for settlement.
-     * @notice The LSP constructor does a number of validations on input params. These are not repeated here.
-     */
-    fn deploy_lsp_contract(e: Env, params: CreatorParams) -> Address {
-        params.admin.require_auth();
+    /// @notice Creates a Long Short Pair contract.
+    /// @param params Constructor params used to initialize the LSP:
+    ///     - `admin`: Address to administrate the LSP contract.
+    ///     - `asset`: Symbol of the target asset.
+    /// @return pair_address the deployed address of the new Long Short Pair contract.
+    fn deploy_pair_contract(e: Env, admin: Address, asset: Symbol) -> Address {
+        admin.require_auth();
 
-        // Deploy the Long Sh contract
-        let sequence = get_contract_sequence(&e, params.admin.clone());
-        set_contract_sequence(&e, params.admin.clone(), sequence + 1);
+        // Deploy the pair contract
+        let salt = crate::pair_utils::get_pair_salt(&e, &asset);
 
-        let salt = get_pair_salt(&e, &params.admin, &sequence);
+        let pair_address = e
+            .deployer()
+            .with_current_contract(salt.clone())
+            .deploy_v2(crate::storage::get_pair_contract_wasm(&e), ());
 
-        let pair_address = e.deployer().with_current_contract(salt).deploy_v2(
-            get_lsp_contract_wasm(&e),
-            (e.current_contract_address(), params.clone()),
-        );
+        // Add to pair registry
+        crate::storage::add_deployed_pair(&e, &pair_address);
+        crate::storage::put_pair(&e, salt, &pair_address);
 
-        // Add to LSP registry
-        add_deployed_pair(&e, &params.admin, &pair_address);
-
-        // Emit enhanced deployment event
-        let current_time = e.ledger().timestamp();
-
-        Events::new(&e).long_short_pair_deployed(
-            current_time,
-            params.admin.clone(),
-            pair_address.clone(),
-        );
+        Events::new(&e).pair_deployed(e.ledger().timestamp(), admin.clone(), pair_address.clone());
 
         pair_address
     }
 }
 
 #[contractimpl]
-impl AdminInterface for LongShortPairFactory {
-    //   _______    _______  ___________  ___________  _______   _______    ________
-    //  /" _   "|  /"     "|("     _   ")("     _   ")/"     "| /"      \  /"       )
-    // (: ( \___) (: ______) )__/  \\__/  )__/  \\__/(: ______)|:        |(:   \___/
-    //  \/ \       \/    |      \\_ /        \\_ /    \/    |  |_____/   ) \___  \
-    //  //  \ ___  // ___)_     |.  |        |.  |    // ___)_  //      /   __/  \\
-    // (:   _(  _|(:      "|    \:  |        \:  |   (:      "||:  __   \  /" \   :)
-    //  \_______)  \_______)     \__|         \__|    \_______)|__|  \___)(_______/
+impl PairInterfaceTrait for LongShortPairFactory {
+    fn mint(e: Env, user: Address, asset: Symbol, tokens_to_mint: u128) -> u128 {
+        user.require_auth();
 
-    // Query Methods - Factory Configuration
+        let salt = crate::pair_utils::get_pair_salt(&e, &asset);
+        let pair_address = crate::storage::get_pair(&e, salt);
+
+        let minted_tokens: u128 = e.invoke_contract(
+            &pair_address,
+            &symbol_short!("mint"),
+            Vec::from_array(&e, [user.clone().into_val(&e), tokens_to_mint.into_val(&e)]),
+        );
+
+        Events::new(&e).mint(
+            user,
+            asset,
+            pair_address,
+            0,
+            tokens_to_mint,
+            e.ledger().timestamp(),
+        );
+
+        minted_tokens
+    }
+
+    fn redeem(e: Env, user: Address, asset: Symbol, tokens_to_redeem: u128) -> u128 {
+        user.require_auth();
+
+        let salt = crate::pair_utils::get_pair_salt(&e, &asset);
+        let pair_address = crate::storage::get_pair(&e, salt);
+
+        let collateral: u128 = e.invoke_contract(
+            &pair_address,
+            &symbol_short!("redeem"),
+            Vec::from_array(
+                &e,
+                [user.clone().into_val(&e), tokens_to_redeem.into_val(&e)],
+            ),
+        );
+
+        Events::new(&e).redeem(
+            user,
+            asset,
+            pair_address,
+            collateral,
+            e.ledger().timestamp(),
+        );
+
+        collateral
+    }
+
+    fn redeem_one(
+        e: Env,
+        user: Address,
+        asset: Symbol,
+        token: Address,
+        tokens_to_redeem: u128,
+    ) -> u128 {
+        user.require_auth();
+
+        let salt = crate::pair_utils::get_pair_salt(&e, &asset);
+        let pair_address = crate::storage::get_pair(&e, salt);
+
+        let collateral: u128 = e.invoke_contract(
+            &pair_address,
+            &Symbol::new(&e, "redeem_one"),
+            Vec::from_array(
+                &e,
+                [
+                    user.clone().into_val(&e),
+                    token.into_val(&e),
+                    tokens_to_redeem.into_val(&e),
+                ],
+            ),
+        );
+
+        Events::new(&e).redeem_one(
+            user,
+            asset,
+            pair_address,
+            token,
+            tokens_to_redeem,
+            e.ledger().timestamp(),
+        );
+
+        collateral
+    }
+}
+
+#[contractimpl]
+impl AdminInterface for LongShortPairFactory {
     fn get_factory_config(e: Env) -> FactoryConfig {
         FactoryConfig {
-            lsp_contract_wasm: get_lsp_contract_wasm(&e),
+            pair_contract_wasm: crate::storage::get_pair_contract_wasm(&e),
         }
     }
 
-    fn get_lsp_contract_wasm(e: Env) -> BytesN<32> {
-        get_lsp_contract_wasm(&e)
-    }
-
-    // LSP Registry Query Methods
-    fn get_deployed_pairs(e: Env, operator: Address) -> Vec<Address> {
-        get_deployed_pairs(&e, &operator)
+    fn get_pair_contract_wasm(e: Env) -> BytesN<32> {
+        crate::storage::get_pair_contract_wasm(&e)
     }
 
     fn get_all_deployed_pairs(e: Env) -> Vec<Address> {
-        get_all_deployed_pairs(&e)
-    }
-
-    fn get_pair_count(e: Env, operator: Address) -> u32 {
-        let pairs = get_deployed_pairs(&e, &operator);
-        pairs.len()
+        crate::storage::get_all_deployed_pairs(&e)
     }
 
     fn get_total_pair_count(e: Env) -> u32 {
-        let all_pairs = get_all_deployed_pairs(&e);
+        let all_pairs = crate::storage::get_all_deployed_pairs(&e);
         all_pairs.len()
     }
 
-    //   ________  _______  ___________  ___________  _______   _______    ________
-    //  /"       )/"     "|("     _   ")("     _   ")/"     "| /"      \  /"       )
-    // (:   \___/(: ______) )__/  \\__/  )__/  \\__/(: ______)|:        |(:   \___/
-    //  \___  \   \/    |      \\_ /        \\_ /    \/    |  |_____/   ) \___  \
-    //   __/  \\  // ___)_     |.  |        |.  |    // ___)_  //      /   __/  \\
-    //  /" \   :)(:      "|    \:  |        \:  |   (:      "||:  __   \  /" \   :)
-    // (_______/  \_______)     \__|         \__|    \_______)|__|  \___)(_______/
+    fn get_pair_by_asset(e: Env, asset: Symbol) -> Address {
+        let salt = crate::pair_utils::get_pair_salt(&e, &asset);
+        crate::storage::get_pair(&e, salt)
+    }
 
-    // set_lsp_contract_wasm
+    // set_pair_contract_wasm
     // Updates the WASM hash for the long short pair contract.
     //
     // Arguments:
     //   - e: The Soroban environment.
     //   - admin: The admin address (must be authorized).
-    //   - lsp_contract_wasm: The new WASM hash (BytesN<32>) for the swap fee contract.
-    fn set_lsp_contract_wasm(e: Env, admin: Address, lsp_contract_wasm: BytesN<32>) {
+    //   - pair_contract_wasm: The new WASM hash (BytesN<32>) for the swap fee contract.
+    fn set_pair_contract_wasm(e: Env, admin: Address, pair_contract_wasm: BytesN<32>) {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        let old_wasm = get_lsp_contract_wasm(&e);
-        set_lsp_contract_wasm(&e, &lsp_contract_wasm);
+        let old_wasm = crate::storage::get_pair_contract_wasm(&e);
+        crate::storage::set_pair_contract_wasm(&e, &pair_contract_wasm);
 
         let current_time = e.ledger().timestamp();
-        Events::new(&e).lsp_wasm_updated(
+        Events::new(&e).pair_wasm_updated(
             current_time,
             admin.clone(),
             old_wasm.clone(),
-            lsp_contract_wasm.clone(),
+            pair_contract_wasm.clone(),
             1,
         );
     }
 
-    // Sets the privileged addresses.
-    //
-    // # Arguments
-    //
-    // * `admin` - The address of the admin.
-    // * `pause_admin` - The address of the pause admin.
-    // * `emergency_pause_admin` - The address of the emergency pause admin.
-    fn set_privileged_addrs(
-        e: Env,
-        admin: Address,
-        pause_admin: Address,
-        emergency_pause_admin: Address,
-    ) {
-        admin.require_auth();
-        let access_control = AccessControl::new(&e);
-        access_control.assert_address_has_role(&admin, &Role::Admin);
-
-        access_control.set_role_address(&Role::PauseAdmin, &pause_admin);
-        access_control.set_role_address(&Role::EmergencyPauseAdmin, &emergency_pause_admin);
-        // AccessControlEvents::new(&e).set_privileged_addrs(
-        //     rewards_admin,
-        //     operations_admin,
-        //     pause_admin,
-        //     emergency_pause_admins,
-        //     system_fee_admin,
-        // );
-    }
-
-    // Returns a map of privileged roles.
-    //
-    // # Returns
-    //
-    // A map of privileged roles to their respective addresses.
-    fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>> {
-        let access_control = AccessControl::new(&e);
-        let mut result: Map<Symbol, Vec<Address>> = Map::new(&e);
-        for role in [
-            Role::Admin,
-            Role::EmergencyAdmin,
-            Role::PauseAdmin,
-            Role::EmergencyPauseAdmin,
-        ] {
-            result.set(
-                role.as_symbol(&e),
-                match access_control.get_role_safe(&role) {
-                    Some(v) => Vec::from_array(&e, [v]),
-                    None => Vec::new(&e),
-                },
-            );
-        }
-
-        result
-    }
-
-    //    _______     __       ____  ____   ________  _______  ________
-    //   |   __ "\   /""\     ("  _||_ " | /"       )/"     "||"      "\
-    //   (. |__) :) /    \    |   (  ) : |(:   \___/(: ______)(.  ___  :)
-    //   |:  ____/ /' /\  \   (:  |  | . ) \___  \   \/    |  |: \   ) ||
-    //   (|  /    //  __'  \   \\ \__/ //   __/  \\  // ___)_ (| (___\ ||
-    //  /|__/ \  /   /  \\  \  /\\ __ //\  /" \   :)(:      "||:       :)
-    // (_______)(___/    \___)(__________)(_______/  \_______)(________/
-
     fn kill_create(e: Env, admin: Address) {
         admin.require_auth();
-        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        set_is_killed_create(&e, &true);
+        crate::storage::set_is_killed_create(&e, &true);
         Events::new(&e).factory_paused(e.ledger().timestamp(), admin);
     }
 
     fn unkill_create(e: Env, admin: Address) {
         admin.require_auth();
-        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        set_is_killed_create(&e, &false);
+        crate::storage::set_is_killed_create(&e, &false);
         Events::new(&e).factory_unpaused(e.ledger().timestamp(), admin);
     }
 
     fn get_is_killed_create(e: Env) -> bool {
-        get_is_killed_create(&e)
+        crate::storage::get_is_killed_create(&e)
     }
 }
 
@@ -376,16 +339,18 @@ impl UpgradeableContract for LongShortPairFactory {
     }
 }
 
+// The `TransferableContract` trait provides the interface for transferring ownership of the contract.
 #[contractimpl]
 impl TransferableContract for LongShortPairFactory {
-    // commit_transfer_ownership
-    // Commits to transferring ownership of a given role.
+    // Commits an ownership transfer.
     //
-    // Arguments:
-    //   - e: The Soroban environment.
-    //   - admin: The admin address (must be authorized).
-    //   - role_name: The symbol representing the role (e.g., "Admin" or "EmergencyAdmin").
-    //   - new_address: The new address to assume the role.
+    // # Arguments
+    //
+    // * `admin` - The address of the admin.
+    // * `role_name` - The name of the role to transfer ownership of. The role must be one of the following:
+    //     * `Admin`
+    //     * `EmergencyAdmin`
+    // * `new_address` - New address for the role
     fn commit_transfer_ownership(e: Env, admin: Address, role_name: Symbol, new_address: Address) {
         admin.require_auth();
         let access_control = AccessControl::new(&e);
@@ -396,38 +361,32 @@ impl TransferableContract for LongShortPairFactory {
         AccessControlEvents::new(&e).commit_transfer_ownership(role, new_address);
     }
 
-    // apply_transfer_ownership
-    // Applies the pending ownership transfer for a role.
+    // Applies the committed ownership transfer.
     //
-    // Arguments:
-    //   - e: The Soroban environment.
-    //   - admin: The admin address (must be authorized).
-    //   - role_name: The symbol representing the role.
+    // # Arguments
+    //
+    // * `admin` - The address of the admin.
+    // * `role_name` - The name of the role to transfer ownership of. The role must be one of the following:
+    //     * `Admin`
+    //     * `EmergencyAdmin`
     fn apply_transfer_ownership(e: Env, admin: Address, role_name: Symbol) {
         admin.require_auth();
         let access_control = AccessControl::new(&e);
         access_control.assert_address_has_role(&admin, &Role::Admin);
 
-        let role = Role::from_symbol(&e, role_name.clone());
-        let old_address = access_control.get_role(&role);
+        let role = Role::from_symbol(&e, role_name);
         let new_address = access_control.apply_transfer_ownership(&role);
-
-        // Emit factory admin updated event if this is an Admin role transfer
-        if role_name == Symbol::new(&e, "Admin") {
-            let current_time = e.ledger().timestamp();
-            Events::new(&e).factory_admin_updated(current_time, old_address, new_address.clone());
-        }
-
         AccessControlEvents::new(&e).apply_transfer_ownership(role, new_address);
     }
 
-    // revert_transfer_ownership
-    // Reverts a pending ownership transfer for a role.
+    // Reverts the committed ownership transfer.
     //
-    // Arguments:
-    //   - e: The Soroban environment.
-    //   - admin: The admin address (must be authorized).
-    //   - role_name: The symbol representing the role.
+    // # Arguments
+    //
+    // * `admin` - The address of the admin.
+    // * `role_name` - The name of the role to transfer ownership of. The role must be one of the following:
+    //     * `Admin`
+    //     * `EmergencyAdmin`
     fn revert_transfer_ownership(e: Env, admin: Address, role_name: Symbol) {
         admin.require_auth();
         let access_control = AccessControl::new(&e);
@@ -438,16 +397,16 @@ impl TransferableContract for LongShortPairFactory {
         AccessControlEvents::new(&e).revert_transfer_ownership(role);
     }
 
-    // get_future_address
-    // Returns the pending future address for a role if an ownership transfer is committed;
-    // otherwise, returns the current role address.
+    // Returns the future address for the role.
+    // The future address is the address that the ownership of the role will be transferred to.
+    // The future address is set using the `commit_transfer_ownership` function.
+    // The address will be defaulted to the current address if the transfer is not committed.
     //
-    // Arguments:
-    //   - e: The Soroban environment.
-    //   - role_name: The symbol representing the role.
+    // # Arguments
     //
-    // Returns:
-    //   - The Address scheduled to assume the role, or the current address if none pending.
+    // * `role_name` - The name of the role to get the future address for. The role must be one of the following:
+    //    * `Admin`
+    //    * `EmergencyAdmin`
     fn get_future_address(e: Env, role_name: Symbol) -> Address {
         let access_control = AccessControl::new(&e);
         let role = Role::from_symbol(&e, role_name);

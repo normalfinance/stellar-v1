@@ -26,8 +26,9 @@ echo "Optimize contracts..."
 
 soroban contract optimize --wasm soroban_token_contract.wasm
 
-soroban contract optimize --wasm token_factory.wasm
-soroban contract optimize --wasm calculator.wasm
+soroban contract optimize --wasm normal_oracle.wasm
+soroban contract optimize --wasm treasury.wasm
+soroban contract optimize --wasm long_short_pair_calculator.wasm
 soroban contract optimize --wasm long_short_pair.wasm
 soroban contract optimize --wasm long_short_pair_factory.wasm
 
@@ -36,9 +37,9 @@ echo "Contracts optimized."
 # Fetch the admin's address
 ADMIN_ADDRESS=$(soroban keys address $IDENTITY_STRING)
 
-echo "Install the pool and pool elastic contract..."
+echo "Install the pair contract..."
 
-LSP_WASM_HASH=$(soroban contract upload \
+PAIR_WASM_HASH=$(soroban contract upload \
     --wasm long_short_pair.optimized.wasm \
     --source $IDENTITY_STRING \
     --network $NETWORK \
@@ -47,20 +48,11 @@ LSP_WASM_HASH=$(soroban contract upload \
     --fee $STELLAR_BASE_FEE
 )
 
-echo "LSP contracts deployed."
+# echo "Pair contract deployed."
 
-#   _______     ______    ____  ____  ___________  _______   _______
-#  /"      \   /    " \  ("  _||_ " |("     _   ")/"     "| /"      \
-# |:        | // ____  \ |   (  ) : | )__/  \\__/(: ______)|:        |
-# |_____/   )/  /    ) :)(:  |  | . )    \\_ /    \/    |  |_____/   )
-#  //      /(: (____/ //  \\ \__/ //     |.  |    // ___)_  //      /
-# |:  __   \ \        /   /\\ __ //\     \:  |   (:      "||:  __   \
-# |__|  \___) \"_____/   (__________)     \__|    \_______)|__|  \___)
-
-echo "Initialize LSP Factory..."
-
-TOKEN_FACTORY_ADDR=$(soroban contract deploy \
-    --wasm token_factory.optimized.wasm \
+# Treasury
+TREASURY_ADDR=$(soroban contract deploy \
+    --wasm treasury.optimized.wasm \
     --source $IDENTITY_STRING \
     --network $NETWORK \
     --rpc-url $STELLAR_RPC_URL \
@@ -68,8 +60,19 @@ TOKEN_FACTORY_ADDR=$(soroban contract deploy \
     --fee $STELLAR_BASE_FEE
 )
 
+# echo "Initialize Pair Factory..."
+
 CALCULATOR_ADDR=$(soroban contract deploy \
-    --wasm calculator.optimized.wasm \
+    --wasm long_short_pair_calculator.optimized.wasm \
+    --source $IDENTITY_STRING \
+    --network $NETWORK \
+    --rpc-url $STELLAR_RPC_URL \
+    --network-passphrase "$STELLAR_NETWORK_PASSPHRASE" \
+    --fee $STELLAR_BASE_FEE
+)
+
+ORACLE_ADDR=$(soroban contract deploy \
+    --wasm normal_oracle.optimized.wasm \
     --source $IDENTITY_STRING \
     --network $NETWORK \
     --rpc-url $STELLAR_RPC_URL \
@@ -84,7 +87,7 @@ FACTORY_ADDR=$(soroban contract deploy \
     --rpc-url $STELLAR_RPC_URL \
     --network-passphrase "$STELLAR_NETWORK_PASSPHRASE" \
     --fee $STELLAR_BASE_FEE \
-    -- --admin $ADMIN_ADDRESS --emergency_admin $ADMIN_ADDRESS --token_factory $TOKEN_FACTORY_ADDR --lsp_contract_wasm $LSP_WASM_HASH
+    -- --admin $ADMIN_ADDRESS --pair_contract_wasm $PAIR_WASM_HASH
 )
 
 echo "Contracts deployed."
@@ -93,8 +96,9 @@ echo "#############################"
 
 echo "Initialization complete!"
 
-echo "Token Factory Contract address: $TOKEN_FACTORY_ADDR"
+echo "Treasury Contract address: $TREASURY_ADDR"
 echo "Calculator Contract address: $CALCULATOR_ADDR"
-echo "LSP Factory Contract address: $FACTORY_ADDR"
+echo "Pair Factory Contract address: $FACTORY_ADDR"
+echo "Normal Oracle Contract address: $ORACLE_ADDR"
 
-echo "LSP wasm hash: $LSP_WASM_HASH"
+echo "Pair wasm hash: $PAIR_WASM_HASH"

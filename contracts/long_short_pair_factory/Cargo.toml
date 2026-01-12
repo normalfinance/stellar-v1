@@ -15,6 +15,7 @@ soroban-sdk = { workspace = true }
 soroban-token-sdk = { workspace = true }
 paste = { workspace = true }
 access_control = { workspace = true }
+types = { workspace = true }
 utils = { workspace = true }
 upgrade = { workspace = true }
 soroban-fixed-point-math = { workspace = true }
@@ -22,3 +23,4 @@ soroban-fixed-point-math = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 utils = { workspace = true, features = ["testutils"] }
+types = { workspace = true, features = ["testutils"] }

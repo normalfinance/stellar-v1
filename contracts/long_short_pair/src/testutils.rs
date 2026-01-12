@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 #![cfg(test)]
 extern crate std;
-use crate::testutils::long_short_pair_calculator::LinearLongShortPairParameters;
 use crate::testutils::normal_oracle::OracleSource;
 use crate::LongShortPairClient;
 
@@ -9,8 +8,9 @@ use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPr
 use soroban_sdk::token::{
     StellarAssetClient as SorobanTokenAdminClient, TokenClient as SorobanTokenClient,
 };
+use soroban_sdk::xdr::{AccountId, AlphaNum12, Asset, AssetCode12, Limits, PublicKey, WriteXdr};
 use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Symbol, Vec};
-use soroban_sdk::{IntoVal, String};
+use soroban_sdk::{Bytes, IntoVal, String};
 use std::vec;
 use token_pair::token_contract::{Client as PairTokenClient, WASM};
 use types::oracle::OraclePriceData;
@@ -33,14 +33,6 @@ pub fn create_normal_oracle_contract<'a>(e: &Env) -> normal_oracle::Client<'a> {
     normal_oracle::Client::new(e, &e.register(normal_oracle::WASM, ()))
 }
 
-pub mod plane {
-    soroban_sdk::contractimport!(file = "../../wasm/liquidity_pool_plane.wasm");
-}
-
-pub(crate) fn create_plane_contract<'a>(e: &Env) -> plane::Client<'a> {
-    plane::Client::new(e, &e.register(plane::WASM, ()))
-}
-
 pub fn create_pair_contract<'a>(e: &Env) -> LongShortPairClient<'a> {
     LongShortPairClient::new(e, &e.register(crate::LongShortPair {}, ()))
 }
@@ -59,10 +51,12 @@ pub(crate) struct Setup<'a> {
     pub(crate) env: Env,
 
     // Tokens
-    pub(crate) token_long: PairTokenClient<'a>,
-    // pub(crate) token_long_admin_client: SorobanTokenAdminClient<'a>,
-    pub(crate) token_short: PairTokenClient<'a>,
-    // pub(crate) token_short_admin_client: SorobanTokenAdminClient<'a>,
+    pub(crate) token_long: SorobanTokenClient<'a>,
+    pub(crate) token_long_admin_client: SorobanTokenAdminClient<'a>,
+
+    pub(crate) token_short: SorobanTokenClient<'a>,
+    pub(crate) token_short_admin_client: SorobanTokenAdminClient<'a>,
+
     pub(crate) token_usdc: SorobanTokenClient<'a>,
     pub(crate) token_usdc_admin_client: SorobanTokenAdminClient<'a>,
 
@@ -70,9 +64,6 @@ pub(crate) struct Setup<'a> {
     pub(crate) pair: LongShortPairClient<'a>,
     pub(crate) pair_calculator: long_short_pair_calculator::Client<'a>,
     pub(crate) oracle: normal_oracle::Client<'a>,
-    pub(crate) plane: plane::Client<'a>,
-    pub(crate) long_pool: Address,
-    pub(crate) short_pool: Address,
 
     // Oracle
     pub(crate) reflector_addr: Address,
@@ -81,12 +72,9 @@ pub(crate) struct Setup<'a> {
     // Addresses
     pub(crate) users: vec::Vec<Address>,
     pub(crate) admin: Address,
-    pub(crate) emergency_admin: Address,
-    pub(crate) pause_admin: Address,
 
     // Other
-    pub(crate) pool_init_args: Vec<u128>,
-    pub(crate) pool_type: Symbol,
+    pub(crate) start_time: u64,
     pub(crate) solana: Symbol,
 }
 
@@ -117,28 +105,15 @@ impl Setup<'_> {
         // Addresses
         let users = Self::generate_random_users(&e, config.users_count);
         let admin = users[0].clone();
-        let emergency_admin = Address::generate(&e);
-        let pause_admin = Address::generate(&e);
 
-        // Collateral Token
+        // Tokens
         let token_usdc = create_token_contract(&e, &admin);
+        let token_long = create_token_contract(&e, &admin);
+        let token_short = create_token_contract(&e, &admin);
+
         let token_usdc_admin_client = get_token_admin_client(&e, &token_usdc.address.clone());
-
-        // Setup Pool Plane
-        let pool_type = Symbol::new(&e, "Synthetic");
-        let pool_init_args: Vec<u128> = Vec::from_array(&e, []);
-
-        let long_pool = Address::generate(&e);
-        let short_pool = Address::generate(&e);
-        let plane = create_plane_contract(&e);
-
-        let initial_pool_reserves: Vec<u128> = Vec::from_array(&e, [100_0000000, 100_0000000]);
-        plane.update(
-            &long_pool,
-            &pool_type,
-            &pool_init_args,
-            &initial_pool_reserves,
-        );
+        let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
+        let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
 
         // Setup Oracle
         let sol_symbol = Symbol::new(&e, "SOL");
@@ -180,58 +155,40 @@ impl Setup<'_> {
         // Setup Long Short Pair
         let pair = create_pair_contract(&e);
 
-        assert_eq!(
-            pair_calculator.get_params(&pair.address),
-            LinearLongShortPairParameters {
-                upper_bound: 0_u128,
-                lower_bound: 0_u128,
-            }
-        );
+        let token_long = create_token_contract(&e, &pair.address);
+        let token_short = create_token_contract(&e, &pair.address);
+
+        let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
+        let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
 
         // Initialize Pair
         pair.initialize(
             &(PairParams {
                 admin: admin.clone(),
-                privileged_addrs: (emergency_admin.clone(), pause_admin.clone()),
                 asset: sol_symbol.clone(),
+
                 collateral_token: token_usdc.address.clone(),
-                pair_token_wasm_hash: install_pair_token_wasm(&e),
-                oracle: oracle.address.clone(),
-                pool_plane: plane.address.clone(),
-                pair_calculator: pair_calculator.address.clone(),
+                calculator: pair_calculator.address.clone(),
                 collateral_per_pair: 100_0000000,
-                lower_bound: 50_0000000,
-                upper_bound: 150_0000000,
+
+                oracle: oracle.address.clone(),
+
+                long_token: token_long.address.clone(),
+                short_token: token_short.address.clone(),
+
+                lower_bound: 0_0000000,
+                upper_bound: 200_0000000,
             }),
         );
-
-        let pair_tokens = pair.get_tokens();
-        let token_long = PairTokenClient::new(&e, &pair_tokens.get(0).unwrap());
-        let token_short = PairTokenClient::new(&e, &pair_tokens.get(1).unwrap());
-
-        // Ensure calculator boundaries were updated during initialization
-        assert_eq!(
-            pair_calculator.get_params(&pair.address),
-            LinearLongShortPairParameters {
-                lower_bound: 50_0000000,
-                upper_bound: 150_0000000,
-            }
-        );
-
-        // Add pools to the Pair
-        pair.set_pool_plane(&admin, &plane.address);
-
-        let pools: Vec<Address> = Vec::from_array(&e, [long_pool.clone(), short_pool.clone()]);
-        pair.set_pools(&admin.clone(), &pools);
 
         Self {
             env: e,
 
             // Tokens
             token_long,
-            // token_long_admin_client,
+            token_long_admin_client,
             token_short,
-            // token_short_admin_client,
+            token_short_admin_client,
             token_usdc,
             token_usdc_admin_client,
 
@@ -239,9 +196,6 @@ impl Setup<'_> {
             pair_calculator,
             pair,
             oracle,
-            plane,
-            long_pool,
-            short_pool,
 
             // Oracle
             reflector_addr,
@@ -250,12 +204,9 @@ impl Setup<'_> {
             // Addresses
             admin,
             users,
-            emergency_admin,
-            pause_admin,
 
             // Other
-            pool_type,
-            pool_init_args,
+            start_time,
             solana: sol_symbol,
         }
     }

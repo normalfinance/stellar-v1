@@ -5,10 +5,8 @@ use soroban_sdk::contracterror;
 #[repr(u32)]
 pub enum LongShortPairError {
     AlreadyInitialized = 201,
-    WrongInputVecSize = 202,
     InvalidOracle = 203,
     InvalidInput = 204,
-    FundingWasNotUpdated = 205,
     FailedToGetPoolReserves = 206,
     FailedToGetCalculatorPercent = 207,
     FailedToUpdateTokenScalingFactor = 208,
@@ -16,4 +14,7 @@ pub enum LongShortPairError {
     PoolsNotSet = 210,
     FundingRateRequiresPoolLiquidity = 211,
     InvalidCalculatorValue = 212,
+    MintingDisabled = 213,
+    InvalidStatus = 214,
+    InsufficientInventory = 215,
 }
