@@ -8,4 +8,5 @@ pub enum ValidationError {
     InvalidToken = 801,
     InvalidPercentage = 802,
     ZeroAmount = 804,
+    InvalidOracleTimestamp = 805,
 }

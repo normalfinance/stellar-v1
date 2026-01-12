@@ -49,11 +49,7 @@ pub fn get_reflector_oracle_price(
                 .safe_div(&e, PRICE_PRECISION);
             published_ts = oracle_price_data.timestamp;
 
-            let oracle_delay = Delay::from_timestamp_diff_expect(
-                now,
-                published_ts,
-                "Oracle published timestamp exceeds allowed clock drift tolerance",
-            );
+            let oracle_delay = Delay::from_timestamp_diff_expect(e, now, published_ts);
 
             OraclePriceData {
                 price: oracle_price,

@@ -1,4 +1,6 @@
-use soroban_sdk::contracttype;
+use soroban_sdk::{contracttype, panic_with_error, Env};
+
+use crate::errors::validation_errors::ValidationError;
 
 #[contracttype]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -17,15 +19,15 @@ impl Delay {
         now.checked_sub(past_timestamp).map(Self)
     }
 
-    pub fn from_timestamp_diff_expect(now: u64, past_timestamp: u64, msg: &str) -> Self {
-        Self::from_timestamp_diff_with_tolerance(now, past_timestamp, 60, msg)
+    pub fn from_timestamp_diff_expect(e: &Env, now: u64, past_timestamp: u64) -> Self {
+        Self::from_timestamp_diff_with_tolerance(e, now, past_timestamp, 60)
     }
 
     pub fn from_timestamp_diff_with_tolerance(
+        e: &Env,
         now: u64,
         past_timestamp: u64,
         tolerance_seconds: u64,
-        msg: &str,
     ) -> Self {
         if past_timestamp <= now {
             // Normal case: past timestamp is in the past
@@ -36,7 +38,8 @@ impl Delay {
             Self(0)
         } else {
             // Oracle timestamp is too far in the future, this indicates a real problem
-            panic!("{}", msg)
+            // "Oracle published timestamp exceeds allowed clock drift tolerance"
+            panic_with_error!(e, ValidationError::InvalidOracleTimestamp)
         }
     }
 
