@@ -30,7 +30,14 @@ pub fn shares_to_mint(
     pairs_deposited: u128,
 ) -> u128 {
     if pairs_deposited <= 0 {
-        return 0;
+        panic_with_error!(e, TreasuryError::InvalidInput);
+    }
+
+    // This state is realistically reachable if trading drains one side of inventory (LONG/SHORT/USDC) to zero while LP shares remain outstanding.
+    // In that case, deposit() will still transfer the user’s LONG/SHORT/USDC into the Treasury but will mint 0 shares,
+    // causing an unintended donation/loss for the depositor.
+    if total_shares_before > 0 && total_pairs_before == 0 {
+        panic_with_error!(e, TreasuryError::InsufficientInventory);
     }
 
     // First deposit: bootstrap
@@ -66,9 +73,13 @@ pub fn shares_to_mint(
 }
 
 pub fn pairs_for_withdraw(e: &Env, total_pairs: u128, total_shares: u128, shares_in: u128) -> u128 {
-    if shares_in == 0 || total_shares == 0 || total_pairs == 0 {
-        return 0;
+    if shares_in > 0 && total_pairs == 0 {
+        panic_with_error!(e, TreasuryError::InvalidBalance);
     }
+
+    // if shares_in == 0 || total_shares == 0 || total_pairs == 0 {
+    //      panic_with_error!(e, TreasuryError::InvalidBalance);
+    // }
 
     // pairs_out = floor(shares_in * total_pairs / total_shares)
     let num = shares_in.safe_fixed_mul_floor(e, total_pairs, PRICE_PRECISION);
