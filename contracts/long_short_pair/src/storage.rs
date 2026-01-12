@@ -2,8 +2,6 @@ use paste::paste;
 use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
 use types::pair::PairStatus;
 pub use utils::bump::bump_instance;
-use utils::constant::PERCENTAGE_PRECISION_U64;
-use utils::errors::storage_errors::StorageError;
 use utils::generate_instance_storage_getter;
 use utils::{
     generate_instance_storage_getter_and_setter,
@@ -15,7 +13,7 @@ use utils::{
 #[contracttype]
 pub enum DataKey {
     Asset,
-    Status,
+    Status, // NOTE: Only update by appending value, DO NOT reorder them
 
     // Price boundaries
     LowerBound,

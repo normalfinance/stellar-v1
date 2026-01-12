@@ -28,12 +28,16 @@ pub enum Direction {
     Short,
 }
 
+// NOTE: Only update by appending value, DO NOT reorder them
+// (https://app.almanax.ai/scan/13ca3512-fbc7-4909-929a-53855e07d7af/findings/907bf2df-518b-484d-a1fd-86bd91eb19d9)
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PairStatus {
     Inactive,
+    // NOT HERE!
     Active,
     Expired,
+    // UPDATE HERE!
 }
 
 #[contracttype]
