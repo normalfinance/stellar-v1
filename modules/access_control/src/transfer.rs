@@ -61,9 +61,11 @@ impl TransferOwnershipTrait for AccessControl {
 
     fn apply_transfer_ownership(&self, role: &Role) -> Address {
         let storage = self.0.storage().instance();
-        let role_key = self.get_key(role);
-        let has_value = storage.has(&role_key);
-        if has_value && self.0.ledger().timestamp() < self.get_transfer_ownership_deadline(role) {
+        // Fixed: https://app.almanax.ai/scan/13ca3512-fbc7-4909-929a-53855e07d7af/findings/357b0b85-ab14-4422-898a-f27e8e40fd54
+        // let role_key = self.get_key(role);
+        // let has_value = storage.has(&role_key);
+        // if has_value && self.0.ledger().timestamp() < self.get_transfer_ownership_deadline(role) {
+        if self.0.ledger().timestamp() < self.get_transfer_ownership_deadline(role) {
             panic_with_error!(&self.0, AccessControlError::ActionNotReadyYet);
         }
         if self.get_transfer_ownership_deadline(role) == 0 {
