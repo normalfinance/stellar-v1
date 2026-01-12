@@ -73,13 +73,13 @@ pub fn shares_to_mint(
 }
 
 pub fn pairs_for_withdraw(e: &Env, total_pairs: u128, total_shares: u128, shares_in: u128) -> u128 {
+    if shares_in <= 0 {
+        panic_with_error!(e, TreasuryError::InvalidInput);
+    }
+
     if shares_in > 0 && total_pairs == 0 {
         panic_with_error!(e, TreasuryError::InvalidBalance);
     }
-
-    // if shares_in == 0 || total_shares == 0 || total_pairs == 0 {
-    //      panic_with_error!(e, TreasuryError::InvalidBalance);
-    // }
 
     // pairs_out = floor(shares_in * total_pairs / total_shares)
     let num = shares_in.safe_fixed_mul_floor(e, total_pairs, PRICE_PRECISION);
