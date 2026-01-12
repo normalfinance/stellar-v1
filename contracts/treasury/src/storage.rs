@@ -73,6 +73,8 @@ pub enum TreasuryDataKey {
     PairDetails(Address),
     // map of pair to TreasuryPairBalances
     PairBalances(Address),
+    //
+    Initialized(Address),
     // map of pair to Total LP share supply
     TotalShares(Address),
     // map of (pair, user) to LP share balance
@@ -108,9 +110,11 @@ generate_instance_storage_getter_and_setter_with_default!(
 // Pair details
 pub(crate) fn get_pair_details(env: &Env, pair: &Address) -> TreasuryPairDetails {
     let key = TreasuryDataKey::PairDetails(pair.clone());
-    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(details) => details,
+        Some(details) => {
+            bump_persistent(env, &key);
+            details
+        }
         None => panic_with_error!(env, StorageError::ValueNotInitialized),
     }
 }
@@ -124,9 +128,11 @@ pub(crate) fn set_pair_details(env: &Env, pair: &Address, details: &TreasuryPair
 // Pair balances
 pub(crate) fn get_pair_balances(env: &Env, pair: &Address) -> TreasuryPairBalances {
     let key = TreasuryDataKey::PairBalances(pair.clone());
-    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(balances) => balances,
+        Some(balances) => {
+            bump_persistent(env, &key);
+            balances
+        }
         None => panic_with_error!(env, StorageError::ValueNotInitialized),
     }
 }
@@ -140,10 +146,12 @@ pub(crate) fn set_pair_balances(env: &Env, pair: &Address, balances: &TreasuryPa
 // Shares
 pub(crate) fn get_total_shares(env: &Env, pair: &Address) -> u128 {
     let key = TreasuryDataKey::TotalShares(pair.clone());
-    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(total_shares) => total_shares,
-        None => 0,
+        Some(total_shares) => {
+            bump_persistent(env, &key);
+            total_shares
+        }
+        None => panic_with_error!(env, StorageError::ValueNotInitialized),
     }
 }
 
@@ -154,15 +162,28 @@ pub(crate) fn set_total_shares(env: &Env, pair: &Address, shares: u128) {
 }
 
 // User Shares
-pub(crate) fn get_user_shares(env: &Env, pair: &Address, user: &Address) -> u128 {
+pub(crate) fn get_user_shares(
+    env: &Env,
+    pair: &Address,
+    user: &Address,
+    return_zero: bool,
+) -> u128 {
     let key = TreasuryDataKey::UserShares(UserSharesKey {
         pair: pair.clone(),
         user: user.clone(),
     });
-    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(user_shares) => user_shares,
-        None => 0,
+        Some(user_shares) => {
+            bump_persistent(env, &key);
+            user_shares
+        }
+        None => {
+            if return_zero {
+                0
+            } else {
+                panic_with_error!(env, StorageError::ValueNotInitialized)
+            }
+        }
     }
 }
 
@@ -178,13 +199,12 @@ pub(crate) fn set_user_shares(env: &Env, pair: &Address, user: &Address, shares:
 // Fee Config
 pub(crate) fn get_fee_config(env: &Env, pair: &Address) -> TreasuryFeeConfig {
     let key = TreasuryDataKey::FeeConfig(pair.clone());
-    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(fee_config) => fee_config,
-        None => TreasuryFeeConfig {
-            maker_fee: 0,
-            taker_fee: 0,
-        },
+        Some(fee_config) => {
+            bump_persistent(env, &key);
+            fee_config
+        }
+        None => panic_with_error!(env, StorageError::ValueNotInitialized),
     }
 }
 
@@ -197,10 +217,12 @@ pub(crate) fn set_fee_config(env: &Env, pair: &Address, fee_config: TreasuryFeeC
 // Protocol fee
 pub(crate) fn get_protocol_fees(env: &Env, pair: &Address) -> u128 {
     let key = TreasuryDataKey::ProtocolFees(pair.clone());
-    bump_persistent(env, &key);
     match env.storage().persistent().get(&key) {
-        Some(details) => details,
-        None => 0,
+        Some(details) => {
+            bump_persistent(env, &key);
+            details
+        }
+        None => panic_with_error!(env, StorageError::ValueNotInitialized),
     }
 }
 

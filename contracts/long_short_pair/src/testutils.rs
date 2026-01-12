@@ -8,12 +8,9 @@ use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPr
 use soroban_sdk::token::{
     StellarAssetClient as SorobanTokenAdminClient, TokenClient as SorobanTokenClient,
 };
-use soroban_sdk::xdr::{AccountId, AlphaNum12, Asset, AssetCode12, Limits, PublicKey, WriteXdr};
 use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Symbol, Vec};
-use soroban_sdk::{Bytes, IntoVal, String};
 use std::vec;
-use token_pair::token_contract::{Client as PairTokenClient, WASM};
-use types::oracle::OraclePriceData;
+use token_pair::token_contract::WASM;
 use types::pair::PairParams;
 use utils::test_utils::jump;
 
@@ -40,13 +37,13 @@ pub fn create_normal_oracle_contract<'a>(
         e,
         &e.register(
             normal_oracle::WASM,
-            (admin, asset, oracle_source, oracle_addr),
+            (admin, asset, oracle_source.clone(), oracle_addr),
         ),
     )
 }
 
 pub fn create_pair_contract<'a>(e: &Env, params: &PairParams) -> LongShortPairClient<'a> {
-    LongShortPairClient::new(e, &e.register(crate::LongShortPair {}, (params,)))
+    LongShortPairClient::new(e, &e.register(crate::LongShortPair {}, (params.clone(),)))
 }
 
 pub(crate) struct TestConfig {
@@ -111,7 +108,7 @@ impl Setup<'_> {
         e.mock_all_auths();
         e.cost_estimate().budget().reset_unlimited();
 
-        let start_time = 1767285451; // e.ledger().timestamp();
+        let start_time = 1768258111; // e.ledger().timestamp();
         jump(&e, start_time);
 
         // Addresses
@@ -120,12 +117,7 @@ impl Setup<'_> {
 
         // Tokens
         let token_usdc = create_token_contract(&e, &admin);
-        let token_long = create_token_contract(&e, &admin);
-        let token_short = create_token_contract(&e, &admin);
-
         let token_usdc_admin_client = get_token_admin_client(&e, &token_usdc.address.clone());
-        let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
-        let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
 
         // Setup Oracle
         let sol_symbol = Symbol::new(&e, "SOL");
@@ -165,6 +157,12 @@ impl Setup<'_> {
         let pair_calculator = create_pair_calculator_contract(&e);
 
         // Setup Long Short Pair
+        let token_long = create_token_contract(&e, &admin);
+        let token_short = create_token_contract(&e, &admin);
+
+        let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
+        let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
+
         let pair = create_pair_contract(
             &e,
             &(PairParams {
@@ -185,11 +183,8 @@ impl Setup<'_> {
             }),
         );
 
-        let token_long = create_token_contract(&e, &pair.address);
-        let token_short = create_token_contract(&e, &pair.address);
-
-        let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
-        let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
+        token_long_admin_client.set_admin(&pair.address);
+        token_short_admin_client.set_admin(&pair.address);
 
         Self {
             env: e,

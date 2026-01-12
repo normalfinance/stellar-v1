@@ -6,33 +6,9 @@ use crate::testutils::Setup;
 
 use soroban_sdk::{testutils::Address as _, Address, Vec};
 use token_pair::{get_total_long_shares, get_total_short_shares};
-use types::pair::{PairParams, PairStatus};
+use types::pair::{PairParams, PairStatus, Side};
 use utils::constant::{ONE_HOUR, PRICE_PRECISION};
 use utils::test_utils::jump;
-
-#[test]
-#[should_panic(expected = "Error(Contract, #201)")]
-fn initialize_already_initialized() {
-    let setup = Setup::default();
-
-    let params = PairParams {
-        admin: setup.admin,
-        asset: setup.solana,
-        oracle: setup.oracle.address,
-
-        collateral_token: setup.token_usdc.address,
-        calculator: setup.pair_calculator.address,
-        collateral_per_pair: 100_0000000,
-
-        long_token: setup.token_long.address,
-        short_token: setup.token_short.address,
-
-        lower_bound: 0_000000,
-        upper_bound: 200_0000000,
-    };
-
-    setup.pair.initialize(&params);
-}
 
 /* Mint */
 
@@ -82,8 +58,8 @@ fn test_mint() {
     // Test
     // ================================================================================
 
-    let minted_tokens = setup.pair.mint(&user1, &tokens_to_mint);
-    assert_eq!(minted_tokens, tokens_to_mint);
+    let collateral_used = setup.pair.mint(&user1, &tokens_to_mint);
+    assert_eq!(collateral_used, collateral_required);
 
     // Assertions
     // ================================================================================
@@ -239,7 +215,7 @@ fn test_redeem_one_invalid_amount() {
     let setup = Setup::default();
     let user1 = setup.users[1].clone();
 
-    setup.pair.redeem_one(&user1, &setup.token_long.address, &0);
+    setup.pair.redeem_one(&user1, &Side::Long, &0);
 }
 
 #[test]
@@ -248,25 +224,7 @@ fn test_redeem_one_invalid_status() {
     let setup = Setup::default();
     let user1 = setup.users[1].clone();
 
-    setup
-        .pair
-        .redeem_one(&user1, &setup.token_long.address, &1_0000000);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #204)")]
-fn test_redeem_one_invalid_token() {
-    let setup = Setup::default();
-    let user1 = setup.users[1].clone();
-
-    // Set required status
-    setup.env.as_contract(&setup.pair.address, || {
-        set_status(&setup.env, &PairStatus::Expired);
-    });
-
-    setup
-        .pair
-        .redeem_one(&user1, &setup.token_usdc.address, &1_0000000);
+    setup.pair.redeem_one(&user1, &Side::Long, &1_0000000);
 }
 
 #[test]
@@ -306,10 +264,9 @@ fn test_redeem_one_long_when_price_at_upper_bound() {
     // Test
     // ================================================================================
 
-    let collateral_returned =
-        setup
-            .pair
-            .redeem_one(&user1, &setup.token_long.address, &tokens_to_redeem);
+    let collateral_returned = setup
+        .pair
+        .redeem_one(&user1, &Side::Long, &tokens_to_redeem);
 
     // Assertions
     // ================================================================================

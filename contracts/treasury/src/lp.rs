@@ -215,12 +215,12 @@ mod tests {
     // ---------- shares_to_mint tests ----------
 
     #[test]
-    fn shares_to_mint_returns_zero_if_pairs_deposited_zero() {
+    #[should_panic]
+    fn shares_to_mint_panics_if_pairs_deposited_zero() {
         let e = Env::default();
         let pair = Address::generate(&e);
         // storage value irrelevant for this early return
-        let minted = shares_to_mint(&e, &pair, 100, 100, 0);
-        assert_eq!(minted, 0);
+        let _ = shares_to_mint(&e, &pair, 100, 100, 0);
     }
 
     #[test]
@@ -328,7 +328,8 @@ mod tests {
     }
 
     #[test]
-    fn shares_to_mint_returns_zero_if_pairs_before_zero_but_shares_exist() {
+    #[should_panic]
+    fn shares_to_mint_panics_if_pairs_before_zero_but_shares_exist() {
         let e = Env::default();
         let (contract_address, _) = complete_test_setup(&e);
 
@@ -337,22 +338,27 @@ mod tests {
         });
 
         // Defensive branch: shares exist but pairs_before == 0
-        let minted = shares_to_mint(&e, &contract_address, 0, 123, 10);
-        assert_eq!(minted, 0);
+        let _ = shares_to_mint(&e, &contract_address, 0, 123, 10);
     }
 
     // ---------- pairs_for_withdraw tests ----------
 
     #[test]
-    fn pairs_for_withdraw_returns_zero_on_any_zero_input() {
+    #[should_panic]
+    fn pairs_for_withdraw_panics_on_shares_in_zero_input() {
         let e = Env::default();
 
         assert_eq!(pairs_for_withdraw(&e, 0, 100, 10), 0);
         assert_eq!(pairs_for_withdraw(&e, 100, 0, 10), 0);
         assert_eq!(pairs_for_withdraw(&e, 100, 100, 0), 0);
+    }
 
-        // all zero
-        assert_eq!(pairs_for_withdraw(&e, 0, 0, 0), 0);
+    #[test]
+    #[should_panic]
+    fn pairs_for_withdraw_panics_on_zero_total_pairs_with_positive_shares_in() {
+        let e = Env::default();
+
+        assert_eq!(pairs_for_withdraw(&e, 0, 100, 10), 0);
     }
 
     #[test]

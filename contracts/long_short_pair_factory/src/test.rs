@@ -5,13 +5,14 @@ use crate::testutils;
 use crate::testutils::Setup;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Symbol};
+use types::pair::PairParams;
 
 #[test]
 fn test_deploy_contract() {
     let setup = Setup::default();
     let admin = setup.admin.clone();
 
-    let pair_calculator = Address::generate(&setup.env);
+    let calculator = Address::generate(&setup.env);
     let oracle = Address::generate(&setup.env);
     let collateral_token = Address::generate(&setup.env);
 
@@ -19,7 +20,7 @@ fn test_deploy_contract() {
     let short_token = Address::generate(&setup.env);
 
     // Deploy pair
-    let params = testutils::long_short_pair::PairParams {
+    let params = PairParams {
         admin: admin.clone(),
         asset: Symbol::new(&setup.env, "Solana"),
 

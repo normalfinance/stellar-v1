@@ -1,6 +1,7 @@
 use soroban_sdk::{contracttype, Address, Symbol};
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PairParams {
     // Config
     pub admin: Address,

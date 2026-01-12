@@ -115,7 +115,7 @@ pub fn create_normal_oracle_contract<'a>(
         e,
         &e.register(
             crate::NormalOracle {},
-            (admin, asset, oracle_source, oracle_addr),
+            (admin, asset, oracle_source.clone(), oracle_addr),
         ),
     );
     normal_oracle

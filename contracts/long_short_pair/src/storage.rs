@@ -22,7 +22,7 @@ const KEY_COLLATERAL_PERCENT_LONG: &str = "CollateralPercentLong";
 const KEY_CALCULATOR: &str = "Calculator";
 const KEY_ORACLE: &str = "Oracle";
 const KEY_LAST_UPDATE_TS: &str = "LastUpdateTs";
-const KEY_EXPERIRATION_TS: &str = "ExpirationTs";
+const KEY_EXPIRATION_TS: &str = "ExpirationTs";
 const KEY_IS_KILLED_MINT: &str = "IsKilledMint";
 const KEY_IS_KILLED_REDEEM: &str = "IsKilledRedeem";
 
@@ -78,12 +78,7 @@ generate_instance_storage_getter_and_setter_with_default!(
     u64,
     0
 );
-generate_instance_storage_getter_and_setter_with_default!(
-    expiration_ts,
-    KEY_EXPERIRATION_TS,
-    u64,
-    0
-);
+generate_instance_storage_getter_and_setter_with_default!(expiration_ts, KEY_EXPIRATION_TS, u64, 0);
 
 // Paused Ops
 generate_instance_storage_getter_and_setter_with_default!(

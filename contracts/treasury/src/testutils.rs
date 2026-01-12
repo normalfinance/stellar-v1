@@ -28,11 +28,26 @@ pub mod long_short_pair {
 pub fn create_pair_calculator_contract<'a>(e: &Env) -> long_short_pair_calculator::Client<'a> {
     long_short_pair_calculator::Client::new(e, &e.register(long_short_pair_calculator::WASM, ()))
 }
-pub fn create_normal_oracle_contract<'a>(e: &Env) -> normal_oracle::Client<'a> {
-    normal_oracle::Client::new(e, &e.register(normal_oracle::WASM, ()))
+pub fn create_normal_oracle_contract<'a>(
+    e: &Env,
+    admin: &Address,
+    asset: &Symbol,
+    oracle_source: &OracleSource,
+    oracle_addr: &Address,
+) -> normal_oracle::Client<'a> {
+    normal_oracle::Client::new(
+        e,
+        &e.register(
+            normal_oracle::WASM,
+            (admin, asset, oracle_source.clone(), oracle_addr),
+        ),
+    )
 }
-pub fn create_long_short_pair_contract<'a>(e: &Env) -> long_short_pair::Client<'a> {
-    long_short_pair::Client::new(e, &e.register(long_short_pair::WASM, ()))
+pub fn create_long_short_pair_contract<'a>(
+    e: &Env,
+    params: &PairParams,
+) -> long_short_pair::Client<'a> {
+    long_short_pair::Client::new(e, &e.register(long_short_pair::WASM, (params.clone(),)))
 }
 pub fn create_treasury_contract<'a>(e: &Env, admin: &Address) -> TreasuryClient<'a> {
     TreasuryClient::new(e, &e.register(crate::Treasury {}, (admin,)))
@@ -136,8 +151,8 @@ impl Setup<'_> {
         assert_eq!(result_1.price, prices_initial.get_unchecked(0));
 
         // Create Normal Oracle
-        let oracle = create_normal_oracle_contract(&e);
-        oracle.initialize(
+        let oracle = create_normal_oracle_contract(
+            &e,
             &admin,
             &sol_symbol.clone(),
             &OracleSource::Reflector,
@@ -148,28 +163,30 @@ impl Setup<'_> {
         let pair_calculator = create_pair_calculator_contract(&e);
 
         // Setup Long Short Pair
-        let pair = create_long_short_pair_contract(&e);
-
-        let token_long = create_token_contract(&e, &pair.address);
-        let token_short = create_token_contract(&e, &pair.address);
+        let token_long = create_token_contract(&e, &admin);
+        let token_short = create_token_contract(&e, &admin);
 
         let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
         let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
 
-        // Initialize Pair
-        let params = PairParams {
-            admin: admin.clone(),
-            asset: sol_symbol.clone(),
-            collateral_token: token_usdc.address.clone(),
-            oracle: oracle.address.clone(),
-            calculator: pair_calculator.address.clone(),
-            collateral_per_pair: 100_0000000,
-            long_token: token_long.address.clone(),
-            short_token: token_short.address.clone(),
-            lower_bound: 0_0000000,
-            upper_bound: 200_0000000, // 2x the current price
-        };
-        pair.initialize(&params);
+        let pair = create_long_short_pair_contract(
+            &e,
+            &(PairParams {
+                admin: admin.clone(),
+                asset: sol_symbol.clone(),
+                collateral_token: token_usdc.address.clone(),
+                oracle: oracle.address.clone(),
+                calculator: pair_calculator.address.clone(),
+                collateral_per_pair: 100_0000000,
+                long_token: token_long.address.clone(),
+                short_token: token_short.address.clone(),
+                lower_bound: 0_0000000,
+                upper_bound: 200_0000000, // 2x the current price
+            }),
+        );
+
+        token_long_admin_client.set_admin(&pair.address);
+        token_short_admin_client.set_admin(&pair.address);
 
         // Setup Treasury
         let treasury = create_treasury_contract(&e, &admin);

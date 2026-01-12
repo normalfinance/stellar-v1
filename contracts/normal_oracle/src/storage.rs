@@ -67,9 +67,11 @@ pub(crate) fn get_historical_data(
     now: u64,
 ) -> HistoricalOracleData {
     let key = DataKey::HistoricalData;
-    bump_persistent(e, &key);
     match e.storage().persistent().get(&key) {
-        Some(data) => data,
+        Some(data) => {
+            bump_persistent(e, &key);
+            data
+        }
         None => HistoricalOracleData::default(*oracle_price_data, now),
     }
 }

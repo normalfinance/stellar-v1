@@ -114,7 +114,7 @@ impl TreasuryTrait for Treasury {
         set_total_shares(&e, &pair, new_total_shares);
 
         // Update user shares
-        let user_shares = get_user_shares(&e, &pair, &user);
+        let user_shares = get_user_shares(&e, &pair, &user, true);
         let new_user_shares = user_shares.safe_add(&e, shares_to_mint);
         set_user_shares(&e, &pair, &user, new_user_shares);
 
@@ -158,7 +158,7 @@ impl TreasuryTrait for Treasury {
         let pair_details = get_pair_details(&e, &pair);
 
         let total_shares = get_total_shares(&e, &pair);
-        let user_shares = get_user_shares(&e, &pair, &user);
+        let user_shares = get_user_shares(&e, &pair, &user, false); // return_zero = false > to revert if UserShares not initialized for the user
 
         if shares > user_shares || total_shares <= 0 {
             panic_with_error!(&e, TreasuryError::InsufficientShares);
@@ -265,7 +265,7 @@ impl TreasuryTrait for Treasury {
     }
 
     fn get_user_shares(e: Env, pair: Address, user: Address) -> u128 {
-        crate::storage::get_user_shares(&e, &pair, &user)
+        crate::storage::get_user_shares(&e, &pair, &user, true)
     }
 
     fn get_pair_fee_config(e: Env, pair: Address) -> TreasuryFeeConfig {
@@ -305,7 +305,7 @@ impl TreasuryTrait for Treasury {
                 total_shares: crate::storage::get_total_shares(&e, &pair),
                 fee_config: crate::storage::get_fee_config(&e, &pair),
             },
-            user_shares: get_user_shares(&e, &pair, &user),
+            user_shares: get_user_shares(&e, &pair, &user, true),
         }
     }
 }
@@ -1103,7 +1103,7 @@ impl AdminInterfaceTrait for Treasury {
             panic_with_error!(&e, TreasuryError::InvalidInput);
         }
 
-        // Initialize pair details, balances, and fees
+        set_total_shares(&e, &pair, 0);
         set_pair_details(
             &e,
             &pair,
@@ -1131,6 +1131,7 @@ impl AdminInterfaceTrait for Treasury {
                 taker_fee,
             },
         );
+        set_protocol_fees(&e, &pair, &0);
     }
 
     fn set_fee_config(e: Env, admin: Address, pair: Address, maker_fee: u128, taker_fee: u128) {

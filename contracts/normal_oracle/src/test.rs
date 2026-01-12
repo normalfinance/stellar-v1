@@ -12,7 +12,7 @@ fn test_get_price() {
 
     let price_data = setup.normal_oracle.get_price();
     assert_eq!(
-        price_data.price as i128,
+        price_data.last_price as i128,
         setup.initial_asset_price / PRICE_PRECISION_I128
     );
 }
