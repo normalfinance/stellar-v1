@@ -1,6 +1,8 @@
+use crate::errors::LongShortPairFactoryError;
 use crate::events::{Events, FactoryConfigEvents, FactoryEvents};
 use crate::factory_interface::{AdminInterface, LongShortPairFactoryTrait};
 use crate::pair_interface::PairInterfaceTrait;
+use crate::storage::get_is_killed_create;
 use soroban_sdk::{
     contract, contractimpl, contractmeta, contracttype, panic_with_error, Address, BytesN, Env,
     Symbol, Vec,
@@ -64,6 +66,10 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
     fn deploy_pair_contract(e: Env, admin: Address, asset: Symbol) -> Address {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+
+        if get_is_killed_create(&e) {
+            panic_with_error!(&e, LongShortPairFactoryError::ActionPaused);
+        }
 
         // Deploy the pair contract
         let salt = crate::pair_utils::get_pair_salt(&e, &asset);
