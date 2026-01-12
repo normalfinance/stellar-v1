@@ -45,7 +45,7 @@ impl LongShortPairCalculatorTrait for LongShortPairCalculator {
             panic_with_error!(&e, CalculatorError::InvalidBounds);
         }
 
-        if lower_bound <= upper_bound {
+        if lower_bound >= upper_bound {
             panic_with_error!(&e, CalculatorError::InvalidBounds);
         }
 
