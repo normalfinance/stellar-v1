@@ -1,22 +1,11 @@
 #![cfg(any(test, feature = "testutils"))]
 
 use soroban_sdk::testutils::{Ledger, LedgerInfo};
-use soroban_sdk::{BytesN, Env, U256};
+use soroban_sdk::{BytesN, Env};
 
 pub fn assert_approx_eq_abs(a: u128, b: u128, delta: u128) {
     assert!(
         a > b - delta && a < b + delta,
-        "assertion failed: `(left != right)` \
-         (left: `{:?}`, right: `{:?}`, epsilon: `{:?}`)",
-        a,
-        b,
-        delta
-    );
-}
-
-pub fn assert_approx_eq_abs_u256(a: U256, b: U256, delta: U256) {
-    assert!(
-        a > b.sub(&delta) && a < b.add(&delta),
         "assertion failed: `(left != right)` \
          (left: `{:?}`, right: `{:?}`, epsilon: `{:?}`)",
         a,
