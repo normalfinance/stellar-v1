@@ -2,24 +2,32 @@ use crate::errors::NormalOracleError;
 use crate::interface::NormalOracleTrait;
 use crate::storage::GuardRails;
 use soroban_sdk::{
-    contract, contractimpl, contractmeta, panic_with_error, Address, BytesN, Env, Symbol, Vec,
+    contract,
+    contractimpl,
+    contractmeta,
+    panic_with_error,
+    Address,
+    BytesN,
+    Env,
+    Symbol,
+    Vec,
 };
-use types::oracle::{OraclePriceData, OracleSource};
+use types::oracle::{ OraclePriceData, OracleSource };
 
 // Access control
-use access_control::access::{AccessControl, AccessControlTrait};
-use access_control::emergency::{get_emergency_mode, set_emergency_mode};
+use access_control::access::{ AccessControl, AccessControlTrait };
+use access_control::emergency::{ get_emergency_mode, set_emergency_mode };
 use access_control::errors::AccessControlError;
 use access_control::events::Events as AccessControlEvents;
 use access_control::interface::TransferableContract;
 use access_control::management::SingleAddressManagementTrait;
-use access_control::role::{Role, SymbolRepresentation};
+use access_control::role::{ Role, SymbolRepresentation };
 use access_control::transfer::TransferOwnershipTrait;
 
 // Upgrade
 use upgrade::events::Events as UpgradeEvents;
 use upgrade::interface::UpgradeableContract;
-use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
+use upgrade::{ apply_upgrade, commit_upgrade, revert_upgrade };
 
 contractmeta!(
     key = "Description",
@@ -30,20 +38,24 @@ contractmeta!(
 pub struct NormalOracle;
 
 #[contractimpl]
-impl NormalOracleTrait for NormalOracle {
-    fn initialize(
+impl NormalOracle {
+    // __constructor
+    // Initializes the oracle by setting the admin roles and storing critical parameters.
+    //
+    // Arguments:
+    //   - e: The Soroban environment.
+    //   - admin: The address to be assigned the Admin role.
+    //   - asset: The symbol of the asset this oracle should track.
+    //   - oracle_source: The supported type of the oracle provider.
+    //   - oracle_addr: The address of the oracle provider.
+    pub fn __constructor(
         e: Env,
         admin: Address,
         asset: Symbol,
         oracle_source: OracleSource,
-        oracle_addr: Address,
+        oracle_addr: Address
     ) {
-        admin.require_auth();
-
         let access_control = AccessControl::new(&e);
-        if access_control.get_role_safe(&Role::Admin).is_some() {
-            panic_with_error!(&e, NormalOracleError::AlreadyInitialized);
-        }
         access_control.set_role_address(&Role::Admin, &admin);
         access_control.set_role_address(&Role::PauseAdmin, &admin);
         access_control.set_role_address(&Role::EmergencyAdmin, &admin);
@@ -52,7 +64,10 @@ impl NormalOracleTrait for NormalOracle {
         crate::storage::set_oracle_source(&e, &oracle_source);
         crate::storage::set_oracle(&e, &oracle_addr);
     }
+}
 
+#[contractimpl]
+impl NormalOracleTrait for NormalOracle {
     fn get_price(e: Env) -> OraclePriceData {
         let now = e.ledger().timestamp();
         let asset = crate::storage::get_asset(&e);
@@ -250,10 +265,11 @@ impl TransferableContract for NormalOracle {
         let access_control = AccessControl::new(&e);
         let role = Role::from_symbol(&e, role_name);
         match access_control.get_transfer_ownership_deadline(&role) {
-            0 => match access_control.get_role_safe(&role) {
-                Some(address) => address,
-                None => panic_with_error!(&e, AccessControlError::RoleNotFound),
-            },
+            0 =>
+                match access_control.get_role_safe(&role) {
+                    Some(address) => address,
+                    None => panic_with_error!(&e, AccessControlError::RoleNotFound),
+                }
             _ => access_control.get_future_address(&role),
         }
     }

@@ -1,17 +1,9 @@
-use soroban_sdk::{Address, Env, Symbol};
-use types::oracle::{OraclePriceData, OracleSource};
+use soroban_sdk::{ Address, Env, Symbol };
+use types::oracle::{ OraclePriceData, OracleSource };
 
 use crate::storage::GuardRails;
 
 pub trait NormalOracleTrait {
-    fn initialize(
-        e: Env,
-        admin: Address,
-        asset: Symbol,
-        oracle_source: OracleSource,
-        oracle_addr: Address,
-    );
-
     fn get_price(e: Env) -> OraclePriceData;
 
     fn get_guard_rails(e: Env) -> GuardRails;

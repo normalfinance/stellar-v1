@@ -1,4 +1,4 @@
-use soroban_sdk::{panic_with_error, Address, Env};
+use soroban_sdk::{ panic_with_error, Address, Env };
 use utils::constant::PRICE_PRECISION;
 use utils::math::safe_math::PrecisionMath;
 
@@ -10,10 +10,11 @@ pub fn total_pairs(e: &Env, balances: &TreasuryPairBalances, collateral_per_pair
         return 0;
     }
 
-    let usdc_pairs =
-        balances
-            .token_quote
-            .safe_fixed_div_floor(e, collateral_per_pair, PRICE_PRECISION);
+    let usdc_pairs = balances.token_quote.safe_fixed_div_floor(
+        e,
+        collateral_per_pair,
+        PRICE_PRECISION
+    );
 
     // min(long, short, usdc_pairs)
     let mut total_pairs = balances.token_long.min(balances.token_short);
@@ -27,7 +28,7 @@ pub fn shares_to_mint(
     pair: &Address,
     total_pairs_before: u128,
     total_shares_before: u128,
-    pairs_deposited: u128,
+    pairs_deposited: u128
 ) -> u128 {
     if pairs_deposited <= 0 {
         return 0;
@@ -83,28 +84,20 @@ pub fn pairs_for_withdraw(e: &Env, total_pairs: u128, total_shares: u128, shares
 
 #[cfg(test)]
 mod tests {
-    use crate::{Treasury, TreasuryClient};
+    use crate::{ Treasury };
 
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Address, Env};
+    use soroban_sdk::{ testutils::Address as _, Address, Env };
 
     fn setup_test_contract(e: &Env) -> (Address, Address) {
-        let treasury_contract = e.register(Treasury, ());
-
         let admin = Address::generate(e);
+        let treasury_contract = e.register(Treasury, (&admin,));
 
         (treasury_contract, admin)
     }
 
-    fn init_mock_treasury(e: &Env, treasury_address: &Address, admin: &Address) {
-        let treasury_client = TreasuryClient::new(e, treasury_address);
-        treasury_client.initialize(admin);
-    }
-
     fn complete_test_setup(e: &Env) -> (Address, Address) {
         let (treasury_contract, admin) = setup_test_contract(e);
-
-        init_mock_treasury(e, &treasury_contract, &admin);
 
         (treasury_contract, admin)
     }
@@ -137,13 +130,11 @@ mod tests {
         let balances = balances(
             100 * PRICE_PRECISION, // long
             200 * PRICE_PRECISION, // short
-            10 * PRICE_PRECISION,  // quote = 10 USDC (scaled)
+            10 * PRICE_PRECISION // quote = 10 USDC (scaled)
         );
 
         // usdc_pairs = (10*PREC * PREC) / (5*PREC) = 2*PREC
-        let usdc_pairs = balances
-            .token_quote
-            .safe_fixed_div_floor(&e, cpp, PRICE_PRECISION);
+        let usdc_pairs = balances.token_quote.safe_fixed_div_floor(&e, cpp, PRICE_PRECISION);
 
         assert_eq!(usdc_pairs, 2 * PRICE_PRECISION);
 
@@ -159,7 +150,7 @@ mod tests {
         let balances = balances(
             3 * PRICE_PRECISION, // long is smallest
             10 * PRICE_PRECISION,
-            10 * PRICE_PRECISION, // quote enough for 10 pairs
+            10 * PRICE_PRECISION // quote enough for 10 pairs
         );
 
         let out = total_pairs(&e, &balances, cpp);
@@ -174,7 +165,7 @@ mod tests {
         let balances = balances(
             10 * PRICE_PRECISION,
             4 * PRICE_PRECISION, // short is smallest
-            10 * PRICE_PRECISION,
+            10 * PRICE_PRECISION
         );
 
         let out = total_pairs(&e, &balances, cpp);
@@ -191,15 +182,9 @@ mod tests {
         // quote = 10 USDC (scaled)
         // usdc_pairs = floor((10*PREC*PREC)/(3*PREC)) = floor((10/3)*PREC) = 3*PREC + floor(1/3*PREC)
         // It's strictly < 4*PREC, so min should reflect the floored result.
-        let balances = balances(
-            100 * PRICE_PRECISION,
-            100 * PRICE_PRECISION,
-            10 * PRICE_PRECISION,
-        );
+        let balances = balances(100 * PRICE_PRECISION, 100 * PRICE_PRECISION, 10 * PRICE_PRECISION);
 
-        let usdc_pairs = balances
-            .token_quote
-            .safe_fixed_div_floor(&e, cpp, PRICE_PRECISION);
+        let usdc_pairs = balances.token_quote.safe_fixed_div_floor(&e, cpp, PRICE_PRECISION);
 
         // Must be < 4*PREC (since 10/3 = 3.333...)
         assert!(usdc_pairs < 4 * PRICE_PRECISION);
@@ -234,7 +219,7 @@ mod tests {
             &contract_address,
             0, // total_pairs_before ignored on first deposit
             0, // total_shares_before == 0 => bootstrap path
-            7 * PRICE_PRECISION,
+            7 * PRICE_PRECISION
         );
 
         assert_eq!(minted, 7 * PRICE_PRECISION);
@@ -283,7 +268,7 @@ mod tests {
             &contract_address,
             total_pairs_before,
             total_shares_before,
-            pairs_deposited,
+            pairs_deposited
         );
 
         assert_eq!(minted, expected);
@@ -320,7 +305,7 @@ mod tests {
             &contract_address,
             total_pairs_before,
             total_shares_before,
-            pairs_deposited,
+            pairs_deposited
         );
     }
 

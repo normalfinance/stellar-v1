@@ -3,8 +3,8 @@
 extern crate std;
 
 use crate::NormalOracleClient;
-use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPriceOracleWASM};
-use soroban_sdk::{testutils::Address as _, Address, Env, Symbol, Vec};
+use sep_40_oracle::testutils::{ Asset as MockAsset, MockPriceOracleClient, MockPriceOracleWASM };
+use soroban_sdk::{ testutils::Address as _, Address, Env, Symbol, Vec };
 use std::vec;
 use types::oracle::OracleSource;
 use utils::test_utils::jump;
@@ -65,7 +65,7 @@ impl Setup<'_> {
             &MockAsset::Other(Symbol::new(&e, "USD")),
             &Vec::from_array(&e, [asset.clone()]),
             14,
-            300,
+            300
         );
 
         let initial_asset_price = 230_00000000000000;
@@ -76,12 +76,12 @@ impl Setup<'_> {
         let result_1 = reflector_client.lastprice(&asset.clone()).unwrap();
         assert_eq!(result_1.price, initial_asset_price);
 
-        let normal_oracle = create_normal_oracle_contract(&e);
-        normal_oracle.initialize(
+        let normal_oracle = create_normal_oracle_contract(
+            &e,
             &admin,
             &asset_symbol,
             &OracleSource::Reflector,
-            &reflector_addr,
+            &reflector_addr
         );
 
         Self {
@@ -104,8 +104,17 @@ impl Setup<'_> {
     }
 }
 
-pub fn create_normal_oracle_contract<'a>(e: &Env) -> NormalOracleClient<'a> {
-    let normal_oracle = NormalOracleClient::new(e, &e.register(crate::NormalOracle {}, ()));
+pub fn create_normal_oracle_contract<'a>(
+    e: &Env,
+    admin: &Address,
+    asset: &Symbol,
+    oracle_source: &OracleSource,
+    oracle_addr: &Address
+) -> NormalOracleClient<'a> {
+    let normal_oracle = NormalOracleClient::new(
+        e,
+        &e.register(crate::NormalOracle {}, (admin, asset, oracle_source, oracle_addr))
+    );
     normal_oracle
 }
 
@@ -115,7 +124,7 @@ pub fn setup_price_feed_oracle<'a>(
     base: &MockAsset,
     assets: &Vec<MockAsset>,
     decimals: u32,
-    resolution: u32,
+    resolution: u32
 ) -> (Address, MockPriceOracleClient<'a>) {
     let reflector_addr = env.register(MockPriceOracleWASM, ());
     let reflector_client = MockPriceOracleClient::new(env, &reflector_addr);

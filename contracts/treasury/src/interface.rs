@@ -1,14 +1,15 @@
-use soroban_sdk::{Address, BytesN, Env, Symbol};
-use types::pair::{Direction, Side};
+use soroban_sdk::{ Address, BytesN, Env, Symbol };
+use types::pair::{ Direction, Side };
 
 use crate::storage::{
-    TreasuryFeeConfig, TreasuryPairBalances, TreasuryPairDetails, TreasuryPairSummary,
+    TreasuryFeeConfig,
+    TreasuryPairBalances,
+    TreasuryPairDetails,
+    TreasuryPairSummary,
     TreasuryUserPairSummary,
 };
 
 pub trait TreasuryTrait {
-    fn initialize(e: Env, admin: Address);
-
     fn deposit(e: Env, user: Address, pair: Address, pairs_to_deposit: u128) -> u128;
 
     fn withdraw(e: Env, user: Address, pair: Address, shares: u128) -> (u128, u128, u128);
@@ -39,14 +40,13 @@ pub trait TradingTrait {
         direction: Direction,
         side: Side,
         amount_in: u128,
-        taker_fee: bool,
+        taker_fee: bool
     ) -> (u128, u128);
 
     fn buy_long(e: Env, user: Address, pair: Address, usdc_in: u128, min_long_out: u128) -> u128;
     fn sell_long(e: Env, user: Address, pair: Address, long_in: u128, min_usdc_out: u128) -> u128;
     fn buy_short(e: Env, user: Address, pair: Address, usdc_in: u128, min_short_out: u128) -> u128;
-    fn sell_short(e: Env, user: Address, pair: Address, short_in: u128, min_usdc_out: u128)
-        -> u128;
+    fn sell_short(e: Env, user: Address, pair: Address, short_in: u128, min_usdc_out: u128) -> u128;
 
     fn mint_and_sell_short(e: Env, user: Address, pair: Address, usdc_in: u128) -> u128;
     fn mint_and_sell_long(e: Env, user: Address, pair: Address, usdc_in: u128) -> u128;
@@ -64,7 +64,7 @@ pub trait AdminInterfaceTrait {
         long_token: Address,
         short_token: Address,
         maker_fee: u128,
-        taker_fee: u128,
+        taker_fee: u128
     );
 
     fn set_fee_config(e: Env, admin: Address, pair: Address, maker_fee: u128, taker_fee: u128);

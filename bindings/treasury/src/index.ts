@@ -217,26 +217,6 @@ export type Delay = readonly [u64];
 
 export interface Client {
   /**
-   * Construct and simulate a initialize transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  initialize: ({admin}: {admin: string}, options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<null>>
-
-  /**
    * Construct and simulate a deposit transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   deposit: ({user, pair, pairs_to_deposit}: {user: string, pair: string, pairs_to_deposit: u128}, options?: {
@@ -1119,6 +1099,8 @@ export interface Client {
 }
 export class Client extends ContractClient {
   static async deploy<T = Client>(
+        /** Constructor/Initialization Args for the contract's `__constructor` method */
+        {admin}: {admin: string},
     /** Options for initializing a Client as well as for calling a method, with extras specific to deploying. */
     options: MethodOptions &
       Omit<ContractClientOptions, "contractId"> & {
@@ -1130,11 +1112,11 @@ export class Client extends ContractClient {
         format?: "hex" | "base64";
       }
   ): Promise<AssembledTransaction<T>> {
-    return ContractClient.deploy(null, options)
+    return ContractClient.deploy({admin}, options)
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAAAAAAAAAAAAAKaW5pdGlhbGl6ZQAAAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
+      new ContractSpec([ "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAEAAAAAAAAABWFkbWluAAAAAAAAEwAAAAA=",
         "AAAAAAAAAAAAAAAHZGVwb3NpdAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAEHBhaXJzX3RvX2RlcG9zaXQAAAAKAAAAAQAAAAo=",
         "AAAAAAAAAAAAAAAId2l0aGRyYXcAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAABnNoYXJlcwAAAAAACgAAAAEAAAPtAAAAAwAAAAoAAAAKAAAACg==",
         "AAAAAAAAAAAAAAAQZ2V0X3BhaXJfZGV0YWlscwAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAB9AAAAATVHJlYXN1cnlQYWlyRGV0YWlscwA=",
@@ -1205,8 +1187,7 @@ export class Client extends ContractClient {
     )
   }
   public readonly fromJSON = {
-    initialize: this.txFromJSON<null>,
-        deposit: this.txFromJSON<u128>,
+    deposit: this.txFromJSON<u128>,
         withdraw: this.txFromJSON<readonly [u128, u128, u128]>,
         get_pair_details: this.txFromJSON<TreasuryPairDetails>,
         get_total_pairs: this.txFromJSON<u128>,
