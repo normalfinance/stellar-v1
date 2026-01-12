@@ -16,7 +16,7 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 use utils::constant::PRICE_PRECISION;
-use utils::math::safe_math::{PrecisionMath, SafeMath};
+use utils::math::safe_math::{PrecisionMath, SafeConversion, SafeMath};
 
 // Access control
 use access_control::access::{AccessControl, AccessControlTrait};
@@ -73,12 +73,12 @@ impl TreasuryTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_long).transfer(
             &user,
             &treasury,
-            &(pairs_to_deposit as i128),
+            &pairs_to_deposit.safe_to_i128(&e),
         );
         SorobanTokenClient::new(&e, &pair_details.token_short).transfer(
             &user,
             &treasury,
-            &(pairs_to_deposit as i128),
+            &pairs_to_deposit.safe_to_i128(&e),
         );
 
         // Transfer USDC
@@ -90,7 +90,7 @@ impl TreasuryTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &user,
             &treasury,
-            &(usdc_required as i128),
+            &usdc_required.safe_to_i128(&e),
         );
 
         // Compute how many LP shares to mint
@@ -191,17 +191,17 @@ impl TreasuryTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &treasury,
             &user,
-            &(out_usdc as i128),
+            &out_usdc.safe_to_i128(&e),
         );
         SorobanTokenClient::new(&e, &pair_details.token_long).transfer(
             &treasury,
             &user,
-            &(out_long as i128),
+            &out_long.safe_to_i128(&e),
         );
         SorobanTokenClient::new(&e, &pair_details.token_short).transfer(
             &treasury,
             &user,
-            &(out_short as i128),
+            &out_short.safe_to_i128(&e),
         );
 
         // Update balances
@@ -384,7 +384,7 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &user,
             &treasury,
-            &(collateral_required as i128),
+            &collateral_required.safe_to_i128(&e),
         );
 
         // Mint tokens via the Long Short Pair
@@ -397,7 +397,7 @@ impl TradingTrait for Treasury {
                     args: (
                         e.current_contract_address(),
                         pair.clone(),
-                        collateral_required as i128,
+                        collateral_required.safe_to_i128(&e),
                     )
                         .into_val(&e),
                 },
@@ -410,7 +410,7 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_long).transfer(
             &treasury,
             &user,
-            &(tokens_to_mint as i128),
+            &tokens_to_mint.safe_to_i128(&e),
         );
 
         // Then sell the short token by keeping it in the Treasury and returning it's value in USDC
@@ -420,7 +420,7 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &user,
             &treasury,
-            &(usdc_to_return as i128),
+            &usdc_to_return.safe_to_i128(&e),
         );
 
         // Update balances
@@ -490,7 +490,7 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &user,
             &treasury,
-            &(collateral_required as i128),
+            &collateral_required.safe_to_i128(&e),
         );
 
         // Mint tokens via the Long Short Pair
@@ -503,7 +503,7 @@ impl TradingTrait for Treasury {
                     args: (
                         e.current_contract_address(),
                         pair.clone(),
-                        collateral_required as i128,
+                        collateral_required.safe_to_i128(&e),
                     )
                         .into_val(&e),
                 },
@@ -517,7 +517,7 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_short).transfer(
             &treasury,
             &user,
-            &(tokens_to_mint as i128),
+            &tokens_to_mint.safe_to_i128(&e),
         );
 
         // Then sell the long token(s) by keeping them in the Treasury and returning their value in USDC
@@ -527,7 +527,7 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &user,
             &treasury,
-            &(usdc_to_return as i128),
+            &usdc_to_return.safe_to_i128(&e),
         );
 
         // Update balances
@@ -585,14 +585,14 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &user,
             &treasury,
-            &(usdc_required as i128),
+            &usdc_required.safe_to_i128(&e),
         );
 
         // Transfer the short token(s) from the user to the Treasury
         SorobanTokenClient::new(&e, &pair_details.token_short).transfer(
             &user,
             &treasury,
-            &(short_in as i128),
+            &short_in.safe_to_i128(&e),
         );
 
         // Redeem tokens via the Long Short Pair
@@ -602,7 +602,11 @@ impl TradingTrait for Treasury {
                 context: ContractContext {
                     contract: pair_details.token_long.clone(),
                     fn_name: Symbol::new(&e, "transfer"),
-                    args: (e.current_contract_address(), pair.clone(), short_in as i128)
+                    args: (
+                        e.current_contract_address(),
+                        pair.clone(),
+                        short_in.safe_to_i128(&e),
+                    )
                         .into_val(&e),
                 },
                 sub_invocations: vec![&e],
@@ -611,7 +615,11 @@ impl TradingTrait for Treasury {
                 context: ContractContext {
                     contract: pair_details.token_short.clone(),
                     fn_name: Symbol::new(&e, "transfer"),
-                    args: (e.current_contract_address(), pair.clone(), short_in as i128)
+                    args: (
+                        e.current_contract_address(),
+                        pair.clone(),
+                        short_in.safe_to_i128(&e),
+                    )
                         .into_val(&e),
                 },
                 sub_invocations: vec![&e],
@@ -624,7 +632,7 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &treasury,
             &user,
-            &(collateral_returned as i128),
+            &collateral_returned.safe_to_i128(&e),
         );
 
         // Update balances
@@ -633,8 +641,8 @@ impl TradingTrait for Treasury {
             &e,
             &pair,
             &(TreasuryPairBalances {
-                token_quote: balances.token_quote.safe_sub(&e, usdc_required), // FIXME: I'm not 100% sure this is correct
-                token_long: balances.token_long.safe_sub(&e, short_in),
+                token_quote: balances.token_quote.saturating_sub(collateral_returned), // saturated to avoid asserting collateral_returned <= balances.token_quote
+                token_long: balances.token_long.saturating_sub(short_in),
                 token_short: balances.token_short,
             }),
         );
@@ -680,14 +688,14 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &user,
             &treasury,
-            &(usdc_required as i128),
+            &usdc_required.safe_to_i128(&e),
         );
 
         // Transfer the long token(s) from the user to the Treasury
         SorobanTokenClient::new(&e, &pair_details.token_long).transfer(
             &user,
             &treasury,
-            &(long_in as i128),
+            &long_in.safe_to_i128(&e),
         );
 
         // Redeem tokens via the Long Short Pair
@@ -697,7 +705,11 @@ impl TradingTrait for Treasury {
                 context: ContractContext {
                     contract: pair_details.token_long.clone(),
                     fn_name: Symbol::new(&e, "transfer"),
-                    args: (e.current_contract_address(), pair.clone(), long_in as i128)
+                    args: (
+                        e.current_contract_address(),
+                        pair.clone(),
+                        long_in.safe_to_i128(&e),
+                    )
                         .into_val(&e),
                 },
                 sub_invocations: vec![&e],
@@ -706,7 +718,11 @@ impl TradingTrait for Treasury {
                 context: ContractContext {
                     contract: pair_details.token_short.clone(),
                     fn_name: Symbol::new(&e, "transfer"),
-                    args: (e.current_contract_address(), pair.clone(), long_in as i128)
+                    args: (
+                        e.current_contract_address(),
+                        pair.clone(),
+                        long_in.safe_to_i128(&e),
+                    )
                         .into_val(&e),
                 },
                 sub_invocations: vec![&e],
@@ -719,7 +735,7 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &treasury,
             &user,
-            &(collateral_returned as i128),
+            &collateral_returned.safe_to_i128(&e),
         );
 
         // Update balances
@@ -728,9 +744,9 @@ impl TradingTrait for Treasury {
             &e,
             &pair,
             &(TreasuryPairBalances {
-                token_quote: balances.token_quote.safe_sub(&e, usdc_required),
+                token_quote: balances.token_quote.saturating_sub(collateral_returned), // saturated to avoid asserting collateral_returned <= balances.token_quote
                 token_long: balances.token_long,
-                token_short: balances.token_short.safe_sub(&e, long_in),
+                token_short: balances.token_short.saturating_sub(long_in),
             }),
         );
 
@@ -784,14 +800,14 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &user,
             &treasury,
-            &(usdc_in as i128),
+            &usdc_in.safe_to_i128(&e),
         );
 
         // Move LONG out
         SorobanTokenClient::new(&e, &pair_details.token_long).transfer(
             &treasury,
             &user,
-            &(long_out as i128),
+            &long_out.safe_to_i128(&e),
         );
 
         // Increment protocol fees
@@ -861,14 +877,14 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_long).transfer(
             &user,
             &treasury,
-            &(long_in as i128),
+            &long_in.safe_to_i128(&e),
         );
 
         // Pay USDC out
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &treasury,
             &user,
-            &(usdc_out as i128),
+            &usdc_out.safe_to_i128(&e),
         );
 
         // Increment protocol fees
@@ -936,14 +952,14 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &user,
             &treasury,
-            &(usdc_in as i128),
+            &usdc_in.safe_to_i128(&e),
         );
 
         // Move LONG out
         SorobanTokenClient::new(&e, &pair_details.token_short).transfer(
             &treasury,
             &user,
-            &(short_out as i128),
+            &short_out.safe_to_i128(&e),
         );
 
         // Increment protocol fees
@@ -1019,14 +1035,14 @@ impl TradingTrait for Treasury {
         SorobanTokenClient::new(&e, &pair_details.token_short).transfer(
             &user,
             &treasury,
-            &(short_in as i128),
+            &short_in.safe_to_i128(&e),
         );
 
         // Pay USDC out
         SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
             &treasury,
             &user,
-            &(usdc_out as i128),
+            &usdc_out.safe_to_i128(&e),
         );
 
         // Increment protocol fees
@@ -1111,6 +1127,10 @@ impl AdminInterfaceTrait for Treasury {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
+        if maker_fee > PRICE_PRECISION || taker_fee > PRICE_PRECISION {
+            panic_with_error!(&e, TreasuryError::InvalidInput);
+        }
+
         crate::storage::set_fee_config(
             &e,
             &pair,
@@ -1143,7 +1163,7 @@ impl AdminInterfaceTrait for Treasury {
             SorobanTokenClient::new(&e, &pair_details.token_quote).transfer(
                 &e.current_contract_address(),
                 &destination,
-                &(fee as i128),
+                &fee.safe_to_i128(&e),
             );
             set_protocol_fees(&e, &pair, &0);
             Events::new(&e).claim_protocol_fee(

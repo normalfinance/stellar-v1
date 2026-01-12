@@ -20,6 +20,7 @@ pub mod token {
 }
 pub use token::{self as token_contract, Client};
 use utils::errors::storage_errors::StorageError;
+use utils::math::safe_math::SafeConversion;
 
 /**
  * Long
@@ -61,7 +62,7 @@ pub fn burn_long_tokens(e: &Env, from: &Address, amount: u128) {
     let total_share = get_total_long_shares(e);
     put_total_long_shares(e, total_share - amount);
 
-    SorobanTokenClient::new(e, &get_token_long(e)).burn(from, &(amount as i128));
+    SorobanTokenClient::new(e, &get_token_long(e)).burn(from, &amount.safe_to_i128(&e));
 }
 
 pub fn mint_long_tokens(e: &Env, to: &Address, amount: i128) {
@@ -111,7 +112,7 @@ pub fn burn_short_tokens(e: &Env, from: &Address, amount: u128) {
     let total_share = get_total_short_shares(e);
     put_total_short_shares(e, total_share - amount);
 
-    SorobanTokenClient::new(e, &get_token_short(e)).burn(from, &(amount as i128));
+    SorobanTokenClient::new(e, &get_token_short(e)).burn(from, &amount.safe_to_i128(&e));
 }
 
 pub fn mint_short_tokens(e: &Env, to: &Address, amount: i128) {

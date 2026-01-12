@@ -124,7 +124,7 @@ pub fn update_twap(
     put_historical_data(
         e,
         &(HistoricalOracleData {
-            last_price_twap: oracle_price_twap as u128,
+            last_price_twap: oracle_price_twap.safe_to_u128(e),
             last_price: oracle_price_data.price,
             last_update_ts: now,
         }),

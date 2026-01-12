@@ -8,7 +8,8 @@ use soroban_sdk::{
 };
 use types::pair::{CollateralInfo, PairParams, PairStatus, PairSummary};
 use utils::constant::PRICE_PRECISION;
-use utils::math::safe_math::{PrecisionMath, SafeMath};
+use utils::errors::math_errors::MathError;
+use utils::math::safe_math::{PrecisionMath, SafeConversion, SafeMath};
 
 // Access control
 use access_control::access::{AccessControl, AccessControlTrait};
@@ -86,8 +87,6 @@ impl LongShortPairTrait for LongShortPair {
             panic_with_error!(&e, LongShortPairError::MintingDisabled);
         }
 
-        let current_time = e.ledger().timestamp();
-
         let collateral_used = tokens_to_mint.safe_fixed_mul_floor(
             &e,
             crate::storage::get_collateral_per_pair(&e),
@@ -97,11 +96,11 @@ impl LongShortPairTrait for LongShortPair {
         SorobanTokenClient::new(&e, &crate::storage::get_collateral_token(&e)).transfer(
             &user,
             &e.current_contract_address(),
-            &(collateral_used as i128),
+            &collateral_used.safe_to_i128(&e),
         );
 
-        token_pair::mint_long_tokens(&e, &user, tokens_to_mint as i128);
-        token_pair::mint_short_tokens(&e, &user, tokens_to_mint as i128);
+        token_pair::mint_long_tokens(&e, &user, tokens_to_mint.safe_to_i128(&e));
+        token_pair::mint_short_tokens(&e, &user, tokens_to_mint.safe_to_i128(&e));
 
         // Increment total collateral
         let total_collateral = crate::storage::get_total_collateral(&e);
@@ -113,7 +112,7 @@ impl LongShortPairTrait for LongShortPair {
             e.current_contract_address(),
             collateral_used,
             tokens_to_mint,
-            current_time,
+            e.ledger().timestamp(),
         );
 
         collateral_used
@@ -157,7 +156,7 @@ impl LongShortPairTrait for LongShortPair {
         SorobanTokenClient::new(&e, &crate::storage::get_collateral_token(&e)).transfer(
             &e.current_contract_address(),
             &user,
-            &(collateral_returned as i128),
+            &collateral_returned.safe_to_i128(&e),
         );
 
         // Decrement total collateral
@@ -222,7 +221,7 @@ impl LongShortPairTrait for LongShortPair {
         SorobanTokenClient::new(&e, &crate::storage::get_collateral_token(&e)).transfer(
             &e.current_contract_address(),
             &user,
-            &(collateral_to_return as i128),
+            &collateral_to_return.safe_to_i128(&e),
         );
 
         // Decrement total collateral

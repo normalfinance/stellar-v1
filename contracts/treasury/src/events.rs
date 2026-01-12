@@ -1,4 +1,5 @@
 use soroban_sdk::{Address, Env, Symbol};
+use utils::math::safe_math::SafeConversion;
 
 #[derive(Clone)]
 pub(crate) struct Events(Env);
@@ -163,7 +164,7 @@ impl TreasuryEvents for Events {
     ) {
         self.env().events().publish(
             (Symbol::new(self.env(), "claim_protocol_fee"), pair, token),
-            (destination, amount as i128),
+            (destination, amount.safe_to_i128(&self.env())),
         );
     }
 
