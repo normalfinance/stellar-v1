@@ -13,7 +13,7 @@ use utils::{
 pub enum DataKey {
     PairContractWASM,      // wasm of the Long Short Pair contract
     AssetPair(BytesN<32>), // asset > pair address
-    AllDeployedPairs,      // global registry -> Vec<Address>
+    AllDeployedPairs,      // vec(Address)
     // paused ops
     IsKilledCreate,
 }
@@ -57,6 +57,7 @@ generate_instance_storage_getter_and_setter_with_default!(
     false
 );
 
+// TODO: https://app.almanax.ai/scan/13ca3512-fbc7-4909-929a-53855e07d7af/findings/897d84fc-0d49-4569-afc8-7704bd534a5c
 pub fn add_deployed_pair(env: &Env, pair_address: &Address) {
     // Add to global list
     let global_key = DataKey::AllDeployedPairs;

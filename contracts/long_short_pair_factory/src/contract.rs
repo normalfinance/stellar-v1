@@ -63,6 +63,7 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
     /// @return pair_address the deployed address of the new Long Short Pair contract.
     fn deploy_pair_contract(e: Env, admin: Address, asset: Symbol) -> Address {
         admin.require_auth();
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
         // Deploy the pair contract
         let salt = crate::pair_utils::get_pair_salt(&e, &asset);
