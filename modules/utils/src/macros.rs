@@ -65,7 +65,6 @@ macro_rules! generate_instance_storage_getter_and_setter_with_default {
 macro_rules! validate {
     ($env:expr, $condition:expr, $error:expr) => {
         if !$condition {
-            #[cfg(debug_assertions)]
             panic_with_error!($env, $error) // Panic with the specified error
         }
     };
