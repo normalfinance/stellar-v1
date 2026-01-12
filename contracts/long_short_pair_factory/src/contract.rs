@@ -71,6 +71,10 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
             panic_with_error!(&e, LongShortPairFactoryError::ActionPaused);
         }
 
+        if get_emergency_mode(&e) {
+            panic_with_error!(&e, LongShortPairFactoryError::ActionPaused);
+        }
+
         // Deploy the pair contract
         let salt = crate::pair_utils::get_pair_salt(&e, &asset);
 
