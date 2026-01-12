@@ -200,26 +200,6 @@ export type Delay = readonly [u64];
 
 export interface Client {
   /**
-   * Construct and simulate a initialize transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  initialize: ({params}: {params: PairParams}, options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<null>>
-
-  /**
    * Construct and simulate a mint transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Creates a pair of long and short tokens equal in number to tokens_to_mint. Pulls the required collateral
    * amount into this contract, defined by the collateral_per_pair value.
@@ -850,6 +830,8 @@ export interface Client {
 }
 export class Client extends ContractClient {
   static async deploy<T = Client>(
+        /** Constructor/Initialization Args for the contract's `__constructor` method */
+        {params}: {params: PairParams},
     /** Options for initializing a Client as well as for calling a method, with extras specific to deploying. */
     options: MethodOptions &
       Omit<ContractClientOptions, "contractId"> & {
@@ -861,11 +843,11 @@ export class Client extends ContractClient {
         format?: "hex" | "base64";
       }
   ): Promise<AssembledTransaction<T>> {
-    return ContractClient.deploy(null, options)
+    return ContractClient.deploy({params}, options)
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAAAAAAAAAAAAAKaW5pdGlhbGl6ZQAAAAAAAQAAAAAAAAAGcGFyYW1zAAAAAAfQAAAAClBhaXJQYXJhbXMAAAAAAAA=",
+      new ContractSpec([ "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAEAAAAAAAAABnBhcmFtcwAAAAAH0AAAAApQYWlyUGFyYW1zAAAAAAAA",
         "AAAAAAAAAT5DcmVhdGVzIGEgcGFpciBvZiBsb25nIGFuZCBzaG9ydCB0b2tlbnMgZXF1YWwgaW4gbnVtYmVyIHRvIHRva2Vuc190b19taW50LiBQdWxscyB0aGUgcmVxdWlyZWQgY29sbGF0ZXJhbAphbW91bnQgaW50byB0aGlzIGNvbnRyYWN0LCBkZWZpbmVkIGJ5IHRoZSBjb2xsYXRlcmFsX3Blcl9wYWlyIHZhbHVlLgpAcGFyYW0gdG9rZW5zX3RvX21pbnQgbnVtYmVyIG9mIGxvbmcgYW5kIHNob3J0IHN5bnRoZXRpYyB0b2tlbnMgdG8gY3JlYXRlLgpAcmV0dXJuIGNvbGxhdGVyYWxfdXNlZCB0b3RhbCBjb2xsYXRlcmFsIHVzZWQgdG8gbWludCB0aGUgc3ludGhldGljcy4AAAAAAARtaW50AAAAAgAAAAAAAAAEdXNlcgAAABMAAAAAAAAADnRva2Vuc190b19taW50AAAAAAAKAAAAAQAAAAo=",
         "AAAAAAAAAXVSZWRlZW1zIGEgcGFpciBvZiBsb25nIGFuZCBzaG9ydCB0b2tlbnMgZXF1YWwgaW4gbnVtYmVyIHRvIHRva2Vuc190b19yZWRlZW0uIFJldHVybnMgdGhlIGNvbW1lbnN1cmF0ZQphbW91bnQgb2YgY29sbGF0ZXJhbCB0byB0aGUgY2FsbGVyIGZvciB0aGUgcGFpciBvZiB0b2tlbnMsIGRlZmluZWQgYnkgdGhlIGNvbGxhdGVyYWxfcGVyX3BhaXIgdmFsdWUuCkBwYXJhbSB0b2tlbnNfdG9fcmVkZWVtIG51bWJlciBvZiBsb25nIGFuZCBzaG9ydCBzeW50aGV0aWMgdG9rZW5zIHRvIHJlZGVlbS4KQHJldHVybiBjb2xsYXRlcmFsX3JldHVybmVkIHRvdGFsIGNvbGxhdGVyYWwgcmV0dXJuZWQgaW4gZXhjaGFuZ2UgZm9yIHRoZSBwYWlyIG9mIHN5bnRoZXRpY3MuAAAAAAAABnJlZGVlbQAAAAAAAgAAAAAAAAAEdXNlcgAAABMAAAAAAAAAEHRva2Vuc190b19yZWRlZW0AAAAKAAAAAQAAAAo=",
         "AAAAAAAAAAAAAAAKcmVkZWVtX29uZQAAAAAAAwAAAAAAAAAEdXNlcgAAABMAAAAAAAAABHNpZGUAAAfQAAAABFNpZGUAAAAAAAAAEHRva2Vuc190b19yZWRlZW0AAAAKAAAAAQAAAAo=",
@@ -919,8 +901,7 @@ export class Client extends ContractClient {
     )
   }
   public readonly fromJSON = {
-    initialize: this.txFromJSON<null>,
-        mint: this.txFromJSON<u128>,
+    mint: this.txFromJSON<u128>,
         redeem: this.txFromJSON<u128>,
         redeem_one: this.txFromJSON<u128>,
         sync_collateral: this.txFromJSON<null>,

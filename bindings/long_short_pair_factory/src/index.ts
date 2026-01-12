@@ -56,6 +56,54 @@ export const AccessControlError = {
   2908: {message:"ActionNotReadyYet"}
 }
 
+
+export interface OraclePriceData {
+  delay: Delay;
+  price: u128;
+}
+
+export type OracleSource = {tag: "Reflector", values: void};
+
+
+export interface PairParams {
+  admin: string;
+  asset: string;
+  calculator: string;
+  collateral_per_pair: u128;
+  collateral_token: string;
+  long_token: string;
+  lower_bound: u128;
+  oracle: string;
+  short_token: string;
+  upper_bound: u128;
+}
+
+export type Side = {tag: "Long", values: void} | {tag: "Short", values: void};
+
+export type Direction = {tag: "Buy", values: void} | {tag: "Sell", values: void};
+
+export type PairStatus = {tag: "Inactive", values: void} | {tag: "Active", values: void} | {tag: "Expired", values: void};
+
+
+export interface CollateralInfo {
+  collateral_per_pair: u128;
+  collateral_percent_long: u128;
+  collateral_token: string;
+  total_collateral: u128;
+}
+
+
+export interface PairSummary {
+  asset: string;
+  calculator: string;
+  collateral: CollateralInfo;
+  long_token: string;
+  oracle: string;
+  price_bounds: readonly [u128, u128];
+  short_token: string;
+  status: PairStatus;
+}
+
 export const Errors = {
   2906: {message:"AnotherActionActive"},
   2907: {message:"NoActionActive"},
@@ -128,11 +176,11 @@ export interface Client {
    * Construct and simulate a deploy_pair_contract transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * @notice Creates a Long Short Pair contract.
    * @param params Constructor params used to initialize the LSP:
-   * - `admin`: Address to administrate the LSP contract.
-   * - `asset`: Symbol of the target asset.
+   * - `admin`: Address of the Factory admin.
+   * - `params`: Config parameters of the Long Short Pair contract.
    * @return pair_address the deployed address of the new Long Short Pair contract.
    */
-  deploy_pair_contract: ({admin, asset}: {admin: string, asset: string}, options?: {
+  deploy_pair_contract: ({admin, params}: {admin: string, params: PairParams}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -631,7 +679,7 @@ export class Client extends ContractClient {
     super(
       new ContractSpec([ "AAAAAQAAAAAAAAAAAAAADUZhY3RvcnlDb25maWcAAAAAAAABAAAAAAAAABJwYWlyX2NvbnRyYWN0X3dhc20AAAAAA+4AAAAg",
         "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAScGFpcl9jb250cmFjdF93YXNtAAAAAAPuAAAAIAAAAAA=",
-        "AAAAAAAAARNAbm90aWNlIENyZWF0ZXMgYSBMb25nIFNob3J0IFBhaXIgY29udHJhY3QuCkBwYXJhbSBwYXJhbXMgQ29uc3RydWN0b3IgcGFyYW1zIHVzZWQgdG8gaW5pdGlhbGl6ZSB0aGUgTFNQOgotIGBhZG1pbmA6IEFkZHJlc3MgdG8gYWRtaW5pc3RyYXRlIHRoZSBMU1AgY29udHJhY3QuCi0gYGFzc2V0YDogU3ltYm9sIG9mIHRoZSB0YXJnZXQgYXNzZXQuCkByZXR1cm4gcGFpcl9hZGRyZXNzIHRoZSBkZXBsb3llZCBhZGRyZXNzIG9mIHRoZSBuZXcgTG9uZyBTaG9ydCBQYWlyIGNvbnRyYWN0LgAAAAAUZGVwbG95X3BhaXJfY29udHJhY3QAAAACAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAABWFzc2V0AAAAAAAAEQAAAAEAAAAT",
+        "AAAAAAAAAR9Abm90aWNlIENyZWF0ZXMgYSBMb25nIFNob3J0IFBhaXIgY29udHJhY3QuCkBwYXJhbSBwYXJhbXMgQ29uc3RydWN0b3IgcGFyYW1zIHVzZWQgdG8gaW5pdGlhbGl6ZSB0aGUgTFNQOgotIGBhZG1pbmA6IEFkZHJlc3Mgb2YgdGhlIEZhY3RvcnkgYWRtaW4uCi0gYHBhcmFtc2A6IENvbmZpZyBwYXJhbWV0ZXJzIG9mIHRoZSBMb25nIFNob3J0IFBhaXIgY29udHJhY3QuCkByZXR1cm4gcGFpcl9hZGRyZXNzIHRoZSBkZXBsb3llZCBhZGRyZXNzIG9mIHRoZSBuZXcgTG9uZyBTaG9ydCBQYWlyIGNvbnRyYWN0LgAAAAAUZGVwbG95X3BhaXJfY29udHJhY3QAAAACAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAABnBhcmFtcwAAAAAH0AAAAApQYWlyUGFyYW1zAAAAAAABAAAAEw==",
         "AAAAAAAAAAAAAAAEbWludAAAAAMAAAAAAAAABHVzZXIAAAATAAAAAAAAAAVhc3NldAAAAAAAABEAAAAAAAAADnRva2Vuc190b19taW50AAAAAAAKAAAAAQAAAAo=",
         "AAAAAAAAAAAAAAAGcmVkZWVtAAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAABB0b2tlbnNfdG9fcmVkZWVtAAAACgAAAAEAAAAK",
         "AAAAAAAAAAAAAAAKcmVkZWVtX29uZQAAAAAABAAAAAAAAAAEdXNlcgAAABMAAAAAAAAABWFzc2V0AAAAAAAAEQAAAAAAAAAFdG9rZW4AAAAAAAATAAAAAAAAABB0b2tlbnNfdG9fcmVkZWVtAAAACgAAAAEAAAAK",
@@ -658,6 +706,14 @@ export class Client extends ContractClient {
         "AAAABAAAAAAAAAAAAAAAGUxvbmdTaG9ydFBhaXJGYWN0b3J5RXJyb3IAAAAAAAADAAAAAAAAABFQYWlyQWxyZWFkeUV4aXN0cwAAAAAAAZEAAAAAAAAADEFjdGlvblBhdXNlZAAAAZMAAAAAAAAADFBhaXJOb3RGb3VuZAAAAZQ=",
         "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAAAgAAAAEAAAAAAAAACUFzc2V0UGFpcgAAAAAAAAEAAAPuAAAAIAAAAAAAAAAAAAAAEEFsbERlcGxveWVkUGFpcnM=",
         "AAAABAAAAAAAAAAAAAAAEkFjY2Vzc0NvbnRyb2xFcnJvcgAAAAAABwAAAAAAAAAMUm9sZU5vdEZvdW5kAAAAZQAAAAAAAAAMVW5hdXRob3JpemVkAAAAZgAAAAAAAAAPQWRtaW5BbHJlYWR5U2V0AAAAAGcAAAAAAAAADEJhZFJvbGVVc2FnZQAAAGgAAAAAAAAAE0Fub3RoZXJBY3Rpb25BY3RpdmUAAAALWgAAAAAAAAAOTm9BY3Rpb25BY3RpdmUAAAAAC1sAAAAAAAAAEUFjdGlvbk5vdFJlYWR5WWV0AAAAAAALXA==",
+        "AAAAAQAAAAAAAAAAAAAAD09yYWNsZVByaWNlRGF0YQAAAAACAAAAAAAAAAVkZWxheQAAAAAAB9AAAAAFRGVsYXkAAAAAAAAAAAAABXByaWNlAAAAAAAACg==",
+        "AAAAAgAAAAAAAAAAAAAADE9yYWNsZVNvdXJjZQAAAAEAAAAAAAAAAAAAAAlSZWZsZWN0b3IAAAA=",
+        "AAAAAQAAAAAAAAAAAAAAClBhaXJQYXJhbXMAAAAAAAoAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAAApjYWxjdWxhdG9yAAAAAAATAAAAAAAAABNjb2xsYXRlcmFsX3Blcl9wYWlyAAAAAAoAAAAAAAAAEGNvbGxhdGVyYWxfdG9rZW4AAAATAAAAAAAAAApsb25nX3Rva2VuAAAAAAATAAAAAAAAAAtsb3dlcl9ib3VuZAAAAAAKAAAAAAAAAAZvcmFjbGUAAAAAABMAAAAAAAAAC3Nob3J0X3Rva2VuAAAAABMAAAAAAAAAC3VwcGVyX2JvdW5kAAAAAAo=",
+        "AAAAAgAAAAAAAAAAAAAABFNpZGUAAAACAAAAAAAAAAAAAAAETG9uZwAAAAAAAAAAAAAABVNob3J0AAAA",
+        "AAAAAgAAAAAAAAAAAAAACURpcmVjdGlvbgAAAAAAAAIAAAAAAAAAAAAAAANCdXkAAAAAAAAAAAAAAAAEU2VsbA==",
+        "AAAAAgAAAAAAAAAAAAAAClBhaXJTdGF0dXMAAAAAAAMAAAAAAAAAAAAAAAhJbmFjdGl2ZQAAAAAAAAAAAAAABkFjdGl2ZQAAAAAAAAAAAAAAAAAHRXhwaXJlZAA=",
+        "AAAAAQAAAAAAAAAAAAAADkNvbGxhdGVyYWxJbmZvAAAAAAAEAAAAAAAAABNjb2xsYXRlcmFsX3Blcl9wYWlyAAAAAAoAAAAAAAAAF2NvbGxhdGVyYWxfcGVyY2VudF9sb25nAAAAAAoAAAAAAAAAEGNvbGxhdGVyYWxfdG9rZW4AAAATAAAAAAAAABB0b3RhbF9jb2xsYXRlcmFsAAAACg==",
+        "AAAAAQAAAAAAAAAAAAAAC1BhaXJTdW1tYXJ5AAAAAAgAAAAAAAAABWFzc2V0AAAAAAAAEQAAAAAAAAAKY2FsY3VsYXRvcgAAAAAAEwAAAAAAAAAKY29sbGF0ZXJhbAAAAAAH0AAAAA5Db2xsYXRlcmFsSW5mbwAAAAAAAAAAAApsb25nX3Rva2VuAAAAAAATAAAAAAAAAAZvcmFjbGUAAAAAABMAAAAAAAAADHByaWNlX2JvdW5kcwAAA+0AAAACAAAACgAAAAoAAAAAAAAAC3Nob3J0X3Rva2VuAAAAABMAAAAAAAAABnN0YXR1cwAAAAAH0AAAAApQYWlyU3RhdHVzAAA=",
         "AAAABAAAAAAAAAAAAAAABUVycm9yAAAAAAAAAwAAAAAAAAATQW5vdGhlckFjdGlvbkFjdGl2ZQAAAAtaAAAAAAAAAA5Ob0FjdGlvbkFjdGl2ZQAAAAALWwAAAAAAAAARQWN0aW9uTm90UmVhZHlZZXQAAAAAAAtc",
         "AAAABAAAAAAAAAAAAAAACU1hdGhFcnJvcgAAAAAAAAkAAAAZTWF0aEVycm9yOiBOdW1iZXJPdmVyZmxvdwAAAAAAAA5OdW1iZXJPdmVyZmxvdwAAAAAB/gAAAB1NYXRoRXJyb3I6IEdlbmVyaWMgbWF0aCBlcnJvcgAAAAAAAAlNYXRoRXJyb3IAAAAAAAH/AAAALU1hdGhFcnJvcjogQWRkaXRpb24gb3BlcmF0aW9uIGNhdXNlZCBvdmVyZmxvdwAAAAAAABBBZGRpdGlvbk92ZXJmbG93AAACAAAAADFNYXRoRXJyb3I6IFN1YnRyYWN0aW9uIG9wZXJhdGlvbiBjYXVzZWQgdW5kZXJmbG93AAAAAAAAFFN1YnRyYWN0aW9uVW5kZXJmbG93AAACAQAAADNNYXRoRXJyb3I6IE11bHRpcGxpY2F0aW9uIG9wZXJhdGlvbiBjYXVzZWQgb3ZlcmZsb3cAAAAAFk11bHRpcGxpY2F0aW9uT3ZlcmZsb3cAAAAAAgIAAAAbTWF0aEVycm9yOiBEaXZpc2lvbiBieSB6ZXJvAAAAAA5EaXZpc2lvbkJ5WmVybwAAAAACAwAAACNNYXRoRXJyb3I6IFR5cGUgY29udmVyc2lvbiBvdmVyZmxvdwAAAAASQ29udmVyc2lvbk92ZXJmbG93AAAAAAIEAAAAP01hdGhFcnJvcjogQXR0ZW1wdGVkIHRvIGNvbnZlcnQgbmVnYXRpdmUgdmFsdWUgdG8gdW5zaWduZWQgdHlwZQAAAAASTmVnYXRpdmVUb1Vuc2lnbmVkAAAAAAIFAAAAKk1hdGhFcnJvcjogRml4ZWQtcG9pbnQgYXJpdGhtZXRpYyBvdmVyZmxvdwAAAAAAEkZpeGVkUG9pbnRPdmVyZmxvdwAAAAACBg==",
         "AAAABAAAAAAAAAAAAAAADFN0b3JhZ2VFcnJvcgAAAAQAAAAMU3RvcmFnZUVycm9yAAAAEkFscmVhZHlJbml0aWFsaXplZAAAAAAAyQAAAAAAAAATVmFsdWVOb3RJbml0aWFsaXplZAAAAAH1AAAAAAAAAAxWYWx1ZU1pc3NpbmcAAAH2AAAAAAAAABRWYWx1ZUNvbnZlcnNpb25FcnJvcgAAAfc=",
