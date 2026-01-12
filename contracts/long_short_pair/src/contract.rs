@@ -132,10 +132,6 @@ impl LongShortPairTrait for LongShortPair {
             panic_with_error!(&e, LongShortPairError::ActionPaused);
         }
 
-        // Get the oracle price and store it. Also sets collateral_percent_long. Reverts if either:
-        // a) the price request has not resolved (either a normal expiration call or early expiration call) or b) If the
-        // the contract was attempted to be settled early but the price returned is the ignore oracle price.
-        // Note that we use the bool receivedSettlementPrice over checking for price != 0 as 0 is a valid price.
         crate::utils::sync_collateral(&e);
 
         token_pair::burn_long_tokens(&e, &user, tokens_to_redeem);
