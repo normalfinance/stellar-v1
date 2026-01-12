@@ -19,12 +19,9 @@ pub fn apply_fee_to_input(e: &Env, amount_in: u128, fee: u128) -> u128 {
     if fee > PRICE_PRECISION {
         panic_with_error!(e, TreasuryError::InvalidInput);
     }
-
-    // (amount_in * (PRICE_PRECISION - fee)) / PRICE_PRECISION
-    let multiplier = PRICE_PRECISION
-        .safe_sub(e, fee)
-        .safe_div(e, PRICE_PRECISION);
-    amount_in.safe_mul(e, multiplier)
+    amount_in
+        .safe_mul(e, PRICE_PRECISION.safe_sub(e, fee))
+        .safe_div(e, PRICE_PRECISION)
 }
 
 /// Convert USDC -> token using oracle price.

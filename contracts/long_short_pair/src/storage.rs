@@ -2,6 +2,7 @@ use paste::paste;
 use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
 use types::pair::PairStatus;
 pub use utils::bump::bump_instance;
+use utils::errors::storage_errors::StorageError;
 use utils::generate_instance_storage_getter;
 use utils::{
     generate_instance_storage_getter_and_setter,
