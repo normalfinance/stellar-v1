@@ -1,33 +1,28 @@
 use soroban_sdk::{Address, BytesN, Env, Symbol};
-use types::pair::{Direction, Side};
+use types::pair::{Direction, PairAmountsWithUSDC, Side};
 
-use crate::storage::{
-    TreasuryFeeConfig, TreasuryPairBalances, TreasuryPairDetails, TreasuryPairSummary,
-    TreasuryUserPairSummary,
-};
+use crate::storage::{PairConfig, TreasuryFeeConfig, TreasurySummary, TreasuryUserSummary};
 
 pub trait TreasuryTrait {
     fn deposit(e: Env, user: Address, pair: Address, pairs_to_deposit: u128) -> u128;
 
-    fn withdraw(e: Env, user: Address, pair: Address, shares: u128) -> (u128, u128, u128);
+    fn withdraw(e: Env, user: Address, pair: Address, shares: u128) -> PairAmountsWithUSDC;
 
-    fn get_pair_details(e: Env, pair: Address) -> TreasuryPairDetails;
+    fn get_config(e: Env, pair: Address) -> PairConfig;
 
-    fn get_total_pairs(e: Env, pair: Address) -> u128;
+    fn get_prices(e: Env, pair: Address) -> PairAmountsWithUSDC;
 
-    fn get_prices(e: Env, pair: Address) -> (u128, u128);
-
-    fn get_balances(e: Env, pair: Address) -> TreasuryPairBalances;
+    fn get_balances(e: Env, pair: Address) -> PairAmountsWithUSDC;
 
     fn get_total_shares(e: Env, pair: Address) -> u128;
 
     fn get_user_shares(e: Env, pair: Address, user: Address) -> u128;
 
-    fn get_pair_fee_config(e: Env, pair: Address) -> TreasuryFeeConfig;
+    fn get_fee_config(e: Env, pair: Address) -> TreasuryFeeConfig;
 
-    fn get_pair_summary(e: Env, pair: Address) -> TreasuryPairSummary;
+    fn get_summary(e: Env, pair: Address) -> TreasurySummary;
 
-    fn get_user_with_pair_summary(e: Env, pair: Address, user: Address) -> TreasuryUserPairSummary;
+    fn get_user_with_summary(e: Env, pair: Address, user: Address) -> TreasuryUserSummary;
 }
 
 pub trait TradingTrait {
@@ -37,7 +32,6 @@ pub trait TradingTrait {
         direction: Direction,
         side: Side,
         amount_in: u128,
-        taker_fee: bool,
     ) -> (u128, u128);
 
     fn buy_long(e: Env, user: Address, pair: Address, usdc_in: u128, min_long_out: u128) -> u128;
@@ -54,18 +48,11 @@ pub trait TradingTrait {
 }
 
 pub trait AdminInterfaceTrait {
-    fn add_pair(
-        e: Env,
-        admin: Address,
-        pair: Address,
-        quote_token: Address,
-        long_token: Address,
-        short_token: Address,
-        maker_fee: u128,
-        taker_fee: u128,
-    );
+    fn add_pair(e: Env, admin: Address, pair: Address, fee_config: TreasuryFeeConfig);
 
-    fn set_fee_config(e: Env, admin: Address, pair: Address, maker_fee: u128, taker_fee: u128);
+    fn set_fee_config(e: Env, admin: Address, pair: Address, config: TreasuryFeeConfig);
+
+    fn set_usdc_floor(e: Env, admin: Address, floor_fraction: u128);
 
     fn get_protocol_fees(e: Env, pair: Address) -> u128;
 

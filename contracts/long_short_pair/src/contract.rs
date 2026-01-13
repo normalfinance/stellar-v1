@@ -6,7 +6,10 @@ use soroban_sdk::token::TokenClient as SorobanTokenClient;
 use soroban_sdk::{
     contract, contractimpl, contractmeta, panic_with_error, Address, BytesN, Env, Symbol, Vec,
 };
-use types::pair::{CollateralInfo, PairParams, PairStatus, PairSummary, Side};
+use types::pair::{
+    CollateralInfo, PairAmounts, PairParams, PairPriceBounds, PairStatus, PairSummary, PairTokens,
+    Side,
+};
 use utils::constant::PRICE_PRECISION;
 use utils::math::safe_math::{PrecisionMath, SafeConversion, SafeMath};
 
@@ -252,44 +255,33 @@ impl LongShortPairTrait for LongShortPair {
         crate::utils::sync_collateral(&e)
     }
 
-    fn get_tokens(e: Env) -> Vec<Address> {
-        Vec::from_array(
-            &e,
-            [
-                token_pair::get_token_long(&e),
-                token_pair::get_token_short(&e),
-            ],
-        )
+    fn get_tokens(e: Env) -> PairTokens {
+        PairTokens {
+            long: token_pair::get_token_long(&e),
+            short: token_pair::get_token_short(&e),
+            collateral: crate::storage::get_collateral_token(&e),
+        }
     }
 
-    fn get_price_bounds(e: Env) -> Vec<u128> {
-        Vec::from_array(
-            &e,
-            [
-                crate::storage::get_lower_bound(&e),
-                crate::storage::get_upper_bound(&e),
-            ],
-        )
+    fn get_price_bounds(e: Env) -> PairPriceBounds {
+        PairPriceBounds {
+            lower: crate::storage::get_lower_bound(&e),
+            upper: crate::storage::get_upper_bound(&e),
+        }
     }
 
-    fn get_user_token_balances(e: Env, user: Address) -> Vec<u128> {
-        Vec::from_array(
-            &e,
-            [
-                token_pair::get_user_balance_long(&e, &user),
-                token_pair::get_user_balance_short(&e, &user),
-            ],
-        )
+    fn get_user_token_balances(e: Env, user: Address) -> PairAmounts {
+        PairAmounts {
+            long: token_pair::get_user_balance_long(&e, &user),
+            short: token_pair::get_user_balance_short(&e, &user),
+        }
     }
 
-    fn get_total_token_supplies(e: Env) -> Vec<u128> {
-        Vec::from_array(
-            &e,
-            [
-                token_pair::get_total_long_shares(&e),
-                token_pair::get_total_short_shares(&e),
-            ],
-        )
+    fn get_total_token_supplies(e: Env) -> PairAmounts {
+        PairAmounts {
+            long: token_pair::get_total_long_shares(&e),
+            short: token_pair::get_total_short_shares(&e),
+        }
     }
 
     fn get_collateral_info(e: Env) -> CollateralInfo {
@@ -306,12 +298,15 @@ impl LongShortPairTrait for LongShortPair {
             asset: crate::storage::get_asset(&e),
             status: crate::storage::get_status(&e),
             collateral: Self::get_collateral_info(e.clone()),
-            long_token: token_pair::get_token_long(&e),
-            short_token: token_pair::get_token_short(&e),
-            price_bounds: (
-                crate::storage::get_lower_bound(&e),
-                crate::storage::get_upper_bound(&e),
-            ),
+            tokens: PairTokens {
+                long: token_pair::get_token_short(&e),
+                short: token_pair::get_token_short(&e),
+                collateral: crate::storage::get_collateral_token(&e),
+            },
+            price_bounds: PairPriceBounds {
+                lower: crate::storage::get_lower_bound(&e),
+                upper: crate::storage::get_lower_bound(&e),
+            },
             calculator: crate::storage::get_calculator(&e),
             oracle: crate::storage::get_oracle(&e),
         }

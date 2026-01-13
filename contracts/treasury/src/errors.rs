@@ -14,4 +14,7 @@ pub enum TreasuryError {
     DepositTooSmall = 218,
     WithdrawTooSmall = 219,
     InvalidBalance = 220,
+    CannotPassFloor = 221,
+    ToxicSideNotAccepted = 222,
+    FailedToGetOraclePrice = 223,
 }

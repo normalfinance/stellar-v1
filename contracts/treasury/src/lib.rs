@@ -3,10 +3,13 @@
 mod contract;
 pub mod errors;
 mod events;
+mod fees;
 mod interface;
 mod lp;
+mod oracle;
 mod pair;
 mod price;
+mod risk;
 mod storage;
 // mod test;
 // mod test_combined_trading;

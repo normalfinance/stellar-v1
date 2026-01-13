@@ -38,14 +38,6 @@ pub const QUOTE_PRECISION_I128: i128 = 1_000_000; // expo = -6
 pub const QUOTE_PRECISION_I64: i64 = 1_000_000; // expo = -6
 pub const QUOTE_PRECISION_U64: u64 = 1_000_000; // expo = -6
 
-// FUNDING
-pub const FUNDING_RATE_PRECISION: u128 = PRICE_PRECISION * FUNDING_RATE_BUFFER; // expo: 9
-pub const FUNDING_RATE_PRECISION_I128: i128 = PRICE_PRECISION_I128 * FUNDING_RATE_BUFFER_I128; // expo: 9
-pub const FUNDING_RATE_PRECISION_I64: i64 = FUNDING_RATE_PRECISION_I128 as i64; // expo: 9
-
-pub const FUNDING_RATE_BUFFER: u128 = 1_000; // expo = -3
-pub const FUNDING_RATE_BUFFER_I128: i128 = FUNDING_RATE_BUFFER as i128; // expo = -3
-
 // Pool
 pub const FEE_MULTIPLIER: u128 = 10_000;
 
@@ -59,13 +51,11 @@ pub const DEFAULT_MAX_TWAP_UPDATE_PRICE_BAND_DENOMINATOR: u128 = 3; // '3' here 
 // Minimum liquidity locked permanently on first deposit to prevent dust attacks
 pub const MIN_LIQUIDITY: u128 = 1_000;
 
-// Pool Router
-pub const MAX_POOL_FEE: u32 = 100; // 1%
-
 // Incentives
 pub const REWARD_PRECISION: u128 = 1_000_000_000_000_000_0000000;
 
 // NUMBERS
+pub const ONE_U128: u128 = 10_000_000;
 pub const ONE: u128 = 1_u128;
 
 // TIME PERIODS

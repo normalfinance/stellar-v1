@@ -1,7 +1,20 @@
 use soroban_sdk::{panic_with_error, Address, Env, IntoVal, Symbol, Vec};
-use types::pair::CollateralInfo;
+use types::pair::{CollateralInfo, PairTokens};
 
 use crate::errors::TreasuryError;
+
+pub fn get_pair_tokens(e: &Env, pair: &Address) -> PairTokens {
+    match e.try_invoke_contract::<PairTokens, soroban_sdk::Error>(
+        pair,
+        &Symbol::new(e, "get_tokens"),
+        Vec::from_array(e, []),
+    ) {
+        Ok(Err(_)) | Err(_) => panic_with_error!(e, TreasuryError::FailedToCallPairContract),
+        Ok(Ok(tokens)) => {
+            return tokens;
+        }
+    }
+}
 
 pub fn get_pair_collateral_info(e: &Env, pair: &Address) -> CollateralInfo {
     match e.try_invoke_contract::<CollateralInfo, soroban_sdk::Error>(

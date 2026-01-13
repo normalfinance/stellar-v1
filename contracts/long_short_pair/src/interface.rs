@@ -1,5 +1,5 @@
-use soroban_sdk::{Address, Env, Vec};
-use types::pair::{CollateralInfo, PairParams, PairSummary, Side};
+use soroban_sdk::{Address, Env};
+use types::pair::{CollateralInfo, PairAmounts, PairPriceBounds, PairSummary, PairTokens, Side};
 
 pub trait LongShortPairTrait {
     /// Creates a pair of long and short tokens equal in number to tokens_to_mint. Pulls the required collateral
@@ -20,13 +20,13 @@ pub trait LongShortPairTrait {
 
     fn sync_collateral(e: Env);
 
-    fn get_tokens(e: Env) -> Vec<Address>;
+    fn get_tokens(e: Env) -> PairTokens;
 
-    fn get_price_bounds(e: Env) -> Vec<u128>;
+    fn get_price_bounds(e: Env) -> PairPriceBounds;
 
-    fn get_user_token_balances(e: Env, user: Address) -> Vec<u128>;
+    fn get_user_token_balances(e: Env, user: Address) -> PairAmounts;
 
-    fn get_total_token_supplies(e: Env) -> Vec<u128>;
+    fn get_total_token_supplies(e: Env) -> PairAmounts;
 
     fn get_collateral_info(e: Env) -> CollateralInfo;
 

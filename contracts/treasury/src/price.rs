@@ -1,27 +1,18 @@
-use soroban_sdk::{panic_with_error, Address, Env};
+use soroban_sdk::{Address, Env};
+use types::pair::PairAmountsWithUSDC;
 use utils::constant::PRICE_PRECISION;
 use utils::math::safe_math::SafeMath;
 
-use crate::errors::TreasuryError;
-
-pub fn get_prices(e: &Env, pair: &Address) -> (u128, u128) {
+pub fn get_prices(e: &Env, pair: &Address) -> PairAmountsWithUSDC {
     let collateral_info = crate::pair::get_pair_collateral_info(e, pair);
 
-    let long_price = collateral_info.collateral_percent_long;
-    let short_price = PRICE_PRECISION.safe_sub(e, long_price);
+    let usdc_price = crate::oracle::get_oracle_price(e, &crate::storage::get_oracle(e));
 
-    (long_price, short_price)
-}
-
-/// Apply fee to an input amount (fee taken from the input, stays in treasury in USDC trades).
-/// net_in = in * (1 - fee)
-pub fn apply_fee_to_input(e: &Env, amount_in: u128, fee: u128) -> u128 {
-    if fee > PRICE_PRECISION {
-        panic_with_error!(e, TreasuryError::InvalidInput);
+    PairAmountsWithUSDC {
+        long: collateral_info.collateral_percent_long,
+        short: PRICE_PRECISION.safe_sub(e, collateral_info.collateral_percent_long),
+        usdc: usdc_price.last_price_twap,
     }
-    amount_in
-        .safe_mul(e, PRICE_PRECISION.safe_sub(e, fee))
-        .safe_div(e, PRICE_PRECISION)
 }
 
 /// Convert USDC -> token using oracle price.
@@ -38,7 +29,7 @@ pub fn quote_buy_token(e: &Env, usdc_in: u128, price_token: u128, fee: u128) -> 
         return (0, 0);
     }
 
-    let usdc_net = apply_fee_to_input(e, usdc_in, fee);
+    let usdc_net = crate::fees::apply_fee_to_input(e, usdc_in, fee);
     let usdc_fee = usdc_in.safe_sub(e, usdc_net);
 
     // token_out = usdc_net / price
@@ -66,7 +57,7 @@ pub fn quote_sell_token(e: &Env, token_in: u128, price_token: u128, fee: u128) -
         .safe_mul(e, price_token)
         .safe_div(e, PRICE_PRECISION);
 
-    let usdc_net = apply_fee_to_input(e, gross, fee); // take fee from output (same helper)
+    let usdc_net = crate::fees::apply_fee_to_input(e, gross, fee); // take fee from output (same helper)
     let usdc_fee = gross.safe_sub(e, usdc_net);
 
     (usdc_net, usdc_fee)
@@ -76,35 +67,6 @@ pub fn quote_sell_token(e: &Env, token_in: u128, price_token: u128, fee: u128) -
 mod tests {
     use super::*;
     use soroban_sdk::Env;
-
-    // ----------------------------
-    // apply_fee_to_input() tests
-    // ----------------------------
-
-    #[test]
-    fn apply_fee_to_input_zero_fee_no_change() {
-        let e = Env::default();
-        let amt = 1_234_567u128;
-        assert_eq!(apply_fee_to_input(&e, amt, 0), amt);
-    }
-
-    #[test]
-    fn apply_fee_to_input_full_fee_returns_zero() {
-        let e = Env::default();
-        let amt = 1_234_567u128;
-        assert_eq!(apply_fee_to_input(&e, amt, PRICE_PRECISION), 0);
-    }
-
-    #[test]
-    fn apply_fee_to_input_matches_expected_formula() {
-        let e = Env::default();
-        // fee = 1% => net = amt * 0.99
-        let amt = 1_000_000u128;
-        let fee = PRICE_PRECISION / 100; // 1%
-        let expected = (amt * (PRICE_PRECISION - fee)) / PRICE_PRECISION;
-        assert_eq!(apply_fee_to_input(&e, amt, fee), expected);
-        assert!(apply_fee_to_input(&e, amt, fee) < amt);
-    }
 
     // ----------------------------
     // quote_buy_token() tests
@@ -160,7 +122,7 @@ mod tests {
         let (token_out, usdc_fee) = quote_buy_token(&e, usdc_in, price, fee);
 
         // net = 990_000, fee = 10_000
-        let usdc_net = apply_fee_to_input(&e, usdc_in, fee);
+        let usdc_net = crate::fees::apply_fee_to_input(&e, usdc_in, fee);
         assert_eq!(usdc_fee, usdc_in - usdc_net);
         assert_eq!(token_out, usdc_net); // 1:1 price
     }
@@ -217,7 +179,7 @@ mod tests {
         let (usdc_net, usdc_fee) = quote_sell_token(&e, token_in, price, fee);
 
         let gross = token_in; // 1:1
-        let expected_net = apply_fee_to_input(&e, gross, fee);
+        let expected_net = crate::fees::apply_fee_to_input(&e, gross, fee);
         assert_eq!(usdc_net, expected_net);
         assert_eq!(usdc_fee, gross - expected_net);
     }

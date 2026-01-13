@@ -43,44 +43,50 @@ export const TreasuryError = {
   217: {message:"InsufficientShares"},
   218: {message:"DepositTooSmall"},
   219: {message:"WithdrawTooSmall"},
-  220: {message:"InvalidBalance"}
+  220: {message:"InvalidBalance"},
+  221: {message:"CannotPassFloor"},
+  222: {message:"ToxicSideNotAccepted"},
+  223: {message:"FailedToGetOraclePrice"}
 }
 
 
-export interface TreasuryPairDetails {
+export interface PairConfig {
+  long: string;
   pair: string;
-  token_long: string;
-  token_quote: string;
-  token_short: string;
+  short: string;
+  usdc: string;
 }
 
 
-export interface TreasuryPairBalances {
-  token_long: u128;
-  token_quote: u128;
-  token_short: u128;
-}
-
-
-export interface TreasuryPairSummary {
-  balances: TreasuryPairBalances;
-  details: TreasuryPairDetails;
+export interface TreasurySummary {
+  balances: PairAmountsWithUSDC;
+  config: PairConfig;
   fee_config: TreasuryFeeConfig;
-  prices: readonly [u128, u128];
-  total_pairs: u128;
+  prices: PairAmountsWithUSDC;
   total_shares: u128;
 }
 
 
-export interface TreasuryUserPairSummary {
-  pair_summary: TreasuryPairSummary;
+export interface TreasuryUserSummary {
+  summary: TreasurySummary;
   user_shares: u128;
 }
 
 
 export interface TreasuryFeeConfig {
-  maker_fee: u128;
-  taker_fee: u128;
+  bound_power: u32;
+  coefficient_a: u128;
+  coefficient_c: u128;
+  coefficient_d: u128;
+  implied_volatility: u128;
+  maker_base_fee: u128;
+  reaction_time_secs: u128;
+  taker_base_fee: u128;
+}
+
+
+export interface TreasuryRiskParameters {
+  toxic_threshold: u128;
 }
 
 
@@ -89,7 +95,7 @@ export interface UserSharesKey {
   user: string;
 }
 
-export type TreasuryDataKey = {tag: "PairDetails", values: readonly [string]} | {tag: "PairBalances", values: readonly [string]} | {tag: "Initialized", values: readonly [string]} | {tag: "TotalShares", values: readonly [string]} | {tag: "UserShares", values: readonly [UserSharesKey]} | {tag: "FeeConfig", values: readonly [string]} | {tag: "ProtocolFees", values: readonly [string]};
+export type TreasuryDataKey = {tag: "Config", values: readonly [string]} | {tag: "Balances", values: readonly [string]} | {tag: "RiskParameters", values: readonly [string]} | {tag: "TotalShares", values: readonly [string]} | {tag: "UserShares", values: readonly [UserSharesKey]} | {tag: "FeeConfig", values: readonly [string]} | {tag: "ProtocolFees", values: readonly [string]};
 
 export const AccessControlError = {
   101: {message:"RoleNotFound"},
@@ -99,6 +105,28 @@ export const AccessControlError = {
   2906: {message:"AnotherActionActive"},
   2907: {message:"NoActionActive"},
   2908: {message:"ActionNotReadyYet"}
+}
+
+export const OracleError = {
+  /**
+   * OracleError: OracleNonPositive
+   */
+  601: {message:"OracleNonPositive"},
+  602: {message:"OracleTooVolatile"},
+  603: {message:"OracleStaleForPair"},
+  604: {message:"OracleInvalid"},
+  605: {message:"FailedToGetOraclePrice"},
+  606: {message:"InvalidInput"}
+}
+
+export type OracleValidity = {tag: "NonPositive", values: void} | {tag: "TooVolatile", values: void} | {tag: "StaleForPair", values: void} | {tag: "Frozen", values: void} | {tag: "Valid", values: void};
+
+
+export interface HistoricalOracleData {
+  last_delay_ts: u64;
+  last_price: u128;
+  last_price_twap: u128;
+  last_update_ts: u64;
 }
 
 
@@ -127,6 +155,32 @@ export type Side = {tag: "Long", values: void} | {tag: "Short", values: void};
 
 export type Direction = {tag: "Buy", values: void} | {tag: "Sell", values: void};
 
+
+export interface PairPriceBounds {
+  lower: u128;
+  upper: u128;
+}
+
+
+export interface PairAmounts {
+  long: u128;
+  short: u128;
+}
+
+
+export interface PairAmountsWithUSDC {
+  long: u128;
+  short: u128;
+  usdc: u128;
+}
+
+
+export interface PairTokens {
+  collateral: string;
+  long: string;
+  short: string;
+}
+
 export type PairStatus = {tag: "Inactive", values: void} | {tag: "Active", values: void} | {tag: "Expired", values: void};
 
 
@@ -142,11 +196,10 @@ export interface PairSummary {
   asset: string;
   calculator: string;
   collateral: CollateralInfo;
-  long_token: string;
   oracle: string;
-  price_bounds: readonly [u128, u128];
-  short_token: string;
+  price_bounds: PairPriceBounds;
   status: PairStatus;
+  tokens: PairTokens;
 }
 
 export const Errors = {
@@ -255,12 +308,12 @@ export interface Client {
      * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
      */
     simulate?: boolean;
-  }) => Promise<AssembledTransaction<readonly [u128, u128, u128]>>
+  }) => Promise<AssembledTransaction<PairAmountsWithUSDC>>
 
   /**
-   * Construct and simulate a get_pair_details transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Construct and simulate a get_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  get_pair_details: ({pair}: {pair: string}, options?: {
+  get_config: ({pair}: {pair: string}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -275,27 +328,7 @@ export interface Client {
      * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
      */
     simulate?: boolean;
-  }) => Promise<AssembledTransaction<TreasuryPairDetails>>
-
-  /**
-   * Construct and simulate a get_total_pairs transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  get_total_pairs: ({pair}: {pair: string}, options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<u128>>
+  }) => Promise<AssembledTransaction<PairConfig>>
 
   /**
    * Construct and simulate a get_prices transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -315,7 +348,7 @@ export interface Client {
      * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
      */
     simulate?: boolean;
-  }) => Promise<AssembledTransaction<readonly [u128, u128]>>
+  }) => Promise<AssembledTransaction<PairAmountsWithUSDC>>
 
   /**
    * Construct and simulate a get_balances transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -335,7 +368,7 @@ export interface Client {
      * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
      */
     simulate?: boolean;
-  }) => Promise<AssembledTransaction<TreasuryPairBalances>>
+  }) => Promise<AssembledTransaction<PairAmountsWithUSDC>>
 
   /**
    * Construct and simulate a get_total_shares transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -378,9 +411,9 @@ export interface Client {
   }) => Promise<AssembledTransaction<u128>>
 
   /**
-   * Construct and simulate a get_pair_fee_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Construct and simulate a get_fee_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  get_pair_fee_config: ({pair}: {pair: string}, options?: {
+  get_fee_config: ({pair}: {pair: string}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -398,9 +431,9 @@ export interface Client {
   }) => Promise<AssembledTransaction<TreasuryFeeConfig>>
 
   /**
-   * Construct and simulate a get_pair_summary transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Construct and simulate a get_summary transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  get_pair_summary: ({pair}: {pair: string}, options?: {
+  get_summary: ({pair}: {pair: string}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -415,12 +448,12 @@ export interface Client {
      * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
      */
     simulate?: boolean;
-  }) => Promise<AssembledTransaction<TreasuryPairSummary>>
+  }) => Promise<AssembledTransaction<TreasurySummary>>
 
   /**
-   * Construct and simulate a get_user_with_pair_summary transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Construct and simulate a get_user_with_summary transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  get_user_with_pair_summary: ({pair, user}: {pair: string, user: string}, options?: {
+  get_user_with_summary: ({pair, user}: {pair: string, user: string}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -435,12 +468,12 @@ export interface Client {
      * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
      */
     simulate?: boolean;
-  }) => Promise<AssembledTransaction<TreasuryUserPairSummary>>
+  }) => Promise<AssembledTransaction<TreasuryUserSummary>>
 
   /**
    * Construct and simulate a estimate_trade transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  estimate_trade: ({pair, direction, side, amount_in, taker_fee}: {pair: string, direction: Direction, side: Side, amount_in: u128, taker_fee: boolean}, options?: {
+  estimate_trade: ({pair, direction, side, amount_in}: {pair: string, direction: Direction, side: Side, amount_in: u128}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -620,7 +653,7 @@ export interface Client {
   /**
    * Construct and simulate a add_pair transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  add_pair: ({admin, pair, quote_token, long_token, short_token, maker_fee, taker_fee}: {admin: string, pair: string, quote_token: string, long_token: string, short_token: string, maker_fee: u128, taker_fee: u128}, options?: {
+  add_pair: ({admin, pair, fee_config}: {admin: string, pair: string, fee_config: TreasuryFeeConfig}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -640,7 +673,27 @@ export interface Client {
   /**
    * Construct and simulate a set_fee_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  set_fee_config: ({admin, pair, maker_fee, taker_fee}: {admin: string, pair: string, maker_fee: u128, taker_fee: u128}, options?: {
+  set_fee_config: ({admin, pair, config}: {admin: string, pair: string, config: TreasuryFeeConfig}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a set_usdc_floor transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  set_usdc_floor: ({admin, floor_fraction}: {admin: string, floor_fraction: u128}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -1101,7 +1154,7 @@ export interface Client {
 export class Client extends ContractClient {
   static async deploy<T = Client>(
         /** Constructor/Initialization Args for the contract's `__constructor` method */
-        {admin}: {admin: string},
+        {admin, oracle}: {admin: string, oracle: string},
     /** Options for initializing a Client as well as for calling a method, with extras specific to deploying. */
     options: MethodOptions &
       Omit<ContractClientOptions, "contractId"> & {
@@ -1113,23 +1166,22 @@ export class Client extends ContractClient {
         format?: "hex" | "base64";
       }
   ): Promise<AssembledTransaction<T>> {
-    return ContractClient.deploy({admin}, options)
+    return ContractClient.deploy({admin, oracle}, options)
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAEAAAAAAAAABWFkbWluAAAAAAAAEwAAAAA=",
+      new ContractSpec([ "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAGb3JhY2xlAAAAAAATAAAAAA==",
         "AAAAAAAAAAAAAAAHZGVwb3NpdAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAEHBhaXJzX3RvX2RlcG9zaXQAAAAKAAAAAQAAAAo=",
-        "AAAAAAAAAAAAAAAId2l0aGRyYXcAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAABnNoYXJlcwAAAAAACgAAAAEAAAPtAAAAAwAAAAoAAAAKAAAACg==",
-        "AAAAAAAAAAAAAAAQZ2V0X3BhaXJfZGV0YWlscwAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAB9AAAAATVHJlYXN1cnlQYWlyRGV0YWlscwA=",
-        "AAAAAAAAAAAAAAAPZ2V0X3RvdGFsX3BhaXJzAAAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAAAo=",
-        "AAAAAAAAAAAAAAAKZ2V0X3ByaWNlcwAAAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAD7QAAAAIAAAAKAAAACg==",
-        "AAAAAAAAAAAAAAAMZ2V0X2JhbGFuY2VzAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAH0AAAABRUcmVhc3VyeVBhaXJCYWxhbmNlcw==",
+        "AAAAAAAAAAAAAAAId2l0aGRyYXcAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAABnNoYXJlcwAAAAAACgAAAAEAAAfQAAAAE1BhaXJBbW91bnRzV2l0aFVTREMA",
+        "AAAAAAAAAAAAAAAKZ2V0X2NvbmZpZwAAAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAH0AAAAApQYWlyQ29uZmlnAAA=",
+        "AAAAAAAAAAAAAAAKZ2V0X3ByaWNlcwAAAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAH0AAAABNQYWlyQW1vdW50c1dpdGhVU0RDAA==",
+        "AAAAAAAAAAAAAAAMZ2V0X2JhbGFuY2VzAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAH0AAAABNQYWlyQW1vdW50c1dpdGhVU0RDAA==",
         "AAAAAAAAAAAAAAAQZ2V0X3RvdGFsX3NoYXJlcwAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAAAo=",
         "AAAAAAAAAAAAAAAPZ2V0X3VzZXJfc2hhcmVzAAAAAAIAAAAAAAAABHBhaXIAAAATAAAAAAAAAAR1c2VyAAAAEwAAAAEAAAAK",
-        "AAAAAAAAAAAAAAATZ2V0X3BhaXJfZmVlX2NvbmZpZwAAAAABAAAAAAAAAARwYWlyAAAAEwAAAAEAAAfQAAAAEVRyZWFzdXJ5RmVlQ29uZmlnAAAA",
-        "AAAAAAAAAAAAAAAQZ2V0X3BhaXJfc3VtbWFyeQAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAB9AAAAATVHJlYXN1cnlQYWlyU3VtbWFyeQA=",
-        "AAAAAAAAAAAAAAAaZ2V0X3VzZXJfd2l0aF9wYWlyX3N1bW1hcnkAAAAAAAIAAAAAAAAABHBhaXIAAAATAAAAAAAAAAR1c2VyAAAAEwAAAAEAAAfQAAAAF1RyZWFzdXJ5VXNlclBhaXJTdW1tYXJ5AA==",
-        "AAAAAAAAAAAAAAAOZXN0aW1hdGVfdHJhZGUAAAAAAAUAAAAAAAAABHBhaXIAAAATAAAAAAAAAAlkaXJlY3Rpb24AAAAAAAfQAAAACURpcmVjdGlvbgAAAAAAAAAAAAAEc2lkZQAAB9AAAAAEU2lkZQAAAAAAAAAJYW1vdW50X2luAAAAAAAACgAAAAAAAAAJdGFrZXJfZmVlAAAAAAAAAQAAAAEAAAPtAAAAAgAAAAoAAAAK",
+        "AAAAAAAAAAAAAAAOZ2V0X2ZlZV9jb25maWcAAAAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAB9AAAAARVHJlYXN1cnlGZWVDb25maWcAAAA=",
+        "AAAAAAAAAAAAAAALZ2V0X3N1bW1hcnkAAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAH0AAAAA9UcmVhc3VyeVN1bW1hcnkA",
+        "AAAAAAAAAAAAAAAVZ2V0X3VzZXJfd2l0aF9zdW1tYXJ5AAAAAAAAAgAAAAAAAAAEcGFpcgAAABMAAAAAAAAABHVzZXIAAAATAAAAAQAAB9AAAAATVHJlYXN1cnlVc2VyU3VtbWFyeQA=",
+        "AAAAAAAAAAAAAAAOZXN0aW1hdGVfdHJhZGUAAAAAAAQAAAAAAAAABHBhaXIAAAATAAAAAAAAAAlkaXJlY3Rpb24AAAAAAAfQAAAACURpcmVjdGlvbgAAAAAAAAAAAAAEc2lkZQAAB9AAAAAEU2lkZQAAAAAAAAAJYW1vdW50X2luAAAAAAAACgAAAAEAAAPtAAAAAgAAAAoAAAAK",
         "AAAAAAAAAAAAAAATbWludF9hbmRfc2VsbF9zaG9ydAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAB3VzZGNfaW4AAAAACgAAAAEAAAAK",
         "AAAAAAAAAAAAAAASbWludF9hbmRfc2VsbF9sb25nAAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAB3VzZGNfaW4AAAAACgAAAAEAAAAK",
         "AAAAAAAAAAAAAAATYnV5X2xvbmdfYW5kX3JlZGVlbQAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAACHNob3J0X2luAAAACgAAAAEAAAAK",
@@ -1138,8 +1190,9 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAAJc2VsbF9sb25nAAAAAAAABAAAAAAAAAAEdXNlcgAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAdsb25nX2luAAAAAAoAAAAAAAAADG1pbl91c2RjX291dAAAAAoAAAABAAAACg==",
         "AAAAAAAAAAAAAAAJYnV5X3Nob3J0AAAAAAAABAAAAAAAAAAEdXNlcgAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAd1c2RjX2luAAAAAAoAAAAAAAAADW1pbl9zaG9ydF9vdXQAAAAAAAAKAAAAAQAAAAo=",
         "AAAAAAAAAAAAAAAKc2VsbF9zaG9ydAAAAAAABAAAAAAAAAAEdXNlcgAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAhzaG9ydF9pbgAAAAoAAAAAAAAADG1pbl91c2RjX291dAAAAAoAAAABAAAACg==",
-        "AAAAAAAAAAAAAAAIYWRkX3BhaXIAAAAHAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAtxdW90ZV90b2tlbgAAAAATAAAAAAAAAApsb25nX3Rva2VuAAAAAAATAAAAAAAAAAtzaG9ydF90b2tlbgAAAAATAAAAAAAAAAltYWtlcl9mZWUAAAAAAAAKAAAAAAAAAAl0YWtlcl9mZWUAAAAAAAAKAAAAAA==",
-        "AAAAAAAAAAAAAAAOc2V0X2ZlZV9jb25maWcAAAAAAAQAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAACW1ha2VyX2ZlZQAAAAAAAAoAAAAAAAAACXRha2VyX2ZlZQAAAAAAAAoAAAAA",
+        "AAAAAAAAAAAAAAAIYWRkX3BhaXIAAAADAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAApmZWVfY29uZmlnAAAAAAfQAAAAEVRyZWFzdXJ5RmVlQ29uZmlnAAAAAAAAAA==",
+        "AAAAAAAAAAAAAAAOc2V0X2ZlZV9jb25maWcAAAAAAAMAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAABmNvbmZpZwAAAAAH0AAAABFUcmVhc3VyeUZlZUNvbmZpZwAAAAAAAAA=",
+        "AAAAAAAAAAAAAAAOc2V0X3VzZGNfZmxvb3IAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAOZmxvb3JfZnJhY3Rpb24AAAAAAAoAAAAA",
         "AAAAAAAAAAAAAAARZ2V0X3Byb3RvY29sX2ZlZXMAAAAAAAABAAAAAAAAAARwYWlyAAAAEwAAAAEAAAAK",
         "AAAAAAAAAAAAAAATY2xhaW1fcHJvdG9jb2xfZmVlcwAAAAADAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAtkZXN0aW5hdGlvbgAAAAATAAAAAQAAAAo=",
         "AAAAAAAAAAAAAAAMa2lsbF9kZXBvc2l0AAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
@@ -1162,23 +1215,30 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAAYYXBwbHlfdHJhbnNmZXJfb3duZXJzaGlwAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAlyb2xlX25hbWUAAAAAAAARAAAAAA==",
         "AAAAAAAAAAAAAAAZcmV2ZXJ0X3RyYW5zZmVyX293bmVyc2hpcAAAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAJcm9sZV9uYW1lAAAAAAAAEQAAAAA=",
         "AAAAAAAAAAAAAAASZ2V0X2Z1dHVyZV9hZGRyZXNzAAAAAAABAAAAAAAAAAlyb2xlX25hbWUAAAAAAAARAAAAAQAAABM=",
-        "AAAABAAAAAAAAAAAAAAADVRyZWFzdXJ5RXJyb3IAAAAAAAAKAAAAAAAAABJBbHJlYWR5SW5pdGlhbGl6ZWQAAAAAAMkAAAAAAAAADEludmFsaWRJbnB1dAAAAMwAAAAAAAAAGEZhaWxlZFRvQ2FsbFBhaXJDb250cmFjdAAAANEAAAAAAAAADEFjdGlvblBhdXNlZAAAANUAAAAAAAAAFUluc3VmZmljaWVudEludmVudG9yeQAAAAAAANcAAAAAAAAACFNsaXBwYWdlAAAA2AAAAAAAAAASSW5zdWZmaWNpZW50U2hhcmVzAAAAAADZAAAAAAAAAA9EZXBvc2l0VG9vU21hbGwAAAAA2gAAAAAAAAAQV2l0aGRyYXdUb29TbWFsbAAAANsAAAAAAAAADkludmFsaWRCYWxhbmNlAAAAAADc",
-        "AAAAAQAAAAAAAAAAAAAAE1RyZWFzdXJ5UGFpckRldGFpbHMAAAAABAAAAAAAAAAEcGFpcgAAABMAAAAAAAAACnRva2VuX2xvbmcAAAAAABMAAAAAAAAAC3Rva2VuX3F1b3RlAAAAABMAAAAAAAAAC3Rva2VuX3Nob3J0AAAAABM=",
-        "AAAAAQAAAAAAAAAAAAAAFFRyZWFzdXJ5UGFpckJhbGFuY2VzAAAAAwAAAAAAAAAKdG9rZW5fbG9uZwAAAAAACgAAAAAAAAALdG9rZW5fcXVvdGUAAAAACgAAAAAAAAALdG9rZW5fc2hvcnQAAAAACg==",
-        "AAAAAQAAAAAAAAAAAAAAE1RyZWFzdXJ5UGFpclN1bW1hcnkAAAAABgAAAAAAAAAIYmFsYW5jZXMAAAfQAAAAFFRyZWFzdXJ5UGFpckJhbGFuY2VzAAAAAAAAAAdkZXRhaWxzAAAAB9AAAAATVHJlYXN1cnlQYWlyRGV0YWlscwAAAAAAAAAACmZlZV9jb25maWcAAAAAB9AAAAARVHJlYXN1cnlGZWVDb25maWcAAAAAAAAAAAAABnByaWNlcwAAAAAD7QAAAAIAAAAKAAAACgAAAAAAAAALdG90YWxfcGFpcnMAAAAACgAAAAAAAAAMdG90YWxfc2hhcmVzAAAACg==",
-        "AAAAAQAAAAAAAAAAAAAAF1RyZWFzdXJ5VXNlclBhaXJTdW1tYXJ5AAAAAAIAAAAAAAAADHBhaXJfc3VtbWFyeQAAB9AAAAATVHJlYXN1cnlQYWlyU3VtbWFyeQAAAAAAAAAAC3VzZXJfc2hhcmVzAAAAAAo=",
-        "AAAAAQAAAAAAAAAAAAAAEVRyZWFzdXJ5RmVlQ29uZmlnAAAAAAAAAgAAAAAAAAAJbWFrZXJfZmVlAAAAAAAACgAAAAAAAAAJdGFrZXJfZmVlAAAAAAAACg==",
+        "AAAABAAAAAAAAAAAAAAADVRyZWFzdXJ5RXJyb3IAAAAAAAANAAAAAAAAABJBbHJlYWR5SW5pdGlhbGl6ZWQAAAAAAMkAAAAAAAAADEludmFsaWRJbnB1dAAAAMwAAAAAAAAAGEZhaWxlZFRvQ2FsbFBhaXJDb250cmFjdAAAANEAAAAAAAAADEFjdGlvblBhdXNlZAAAANUAAAAAAAAAFUluc3VmZmljaWVudEludmVudG9yeQAAAAAAANcAAAAAAAAACFNsaXBwYWdlAAAA2AAAAAAAAAASSW5zdWZmaWNpZW50U2hhcmVzAAAAAADZAAAAAAAAAA9EZXBvc2l0VG9vU21hbGwAAAAA2gAAAAAAAAAQV2l0aGRyYXdUb29TbWFsbAAAANsAAAAAAAAADkludmFsaWRCYWxhbmNlAAAAAADcAAAAAAAAAA9DYW5ub3RQYXNzRmxvb3IAAAAA3QAAAAAAAAAUVG94aWNTaWRlTm90QWNjZXB0ZWQAAADeAAAAAAAAABZGYWlsZWRUb0dldE9yYWNsZVByaWNlAAAAAADf",
+        "AAAAAQAAAAAAAAAAAAAAClBhaXJDb25maWcAAAAAAAQAAAAAAAAABGxvbmcAAAATAAAAAAAAAARwYWlyAAAAEwAAAAAAAAAFc2hvcnQAAAAAAAATAAAAAAAAAAR1c2RjAAAAEw==",
+        "AAAAAQAAAAAAAAAAAAAAD1RyZWFzdXJ5U3VtbWFyeQAAAAAFAAAAAAAAAAhiYWxhbmNlcwAAB9AAAAATUGFpckFtb3VudHNXaXRoVVNEQwAAAAAAAAAABmNvbmZpZwAAAAAH0AAAAApQYWlyQ29uZmlnAAAAAAAAAAAACmZlZV9jb25maWcAAAAAB9AAAAARVHJlYXN1cnlGZWVDb25maWcAAAAAAAAAAAAABnByaWNlcwAAAAAH0AAAABNQYWlyQW1vdW50c1dpdGhVU0RDAAAAAAAAAAAMdG90YWxfc2hhcmVzAAAACg==",
+        "AAAAAQAAAAAAAAAAAAAAE1RyZWFzdXJ5VXNlclN1bW1hcnkAAAAAAgAAAAAAAAAHc3VtbWFyeQAAAAfQAAAAD1RyZWFzdXJ5U3VtbWFyeQAAAAAAAAAAC3VzZXJfc2hhcmVzAAAAAAo=",
+        "AAAAAQAAAAAAAAAAAAAAEVRyZWFzdXJ5RmVlQ29uZmlnAAAAAAAACAAAAAAAAAALYm91bmRfcG93ZXIAAAAABAAAAAAAAAANY29lZmZpY2llbnRfYQAAAAAAAAoAAAAAAAAADWNvZWZmaWNpZW50X2MAAAAAAAAKAAAAAAAAAA1jb2VmZmljaWVudF9kAAAAAAAACgAAAAAAAAASaW1wbGllZF92b2xhdGlsaXR5AAAAAAAKAAAAAAAAAA5tYWtlcl9iYXNlX2ZlZQAAAAAACgAAAAAAAAAScmVhY3Rpb25fdGltZV9zZWNzAAAAAAAKAAAAAAAAAA50YWtlcl9iYXNlX2ZlZQAAAAAACg==",
+        "AAAAAQAAAAAAAAAAAAAAFlRyZWFzdXJ5Umlza1BhcmFtZXRlcnMAAAAAAAEAAAAAAAAAD3RveGljX3RocmVzaG9sZAAAAAAK",
         "AAAAAQAAAAAAAAAAAAAADVVzZXJTaGFyZXNLZXkAAAAAAAACAAAAAAAAAARwYWlyAAAAEwAAAAAAAAAEdXNlcgAAABM=",
-        "AAAAAgAAAAAAAAAAAAAAD1RyZWFzdXJ5RGF0YUtleQAAAAAHAAAAAQAAAAAAAAALUGFpckRldGFpbHMAAAAAAQAAABMAAAABAAAAAAAAAAxQYWlyQmFsYW5jZXMAAAABAAAAEwAAAAEAAAAAAAAAC0luaXRpYWxpemVkAAAAAAEAAAATAAAAAQAAAAAAAAALVG90YWxTaGFyZXMAAAAAAQAAABMAAAABAAAAAAAAAApVc2VyU2hhcmVzAAAAAAABAAAH0AAAAA1Vc2VyU2hhcmVzS2V5AAAAAAAAAQAAAAAAAAAJRmVlQ29uZmlnAAAAAAAAAQAAABMAAAABAAAAAAAAAAxQcm90b2NvbEZlZXMAAAABAAAAEw==",
+        "AAAAAgAAAAAAAAAAAAAAD1RyZWFzdXJ5RGF0YUtleQAAAAAHAAAAAQAAAAAAAAAGQ29uZmlnAAAAAAABAAAAEwAAAAEAAAAAAAAACEJhbGFuY2VzAAAAAQAAABMAAAABAAAAAAAAAA5SaXNrUGFyYW1ldGVycwAAAAAAAQAAABMAAAABAAAAAAAAAAtUb3RhbFNoYXJlcwAAAAABAAAAEwAAAAEAAAAAAAAAClVzZXJTaGFyZXMAAAAAAAEAAAfQAAAADVVzZXJTaGFyZXNLZXkAAAAAAAABAAAAAAAAAAlGZWVDb25maWcAAAAAAAABAAAAEwAAAAEAAAAAAAAADFByb3RvY29sRmVlcwAAAAEAAAAT",
         "AAAABAAAAAAAAAAAAAAAEkFjY2Vzc0NvbnRyb2xFcnJvcgAAAAAABwAAAAAAAAAMUm9sZU5vdEZvdW5kAAAAZQAAAAAAAAAMVW5hdXRob3JpemVkAAAAZgAAAAAAAAAPQWRtaW5BbHJlYWR5U2V0AAAAAGcAAAAAAAAADEJhZFJvbGVVc2FnZQAAAGgAAAAAAAAAE0Fub3RoZXJBY3Rpb25BY3RpdmUAAAALWgAAAAAAAAAOTm9BY3Rpb25BY3RpdmUAAAAAC1sAAAAAAAAAEUFjdGlvbk5vdFJlYWR5WWV0AAAAAAALXA==",
+        "AAAABAAAAAAAAAAAAAAAC09yYWNsZUVycm9yAAAAAAYAAAAeT3JhY2xlRXJyb3I6IE9yYWNsZU5vblBvc2l0aXZlAAAAAAART3JhY2xlTm9uUG9zaXRpdmUAAAAAAAJZAAAAAAAAABFPcmFjbGVUb29Wb2xhdGlsZQAAAAAAAloAAAAAAAAAEk9yYWNsZVN0YWxlRm9yUGFpcgAAAAACWwAAAAAAAAANT3JhY2xlSW52YWxpZAAAAAAAAlwAAAAAAAAAFkZhaWxlZFRvR2V0T3JhY2xlUHJpY2UAAAAAAl0AAAAAAAAADEludmFsaWRJbnB1dAAAAl4=",
+        "AAAAAgAAAAAAAAAAAAAADk9yYWNsZVZhbGlkaXR5AAAAAAAFAAAAAAAAAAAAAAALTm9uUG9zaXRpdmUAAAAAAAAAAAAAAAALVG9vVm9sYXRpbGUAAAAAAAAAAAAAAAAMU3RhbGVGb3JQYWlyAAAAAAAAAAAAAAAGRnJvemVuAAAAAAAAAAAAAAAAAAVWYWxpZAAAAA==",
+        "AAAAAQAAAAAAAAAAAAAAFEhpc3RvcmljYWxPcmFjbGVEYXRhAAAABAAAAAAAAAANbGFzdF9kZWxheV90cwAAAAAAAAYAAAAAAAAACmxhc3RfcHJpY2UAAAAAAAoAAAAAAAAAD2xhc3RfcHJpY2VfdHdhcAAAAAAKAAAAAAAAAA5sYXN0X3VwZGF0ZV90cwAAAAAABg==",
         "AAAAAQAAAAAAAAAAAAAAD09yYWNsZVByaWNlRGF0YQAAAAACAAAAAAAAAAVkZWxheQAAAAAAB9AAAAAFRGVsYXkAAAAAAAAAAAAABXByaWNlAAAAAAAACg==",
         "AAAAAgAAAAAAAAAAAAAADE9yYWNsZVNvdXJjZQAAAAEAAAAAAAAAAAAAAAlSZWZsZWN0b3IAAAA=",
         "AAAAAQAAAAAAAAAAAAAAClBhaXJQYXJhbXMAAAAAAAoAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAAApjYWxjdWxhdG9yAAAAAAATAAAAAAAAABNjb2xsYXRlcmFsX3Blcl9wYWlyAAAAAAoAAAAAAAAAEGNvbGxhdGVyYWxfdG9rZW4AAAATAAAAAAAAAApsb25nX3Rva2VuAAAAAAATAAAAAAAAAAtsb3dlcl9ib3VuZAAAAAAKAAAAAAAAAAZvcmFjbGUAAAAAABMAAAAAAAAAC3Nob3J0X3Rva2VuAAAAABMAAAAAAAAAC3VwcGVyX2JvdW5kAAAAAAo=",
         "AAAAAgAAAAAAAAAAAAAABFNpZGUAAAACAAAAAAAAAAAAAAAETG9uZwAAAAAAAAAAAAAABVNob3J0AAAA",
         "AAAAAgAAAAAAAAAAAAAACURpcmVjdGlvbgAAAAAAAAIAAAAAAAAAAAAAAANCdXkAAAAAAAAAAAAAAAAEU2VsbA==",
+        "AAAAAQAAAAAAAAAAAAAAD1BhaXJQcmljZUJvdW5kcwAAAAACAAAAAAAAAAVsb3dlcgAAAAAAAAoAAAAAAAAABXVwcGVyAAAAAAAACg==",
+        "AAAAAQAAAAAAAAAAAAAAC1BhaXJBbW91bnRzAAAAAAIAAAAAAAAABGxvbmcAAAAKAAAAAAAAAAVzaG9ydAAAAAAAAAo=",
+        "AAAAAQAAAAAAAAAAAAAAE1BhaXJBbW91bnRzV2l0aFVTREMAAAAAAwAAAAAAAAAEbG9uZwAAAAoAAAAAAAAABXNob3J0AAAAAAAACgAAAAAAAAAEdXNkYwAAAAo=",
+        "AAAAAQAAAAAAAAAAAAAAClBhaXJUb2tlbnMAAAAAAAMAAAAAAAAACmNvbGxhdGVyYWwAAAAAABMAAAAAAAAABGxvbmcAAAATAAAAAAAAAAVzaG9ydAAAAAAAABM=",
         "AAAAAgAAAAAAAAAAAAAAClBhaXJTdGF0dXMAAAAAAAMAAAAAAAAAAAAAAAhJbmFjdGl2ZQAAAAAAAAAAAAAABkFjdGl2ZQAAAAAAAAAAAAAAAAAHRXhwaXJlZAA=",
         "AAAAAQAAAAAAAAAAAAAADkNvbGxhdGVyYWxJbmZvAAAAAAAEAAAAAAAAABNjb2xsYXRlcmFsX3Blcl9wYWlyAAAAAAoAAAAAAAAAF2NvbGxhdGVyYWxfcGVyY2VudF9sb25nAAAAAAoAAAAAAAAAEGNvbGxhdGVyYWxfdG9rZW4AAAATAAAAAAAAABB0b3RhbF9jb2xsYXRlcmFsAAAACg==",
-        "AAAAAQAAAAAAAAAAAAAAC1BhaXJTdW1tYXJ5AAAAAAgAAAAAAAAABWFzc2V0AAAAAAAAEQAAAAAAAAAKY2FsY3VsYXRvcgAAAAAAEwAAAAAAAAAKY29sbGF0ZXJhbAAAAAAH0AAAAA5Db2xsYXRlcmFsSW5mbwAAAAAAAAAAAApsb25nX3Rva2VuAAAAAAATAAAAAAAAAAZvcmFjbGUAAAAAABMAAAAAAAAADHByaWNlX2JvdW5kcwAAA+0AAAACAAAACgAAAAoAAAAAAAAAC3Nob3J0X3Rva2VuAAAAABMAAAAAAAAABnN0YXR1cwAAAAAH0AAAAApQYWlyU3RhdHVzAAA=",
+        "AAAAAQAAAAAAAAAAAAAAC1BhaXJTdW1tYXJ5AAAAAAcAAAAAAAAABWFzc2V0AAAAAAAAEQAAAAAAAAAKY2FsY3VsYXRvcgAAAAAAEwAAAAAAAAAKY29sbGF0ZXJhbAAAAAAH0AAAAA5Db2xsYXRlcmFsSW5mbwAAAAAAAAAAAAZvcmFjbGUAAAAAABMAAAAAAAAADHByaWNlX2JvdW5kcwAAB9AAAAAPUGFpclByaWNlQm91bmRzAAAAAAAAAAAGc3RhdHVzAAAAAAfQAAAAClBhaXJTdGF0dXMAAAAAAAAAAAAGdG9rZW5zAAAAAAfQAAAAClBhaXJUb2tlbnMAAA==",
         "AAAABAAAAAAAAAAAAAAABUVycm9yAAAAAAAAAwAAAAAAAAATQW5vdGhlckFjdGlvbkFjdGl2ZQAAAAtaAAAAAAAAAA5Ob0FjdGlvbkFjdGl2ZQAAAAALWwAAAAAAAAARQWN0aW9uTm90UmVhZHlZZXQAAAAAAAtc",
         "AAAABAAAAAAAAAAAAAAACU1hdGhFcnJvcgAAAAAAAAkAAAAZTWF0aEVycm9yOiBOdW1iZXJPdmVyZmxvdwAAAAAAAA5OdW1iZXJPdmVyZmxvdwAAAAAB/gAAAB1NYXRoRXJyb3I6IEdlbmVyaWMgbWF0aCBlcnJvcgAAAAAAAAlNYXRoRXJyb3IAAAAAAAH/AAAALU1hdGhFcnJvcjogQWRkaXRpb24gb3BlcmF0aW9uIGNhdXNlZCBvdmVyZmxvdwAAAAAAABBBZGRpdGlvbk92ZXJmbG93AAACAAAAADFNYXRoRXJyb3I6IFN1YnRyYWN0aW9uIG9wZXJhdGlvbiBjYXVzZWQgdW5kZXJmbG93AAAAAAAAFFN1YnRyYWN0aW9uVW5kZXJmbG93AAACAQAAADNNYXRoRXJyb3I6IE11bHRpcGxpY2F0aW9uIG9wZXJhdGlvbiBjYXVzZWQgb3ZlcmZsb3cAAAAAFk11bHRpcGxpY2F0aW9uT3ZlcmZsb3cAAAAAAgIAAAAbTWF0aEVycm9yOiBEaXZpc2lvbiBieSB6ZXJvAAAAAA5EaXZpc2lvbkJ5WmVybwAAAAACAwAAACNNYXRoRXJyb3I6IFR5cGUgY29udmVyc2lvbiBvdmVyZmxvdwAAAAASQ29udmVyc2lvbk92ZXJmbG93AAAAAAIEAAAAP01hdGhFcnJvcjogQXR0ZW1wdGVkIHRvIGNvbnZlcnQgbmVnYXRpdmUgdmFsdWUgdG8gdW5zaWduZWQgdHlwZQAAAAASTmVnYXRpdmVUb1Vuc2lnbmVkAAAAAAIFAAAAKk1hdGhFcnJvcjogRml4ZWQtcG9pbnQgYXJpdGhtZXRpYyBvdmVyZmxvdwAAAAAAEkZpeGVkUG9pbnRPdmVyZmxvdwAAAAACBg==",
         "AAAABAAAAAAAAAAAAAAADFN0b3JhZ2VFcnJvcgAAAAQAAAAMU3RvcmFnZUVycm9yAAAAEkFscmVhZHlJbml0aWFsaXplZAAAAAAAyQAAAAAAAAATVmFsdWVOb3RJbml0aWFsaXplZAAAAAH1AAAAAAAAAAxWYWx1ZU1pc3NpbmcAAAH2AAAAAAAAABRWYWx1ZUNvbnZlcnNpb25FcnJvcgAAAfc=",
@@ -1189,16 +1249,15 @@ export class Client extends ContractClient {
   }
   public readonly fromJSON = {
     deposit: this.txFromJSON<u128>,
-        withdraw: this.txFromJSON<readonly [u128, u128, u128]>,
-        get_pair_details: this.txFromJSON<TreasuryPairDetails>,
-        get_total_pairs: this.txFromJSON<u128>,
-        get_prices: this.txFromJSON<readonly [u128, u128]>,
-        get_balances: this.txFromJSON<TreasuryPairBalances>,
+        withdraw: this.txFromJSON<PairAmountsWithUSDC>,
+        get_config: this.txFromJSON<PairConfig>,
+        get_prices: this.txFromJSON<PairAmountsWithUSDC>,
+        get_balances: this.txFromJSON<PairAmountsWithUSDC>,
         get_total_shares: this.txFromJSON<u128>,
         get_user_shares: this.txFromJSON<u128>,
-        get_pair_fee_config: this.txFromJSON<TreasuryFeeConfig>,
-        get_pair_summary: this.txFromJSON<TreasuryPairSummary>,
-        get_user_with_pair_summary: this.txFromJSON<TreasuryUserPairSummary>,
+        get_fee_config: this.txFromJSON<TreasuryFeeConfig>,
+        get_summary: this.txFromJSON<TreasurySummary>,
+        get_user_with_summary: this.txFromJSON<TreasuryUserSummary>,
         estimate_trade: this.txFromJSON<readonly [u128, u128]>,
         mint_and_sell_short: this.txFromJSON<u128>,
         mint_and_sell_long: this.txFromJSON<u128>,
@@ -1210,6 +1269,7 @@ export class Client extends ContractClient {
         sell_short: this.txFromJSON<u128>,
         add_pair: this.txFromJSON<null>,
         set_fee_config: this.txFromJSON<null>,
+        set_usdc_floor: this.txFromJSON<null>,
         get_protocol_fees: this.txFromJSON<u128>,
         claim_protocol_fees: this.txFromJSON<u128>,
         kill_deposit: this.txFromJSON<null>,

@@ -194,9 +194,6 @@ impl Setup<'_> {
         treasury.add_pair(
             &admin,
             &pair.address,
-            &token_usdc.address,
-            &token_long.address,
-            &token_short.address,
             &30, // 0.30%
             &40, // 0.40%
         );

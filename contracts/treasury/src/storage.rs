@@ -1,7 +1,9 @@
 use paste::paste;
 use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
+use types::pair::PairAmountsWithUSDC;
 pub use utils::bump::bump_instance;
 use utils::bump::bump_persistent;
+use utils::constant::PRICE_PRECISION;
 use utils::errors::storage_errors::StorageError;
 use utils::{
     generate_instance_storage_getter, generate_instance_storage_getter_and_setter,
@@ -13,48 +15,54 @@ use utils::{
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TreasuryPairDetails {
+pub struct PairConfig {
     pub pair: Address,
-    pub token_quote: Address,
-    pub token_long: Address,
-    pub token_short: Address,
+    pub long: Address,
+    pub short: Address,
+    pub usdc: Address,
 }
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TreasuryPairBalances {
-    pub token_quote: u128,
-    pub token_long: u128,
-    pub token_short: u128,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TreasuryPairSummary {
-    pub details: TreasuryPairDetails,
-    pub balances: TreasuryPairBalances,
-    pub prices: (u128, u128),
-    pub total_pairs: u128,
+pub struct TreasurySummary {
+    pub config: PairConfig,
+    pub balances: PairAmountsWithUSDC,
+    pub prices: PairAmountsWithUSDC,
+    // pub total_pairs: u128,
     pub total_shares: u128,
     pub fee_config: TreasuryFeeConfig,
 }
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TreasuryUserPairSummary {
-    pub pair_summary: TreasuryPairSummary,
+pub struct TreasuryUserSummary {
+    pub summary: TreasurySummary,
     pub user_shares: u128,
 }
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TreasuryFeeConfig {
-    pub maker_fee: u128,
-    pub taker_fee: u128,
+    pub maker_base_fee: u128,
+    pub taker_base_fee: u128,
+    pub implied_volatility: u128,
+    pub reaction_time_secs: u128, // defualt to 10mins
+    pub coefficient_a: u128, // How much fee do we charge for being wrong about price movement during Δt?
+    pub coefficient_c: u128, // How much extra do we charge when the treasury is already unbalanced?
+    pub coefficient_d: u128, // How aggressively do we defend against holding assets that are going to zero?
+    pub bound_power: u32,    // how sharply the bound defense ramps
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TreasuryRiskParameters {
+    pub toxic_threshold: u128, // similar to collateral_percent_long
 }
 
 /********** Storage Key Types **********/
 
+const KEY_USDC_FLOOR_FRACTION: &str = "UsdcFloorFraction";
+const KEY_ORACLE: &str = "Oracle";
 const KEY_IS_KILLED_DEPOSIT: &str = "IsKilledDeposit";
 const KEY_IS_KILLED_WITHDRAW: &str = "IsKilledWithdraw";
 const KEY_IS_KILLED_TRADE: &str = "IsKilledTrade";
@@ -69,17 +77,17 @@ pub struct UserSharesKey {
 #[derive(Clone)]
 #[contracttype]
 pub enum TreasuryDataKey {
-    // map of pair to PairDetails
-    PairDetails(Address),
+    // map of pair to TreasuryAddresses
+    Config(Address),
     // map of pair to TreasuryPairBalances
-    PairBalances(Address),
+    Balances(Address),
     //
-    Initialized(Address),
+    RiskParameters(Address),
     // map of pair to Total LP share supply
     TotalShares(Address),
     // map of (pair, user) to LP share balance
     UserShares(UserSharesKey),
-    // map of pair to TreasuryFeeConfig
+    // map of pair to FeeConfig
     FeeConfig(Address),
     // map of pair to collectable protocol fees
     ProtocolFees(Address),
@@ -87,7 +95,15 @@ pub enum TreasuryDataKey {
 
 /********** Storage **********/
 
-// Paused Ops
+generate_instance_storage_getter_and_setter!(oracle, KEY_ORACLE, Address);
+
+generate_instance_storage_getter_and_setter_with_default!(
+    usdc_floor_fraction,
+    KEY_USDC_FLOOR_FRACTION,
+    u128,
+    PRICE_PRECISION / 10 // 10%
+);
+
 generate_instance_storage_getter_and_setter_with_default!(
     is_killed_deposit,
     KEY_IS_KILLED_DEPOSIT,
@@ -108,26 +124,44 @@ generate_instance_storage_getter_and_setter_with_default!(
 );
 
 // Pair details
-pub(crate) fn get_pair_details(env: &Env, pair: &Address) -> TreasuryPairDetails {
-    let key = TreasuryDataKey::PairDetails(pair.clone());
+pub(crate) fn get_config(env: &Env, pair: &Address) -> PairConfig {
+    let key = TreasuryDataKey::Config(pair.clone());
     match env.storage().persistent().get(&key) {
-        Some(details) => {
+        Some(config) => {
             bump_persistent(env, &key);
-            details
+            config
         }
         None => panic_with_error!(env, StorageError::ValueNotInitialized),
     }
 }
 
-pub(crate) fn set_pair_details(env: &Env, pair: &Address, details: &TreasuryPairDetails) {
-    let key = TreasuryDataKey::PairDetails(pair.clone());
-    env.storage().persistent().set(&key, details);
+pub(crate) fn set_config(env: &Env, pair: &Address, config: &PairConfig) {
+    let key = TreasuryDataKey::Config(pair.clone());
+    env.storage().persistent().set(&key, config);
+    bump_persistent(env, &key);
+}
+
+// Risk parameters
+pub(crate) fn get_risk_parameters(env: &Env, pair: &Address) -> TreasuryRiskParameters {
+    let key = TreasuryDataKey::RiskParameters(pair.clone());
+    match env.storage().persistent().get(&key) {
+        Some(params) => {
+            bump_persistent(env, &key);
+            params
+        }
+        None => panic_with_error!(env, StorageError::ValueNotInitialized),
+    }
+}
+
+pub(crate) fn set_risk_parameters(env: &Env, pair: &Address, params: &TreasuryRiskParameters) {
+    let key = TreasuryDataKey::RiskParameters(pair.clone());
+    env.storage().persistent().set(&key, params);
     bump_persistent(env, &key);
 }
 
 // Pair balances
-pub(crate) fn get_pair_balances(env: &Env, pair: &Address) -> TreasuryPairBalances {
-    let key = TreasuryDataKey::PairBalances(pair.clone());
+pub(crate) fn get_balances(env: &Env, pair: &Address) -> PairAmountsWithUSDC {
+    let key = TreasuryDataKey::Balances(pair.clone());
     match env.storage().persistent().get(&key) {
         Some(balances) => {
             bump_persistent(env, &key);
@@ -137,8 +171,8 @@ pub(crate) fn get_pair_balances(env: &Env, pair: &Address) -> TreasuryPairBalanc
     }
 }
 
-pub(crate) fn set_pair_balances(env: &Env, pair: &Address, balances: &TreasuryPairBalances) {
-    let key = TreasuryDataKey::PairBalances(pair.clone());
+pub(crate) fn set_balances(env: &Env, pair: &Address, balances: &PairAmountsWithUSDC) {
+    let key = TreasuryDataKey::Balances(pair.clone());
     env.storage().persistent().set(&key, balances);
     bump_persistent(env, &key);
 }
@@ -208,9 +242,9 @@ pub(crate) fn get_fee_config(env: &Env, pair: &Address) -> TreasuryFeeConfig {
     }
 }
 
-pub(crate) fn set_fee_config(env: &Env, pair: &Address, fee_config: TreasuryFeeConfig) {
+pub(crate) fn set_fee_config(env: &Env, pair: &Address, config: &TreasuryFeeConfig) {
     let key = TreasuryDataKey::FeeConfig(pair.clone());
-    env.storage().persistent().set(&key, &fee_config);
+    env.storage().persistent().set(&key, config);
     bump_persistent(env, &key);
 }
 
