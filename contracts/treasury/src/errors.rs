@@ -17,4 +17,5 @@ pub enum TreasuryError {
     CannotPassFloor = 221,
     ToxicSideNotAccepted = 222,
     FailedToGetOraclePrice = 223,
+    InvalidFee = 224,
 }

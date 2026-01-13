@@ -1,7 +1,9 @@
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{panic_with_error, Address, Env};
 use types::pair::PairAmountsWithUSDC;
 use utils::constant::PRICE_PRECISION;
 use utils::math::safe_math::SafeMath;
+
+use crate::errors::TreasuryError;
 
 pub fn get_prices(e: &Env, pair: &Address) -> PairAmountsWithUSDC {
     let collateral_info = crate::pair::get_pair_collateral_info(e, pair);
@@ -29,6 +31,10 @@ pub fn quote_buy_token(e: &Env, usdc_in: u128, price_token: u128, fee: u128) -> 
         return (0, 0);
     }
 
+    if fee <= PRICE_PRECISION {
+        panic_with_error!(e, TreasuryError::InvalidFee);
+    }
+
     let usdc_net = crate::fees::apply_fee_to_input(e, usdc_in, fee);
     let usdc_fee = usdc_in.safe_sub(e, usdc_net);
 
@@ -51,6 +57,10 @@ pub fn quote_sell_token(e: &Env, token_in: u128, price_token: u128, fee: u128) -
 
     if price_token <= 0 {
         return (0, 0);
+    }
+
+    if fee <= PRICE_PRECISION {
+        panic_with_error!(e, TreasuryError::InvalidFee);
     }
 
     let gross = token_in
