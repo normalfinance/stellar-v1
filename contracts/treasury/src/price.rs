@@ -96,7 +96,7 @@ pub fn quote_buy_token(e: &Env, usdc_in: u128, price_token: u128, fee: u128) -> 
 
     // `apply_fee_to_input` expects `fee` to be a valid scaling parameter.
     // If fee config is malformed, fail loudly rather than mispricing trades.
-    if fee <= PRICE_PRECISION {
+    if fee > PRICE_PRECISION {
         panic_with_error!(e, TreasuryError::InvalidFee);
     }
 
@@ -169,7 +169,7 @@ pub fn quote_sell_token(e: &Env, token_in: u128, price_token: u128, fee: u128) -
     }
 
     // `apply_fee_to_input` expects `fee` to be a valid scaling parameter.
-    if fee <= PRICE_PRECISION {
+    if fee > PRICE_PRECISION {
         panic_with_error!(e, TreasuryError::InvalidFee);
     }
 

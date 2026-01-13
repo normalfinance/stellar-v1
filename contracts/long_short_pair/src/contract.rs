@@ -57,7 +57,7 @@ impl LongShortPair {
     pub fn __constructor(e: Env, params: PairParams) {
         // NOTE: constructor auth is intentionally omitted because deployer auth patterns can vary.
         // If you want strict deploy-time auth, uncomment the line below:
-        // params.admin.require_auth();
+        params.admin.require_auth();
 
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {

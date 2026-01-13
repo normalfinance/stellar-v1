@@ -53,7 +53,7 @@ impl Treasury {
     pub fn __constructor(e: Env, admin: Address, oracle: Address) {
         // NOTE: constructor auth is intentionally omitted because deployer auth patterns can vary.
         // If you want strict deploy-time auth, uncomment the line below:
-        // admin.require_auth();
+        admin.require_auth();
 
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {

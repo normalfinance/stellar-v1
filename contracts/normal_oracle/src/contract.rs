@@ -50,7 +50,7 @@ impl NormalOracle {
         oracle_source: OracleSource,
         oracle_addr: Address,
     ) {
-        // admin.require_auth();
+        admin.require_auth();
 
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
