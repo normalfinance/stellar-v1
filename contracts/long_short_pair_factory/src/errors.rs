@@ -7,4 +7,5 @@ pub enum LongShortPairFactoryError {
     PairAlreadyExists = 401,
     ActionPaused = 403,
     PairNotFound = 404,
+    AlreadyInitialized = 405,
 }

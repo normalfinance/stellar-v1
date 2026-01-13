@@ -47,7 +47,12 @@ impl Treasury {
     //   - admin: The address to be assigned the Admin role.
     //   - oracle: The address of Normal Oracle specifically for USDC.
     pub fn __constructor(e: Env, admin: Address, oracle: Address) {
+        admin.require_auth();
+
         let access_control = AccessControl::new(&e);
+        if access_control.get_role_safe(&Role::Admin).is_some() {
+            panic_with_error!(&e, TreasuryError::AlreadyInitialized);
+        }
         access_control.set_role_address(&Role::Admin, &admin);
         access_control.set_role_address(&Role::PauseAdmin, &admin);
         access_control.set_role_address(&Role::EmergencyAdmin, &admin);

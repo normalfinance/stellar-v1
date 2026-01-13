@@ -22,7 +22,7 @@ use access_control::transfer::TransferOwnershipTrait;
 use upgrade::events::Events as UpgradeEvents;
 use upgrade::interface::UpgradeableContract;
 use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
-use utils::constant::{PERCENTAGE_PRECISION, PERCENTAGE_PRECISION_U64, TWENTY_FOUR_HOUR};
+use utils::constant::{PERCENTAGE_PRECISION_U64, TWENTY_FOUR_HOUR};
 
 contractmeta!(
     key = "Description",
@@ -50,7 +50,12 @@ impl NormalOracle {
         oracle_source: OracleSource,
         oracle_addr: Address,
     ) {
+        admin.require_auth();
+
         let access_control = AccessControl::new(&e);
+        if access_control.get_role_safe(&Role::Admin).is_some() {
+            panic_with_error!(&e, NormalOracleError::AlreadyInitialized);
+        }
         access_control.set_role_address(&Role::Admin, &admin);
         access_control.set_role_address(&Role::PauseAdmin, &admin);
         access_control.set_role_address(&Role::EmergencyAdmin, &admin);
