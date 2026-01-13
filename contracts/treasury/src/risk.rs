@@ -1,6 +1,6 @@
 use soroban_sdk::{panic_with_error, Address, Env};
 use types::pair::Side;
-use utils::constant::{ONE, PRICE_PRECISION};
+use utils::constant::{ONE_U128, PRICE_PRECISION};
 use utils::math::safe_math::PrecisionMath;
 
 use crate::errors::TreasuryError;
@@ -101,7 +101,7 @@ pub fn block_toxic_trades(e: &Env, pair: &Address, side: Side, price: u128) {
     }
 
     // Near lower bound: long is toxic
-    if side == Side::Long && price <= ONE.saturating_sub(risk_params.toxic_threshold) {
+    if side == Side::Long && price <= ONE_U128.saturating_sub(risk_params.toxic_threshold) {
         panic_with_error!(e, TreasuryError::ToxicSideNotAccepted);
     }
 }
@@ -113,7 +113,7 @@ mod risk_validation_tests {
 
     use crate::errors::TreasuryError;
     use types::pair::Side;
-    use utils::constant::{ONE, PRICE_PRECISION};
+    use utils::constant::{ONE_U128, PRICE_PRECISION};
 
     fn env() -> Env {
         Env::default()
@@ -287,9 +287,9 @@ mod risk_validation_tests {
     // NOTE: block_toxic_trades reads `crate::storage::get_risk_parameters(e, pair)`.
     // These tests assume you have a setter for risk parameters in test builds.
     // Also: your "near lower bound" logic currently looks wrong:
-    //   `price <= ONE.saturating_sub(price)`
+    //   `price <= ONE_U128.saturating_sub(price)`
     // It should likely be `price <= risk_params.lower_toxic_threshold`
-    // or `price <= (ONE - risk_params.toxic_threshold)` depending on how you store thresholds.
+    // or `price <= (ONE_U128 - risk_params.toxic_threshold)` depending on how you store thresholds.
     // The tests below validate the "upper bound short toxic" path as written,
     // and include an explicit test that will likely FAIL for the long side,
     // which is a useful red flag.
@@ -332,7 +332,7 @@ mod risk_validation_tests {
         set_risk_params_toxic_threshold(&e, &pair, 9_000_000);
 
         // mirrored lower threshold = 0.10
-        let lower = ONE - 9_000_000;
+        let lower = ONE_U128 - 9_000_000;
 
         // price just above lower threshold => OK
         block_toxic_trades(&e, &pair, Side::Long, lower + 1);
@@ -346,7 +346,7 @@ mod risk_validation_tests {
 
         set_risk_params_toxic_threshold(&e, &pair, 9_000_000);
 
-        let lower = ONE - 9_000_000;
+        let lower = ONE_U128 - 9_000_000;
 
         // price exactly at lower threshold => panic
         block_toxic_trades(&e, &pair, Side::Long, lower);
