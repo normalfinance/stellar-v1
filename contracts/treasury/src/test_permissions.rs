@@ -1,5 +1,6 @@
 #![cfg(test)]
 
+use crate::storage::TreasuryFeeConfig;
 use crate::testutils::Setup;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::Address;
@@ -111,7 +112,20 @@ fn test_add_pair() {
         assert_eq!(
             setup
                 .treasury
-                .try_add_pair(&addr, &pair, &token, &token, &token, &10, &10)
+                .try_add_pair(
+                    &addr,
+                    &pair,
+                    &(TreasuryFeeConfig {
+                        taker_base_fee: 30,
+                        maker_base_fee: 30,
+                        implied_volatility: 0,
+                        reaction_time_secs: 60,
+                        coefficient_a: 1,
+                        coefficient_c: 1,
+                        coefficient_d: 1,
+                        bound_power: 2,
+                    })
+                )
                 .is_ok(),
             is_ok
         );

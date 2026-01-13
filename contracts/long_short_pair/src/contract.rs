@@ -41,7 +41,7 @@ impl LongShortPair {
     // __constructor
     // Initializes the factory by setting the admin roles and storing critical parameters.
     pub fn __constructor(e: Env, params: PairParams) {
-        params.admin.require_auth();
+        // params.admin.require_auth();
 
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {

@@ -111,12 +111,19 @@ mod risk_validation_tests {
     use super::*;
     use soroban_sdk::{testutils::Address as _, Address, Env};
 
-    use crate::errors::TreasuryError;
+    use crate::{storage::TreasuryRiskParameters, Treasury};
     use types::pair::Side;
     use utils::constant::{ONE_U128, PRICE_PRECISION};
 
     fn env() -> Env {
         Env::default()
+    }
+
+    fn setup_test_contract(e: &Env) -> (Address, Address) {
+        let admin = Address::generate(e);
+        let treasury_contract = e.register(Treasury, (&admin,));
+
+        (treasury_contract, admin)
     }
 
     // ------------------------------------------------------------
@@ -208,19 +215,18 @@ mod risk_validation_tests {
     // with the appropriate direct write.
     // ------------------------------------------------------------
 
-    fn set_usdc_floor_fraction(e: &Env, frac: u128) {
-        // Prefer a real setter if you have it:
-        // crate::storage::set_usdc_floor_fraction(e, frac);
-
-        // If you don't have a setter, implement one behind cfg(test) in your storage module.
-        crate::storage::set_usdc_floor_fraction_for_test(e, frac);
+    fn set_usdc_floor_fraction(e: &Env, treasury: &Address, frac: u128) {
+        e.as_contract(treasury, || {
+            crate::storage::set_usdc_floor_fraction(&e, &frac);
+        });
     }
 
     #[test]
     fn validate_usdc_floor_allows_trade_when_remaining_equals_floor() {
         let e = env();
+        let (treasury, _) = setup_test_contract(&e);
 
-        set_usdc_floor_fraction(&e, 5_000_000); // 0.5
+        set_usdc_floor_fraction(&e, &treasury, 5_000_000); // 0.5
 
         let nav_total = 1_000_0000u128 * 1_000; // 1000
         let usdc_price = PRICE_PRECISION; // 1.0
@@ -240,8 +246,9 @@ mod risk_validation_tests {
     #[should_panic]
     fn validate_usdc_floor_panics_when_remaining_below_floor() {
         let e = env();
+        let (treasury, _) = setup_test_contract(&e);
 
-        set_usdc_floor_fraction(&e, 5_000_000); // 0.5
+        set_usdc_floor_fraction(&e, &treasury, 5_000_000); // 0.5
 
         let nav_total = 1_000_0000u128 * 1_000; // 1000
         let usdc_price = PRICE_PRECISION; // 1.0
@@ -258,7 +265,9 @@ mod risk_validation_tests {
     #[should_panic]
     fn validate_usdc_floor_panics_if_usdc_out_gt_balance() {
         let e = env();
-        set_usdc_floor_fraction(&e, 1_000_000); // 0.1
+        let (treasury, _) = setup_test_contract(&e);
+
+        set_usdc_floor_fraction(&e, &treasury, 1_000_000); // 0.1
 
         let _ = validate_usdc_floor(&e, 100, 101, 1_000_0000, PRICE_PRECISION);
     }
@@ -267,7 +276,9 @@ mod risk_validation_tests {
     #[should_panic]
     fn validate_usdc_floor_panics_if_usdc_price_zero() {
         let e = env();
-        set_usdc_floor_fraction(&e, 1_000_000); // 0.1
+        let (treasury, _) = setup_test_contract(&e);
+
+        set_usdc_floor_fraction(&e, &treasury, 1_000_000); // 0.1
 
         let _ = validate_usdc_floor(&e, 100, 1, 1_000_0000, 0);
     }
@@ -276,7 +287,9 @@ mod risk_validation_tests {
     #[should_panic]
     fn validate_usdc_floor_panics_if_floor_fraction_invalid() {
         let e = env();
-        set_usdc_floor_fraction(&e, PRICE_PRECISION + 1);
+        let (treasury, _) = setup_test_contract(&e);
+
+        set_usdc_floor_fraction(&e, &treasury, PRICE_PRECISION + 1);
 
         let _ = validate_usdc_floor(&e, 1_000_0000, 1, 1_000_0000, PRICE_PRECISION);
     }
@@ -297,7 +310,13 @@ mod risk_validation_tests {
 
     fn set_risk_params_toxic_threshold(e: &Env, pair: &Address, toxic_threshold: u128) {
         // Replace with your real setter or a cfg(test) helper.
-        crate::storage::set_risk_parameters_for_test(e, pair, toxic_threshold);
+        e.as_contract(pair, || {
+            crate::storage::set_risk_parameters(
+                &e,
+                pair,
+                &(TreasuryRiskParameters { toxic_threshold }),
+            );
+        });
     }
 
     #[test]

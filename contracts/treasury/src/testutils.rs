@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![cfg(test)]
 extern crate std;
+use crate::storage::TreasuryFeeConfig;
 use crate::testutils::long_short_pair::PairParams;
 use crate::testutils::normal_oracle::OracleSource;
 use crate::TreasuryClient;
@@ -49,8 +50,12 @@ pub fn create_long_short_pair_contract<'a>(
 ) -> long_short_pair::Client<'a> {
     long_short_pair::Client::new(e, &e.register(long_short_pair::WASM, (params.clone(),)))
 }
-pub fn create_treasury_contract<'a>(e: &Env, admin: &Address) -> TreasuryClient<'a> {
-    TreasuryClient::new(e, &e.register(crate::Treasury {}, (admin,)))
+pub fn create_treasury_contract<'a>(
+    e: &Env,
+    admin: &Address,
+    oracle: &Address,
+) -> TreasuryClient<'a> {
+    TreasuryClient::new(e, &e.register(crate::Treasury {}, (admin, oracle)))
 }
 
 // Setup
@@ -114,7 +119,7 @@ impl Setup<'_> {
         e.mock_all_auths();
         e.cost_estimate().budget().reset_unlimited();
 
-        let start_time = 1767285451; // e.ledger().timestamp();
+        let start_time = 1768330739; // e.ledger().timestamp();
         jump(&e, start_time);
 
         // Addresses
@@ -126,6 +131,7 @@ impl Setup<'_> {
         let token_usdc_admin_client = get_token_admin_client(&e, &token_usdc.address.clone());
 
         // Setup Oracle
+        let usdc_symbol = Symbol::new(&e, "USDC");
         let sol_symbol = Symbol::new(&e, "SOL");
         let solana = MockAsset::Other(sol_symbol.clone());
 
@@ -133,10 +139,7 @@ impl Setup<'_> {
             &e,
             &admin,
             &MockAsset::Other(Symbol::new(&e, "USD")),
-            &Vec::from_array(
-                &e,
-                [solana.clone(), MockAsset::Other(Symbol::new(&e, "USDC"))],
-            ),
+            &Vec::from_array(&e, [solana.clone(), MockAsset::Other(usdc_symbol.clone())]),
             14,
             300,
         );
@@ -155,6 +158,14 @@ impl Setup<'_> {
             &e,
             &admin,
             &sol_symbol.clone(),
+            &OracleSource::Reflector,
+            &reflector_addr,
+        );
+
+        let usdc_oracle = create_normal_oracle_contract(
+            &e,
+            &admin,
+            &usdc_symbol.clone(),
             &OracleSource::Reflector,
             &reflector_addr,
         );
@@ -189,13 +200,21 @@ impl Setup<'_> {
         token_short_admin_client.set_admin(&pair.address);
 
         // Setup Treasury
-        let treasury = create_treasury_contract(&e, &admin);
+        let treasury = create_treasury_contract(&e, &admin, &usdc_oracle.address);
 
         treasury.add_pair(
             &admin,
             &pair.address,
-            &30, // 0.30%
-            &40, // 0.40%
+            &(TreasuryFeeConfig {
+                taker_base_fee: 30,
+                maker_base_fee: 30,
+                implied_volatility: 0,
+                reaction_time_secs: 60,
+                coefficient_a: 1,
+                coefficient_c: 1,
+                coefficient_d: 1,
+                bound_power: 2,
+            }),
         );
 
         Self {

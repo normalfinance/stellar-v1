@@ -43,14 +43,14 @@ pub struct TreasuryUserSummary {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TreasuryFeeConfig {
-    pub maker_base_fee: u128,
-    pub taker_base_fee: u128,
+    pub maker_base_fee: u128, // max = MAX_BASE_FEE
+    pub taker_base_fee: u128, // max = MAX_BASE_FEE
     pub implied_volatility: u128,
     pub reaction_time_secs: u128, // defualt to 10mins
     pub coefficient_a: u128, // How much fee do we charge for being wrong about price movement during Δt?
     pub coefficient_c: u128, // How much extra do we charge when the treasury is already unbalanced?
     pub coefficient_d: u128, // How aggressively do we defend against holding assets that are going to zero?
-    pub bound_power: u32,    // how sharply the bound defense ramps
+    pub bound_power: u32,    // how sharply the bound defense ramps; max = MAX_BOUND_POWER
 }
 
 #[contracttype]

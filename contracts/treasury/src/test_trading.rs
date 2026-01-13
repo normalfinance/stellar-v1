@@ -1,9 +1,10 @@
 #![cfg(test)]
 extern crate std;
 
-use crate::{storage::TreasuryPairBalances, testutils::Setup};
+use crate::testutils::Setup;
 
 use soroban_sdk::{testutils::Address as _, Address};
+use types::pair::PairAmountsWithUSDC;
 use utils::constant::PRICE_PRECISION;
 
 /* Buy Long */
@@ -122,9 +123,9 @@ fn test_buy_long() {
     // Test
     // ================================================================================
 
-    let fee_config = setup.treasury.get_pair_fee_config(&setup.pair.address);
+    let fee_config = setup.treasury.get_fee_config(&setup.pair.address);
     let usdc_less_fee =
-        (usdc_to_trade * (PRICE_PRECISION - fee_config.taker_fee)) / PRICE_PRECISION;
+        (usdc_to_trade * (PRICE_PRECISION - fee_config.taker_base_fee)) / PRICE_PRECISION;
     let usdc_fee = usdc_to_trade - usdc_less_fee;
 
     // Trade
@@ -154,10 +155,10 @@ fn test_buy_long() {
     // [x] TreasuryPairBalance updated
     assert_eq!(
         setup.treasury.get_balances(&setup.pair.address),
-        TreasuryPairBalances {
-            token_quote: usdc_to_deposit + usdc_to_trade - usdc_fee,
-            token_long: pair_tokens_to_deposit - expected_out,
-            token_short: pair_tokens_to_deposit,
+        PairAmountsWithUSDC {
+            usdc: usdc_to_deposit + usdc_to_trade - usdc_fee,
+            long: pair_tokens_to_deposit - expected_out,
+            short: pair_tokens_to_deposit,
         }
     );
 
@@ -286,9 +287,9 @@ fn test_buy_short() {
     // Test
     // ================================================================================
 
-    let fee_config = setup.treasury.get_pair_fee_config(&setup.pair.address);
+    let fee_config = setup.treasury.get_fee_config(&setup.pair.address);
     let usdc_less_fee =
-        (usdc_to_trade * (PRICE_PRECISION - fee_config.taker_fee)) / PRICE_PRECISION;
+        (usdc_to_trade * (PRICE_PRECISION - fee_config.taker_base_fee)) / PRICE_PRECISION;
     let usdc_fee = usdc_to_trade - usdc_less_fee;
 
     // Trade
@@ -318,10 +319,10 @@ fn test_buy_short() {
     // [x] TreasuryPairBalance updated
     assert_eq!(
         setup.treasury.get_balances(&setup.pair.address),
-        TreasuryPairBalances {
-            token_quote: usdc_to_deposit + usdc_to_trade - usdc_fee,
-            token_long: pair_tokens_to_deposit,
-            token_short: pair_tokens_to_deposit - expected_out,
+        PairAmountsWithUSDC {
+            usdc: usdc_to_deposit + usdc_to_trade - usdc_fee,
+            long: pair_tokens_to_deposit,
+            short: pair_tokens_to_deposit - expected_out,
         }
     );
 

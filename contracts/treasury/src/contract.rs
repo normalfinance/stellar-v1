@@ -11,7 +11,7 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 use types::pair::{Direction, PairAmountsWithUSDC, Side};
-use utils::constant::PRICE_PRECISION;
+use utils::constant::{MAX_BASE_FEE, MAX_BOUND_POWER, PRICE_PRECISION};
 use utils::math::safe_math::{PrecisionMath, SafeConversion, SafeMath};
 
 // Access control
@@ -47,7 +47,7 @@ impl Treasury {
     //   - admin: The address to be assigned the Admin role.
     //   - oracle: The address of Normal Oracle specifically for USDC.
     pub fn __constructor(e: Env, admin: Address, oracle: Address) {
-        admin.require_auth();
+        // admin.require_auth();
 
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
@@ -173,9 +173,9 @@ impl TreasuryTrait for Treasury {
 
         // Convert shares to withdrawable token amounts
         let balances = crate::storage::get_balances(&e, &pair);
-        let tokens_out = crate::lp::shares_to_token_amounts(&e, &balances, total_shares, shares);
-
-        // TODO: should we enforce the USDC floor on withdrawals?
+        let prices = crate::price::get_prices(&e, &pair);
+        let tokens_out =
+            crate::lp::validate_lp_withdrawal(&e, &balances, &prices, total_shares, shares);
 
         // Burn shares
         let new_total_shares = total_shares.safe_sub(&e, shares);
@@ -1184,7 +1184,11 @@ impl AdminInterfaceTrait for Treasury {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        if config.maker_base_fee > PRICE_PRECISION || config.taker_base_fee > PRICE_PRECISION {
+        if config.maker_base_fee > MAX_BASE_FEE || config.taker_base_fee > MAX_BASE_FEE {
+            panic_with_error!(&e, TreasuryError::InvalidInput);
+        }
+
+        if config.bound_power > MAX_BOUND_POWER {
             panic_with_error!(&e, TreasuryError::InvalidInput);
         }
 

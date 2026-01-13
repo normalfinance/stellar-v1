@@ -1,6 +1,6 @@
 use soroban_sdk::{panic_with_error, Env};
 use types::pair::{PairAmountsWithUSDC, Side};
-use utils::constant::{ONE_U128, ONE_YEAR, PRICE_PRECISION};
+use utils::constant::{MAX_BOUND_POWER, ONE_U128, ONE_YEAR, PRICE_PRECISION};
 use utils::math::safe_math::{PrecisionMath, SafeMath};
 
 use crate::errors::TreasuryError;
@@ -83,6 +83,10 @@ pub fn calculate_fee_from_values(
     // Treat `implied_volatility` as an annualized realized-variance-like quantity in 1e7 precision,
     // then convert to "per-second" rate by dividing by seconds/year.
     let rv_per_sec = fee_config.implied_volatility.safe_div(e, ONE_YEAR); // u128
+
+    if fee_config.bound_power > MAX_BOUND_POWER {
+        panic_with_error!(e, TreasuryError::InvalidInput);
+    }
 
     fee(
         e,
@@ -199,7 +203,7 @@ pub fn fee(
     let rv_dt = rv_per_sec.saturating_mul(reaction_time_secs);
 
     // m should be in 1e7 precision, so take sqrt(rv_dt * 1e7)
-    let m = isqrt_u128(rv_dt.saturating_mul(ONE_U128));
+    let m = isqrt_u128_strict(e, rv_dt.saturating_mul(ONE_U128));
 
     // move_term = a * m / 1e7
     let move_term = a.saturating_mul(m).saturating_div(ONE_U128);
@@ -215,10 +219,7 @@ pub fn fee(
     // 3) Bound toxicity: d * b^p
     // ----------------------------
     let b = bound_proximity.min(ONE_U128);
-    let mut b_pow = if bound_pow == 0 { ONE_U128 } else { b };
-    for _ in 1..bound_pow {
-        b_pow = b_pow.saturating_mul(b).saturating_div(ONE_U128);
-    }
+    let b_pow = pow_fixed_1e7(b, bound_pow);
     let bound_term = d.saturating_mul(b_pow).saturating_div(ONE_U128);
 
     // ----------------------------
@@ -238,21 +239,49 @@ pub fn fee(
 /// Returns `floor(sqrt(x))`.
 ///
 /// Deterministic and safe for Soroban (no floats).
-pub fn isqrt_u128(x: u128) -> u128 {
+/// Panics if internal additions overflow (only possible at extreme inputs).
+pub fn isqrt_u128_strict(e: &Env, x: u128) -> u128 {
     if x == 0 {
         return 0;
     }
 
-    // Babylonian method
-    let mut z = (x + 1) / 2;
+    let mut z = x.safe_add(e, 1).safe_div(e, 2);
     let mut y = x;
 
     while z < y {
         y = z;
-        z = (x / z + z) / 2;
+        let t = x.safe_div(e, z);
+        z = t.safe_add(e, z).safe_div(e, 2);
     }
 
     y
+}
+
+/// Computes `base^exp` where `base` is in 1e7 fixed-point and the result is also 1e7 fixed-point.
+/// Uses exponentiation-by-squaring: O(log exp).
+///
+/// Semantics:
+/// - pow_fixed(base, 0) = 1.0
+/// - base is clamped to [0, 1.0] if you pass it through `.min(ONE_U128)` beforehand.
+///
+/// Safe: saturating arithmetic, deterministic, no floats.
+pub fn pow_fixed_1e7(mut base: u128, mut exp: u32) -> u128 {
+    // result = 1.0
+    let mut result: u128 = ONE_U128;
+
+    while exp > 0 {
+        if (exp & 1) == 1 {
+            // result *= base
+            result = result.saturating_mul(base).saturating_div(ONE_U128);
+        }
+        exp >>= 1;
+        if exp > 0 {
+            // base *= base (only if we still need it)
+            base = base.saturating_mul(base).saturating_div(ONE_U128);
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -262,6 +291,23 @@ mod tests {
 
     fn env() -> Env {
         Env::default()
+    }
+
+    #[test]
+    fn test_pow_fixed_1e7() {
+        assert_eq!(pow_fixed_1e7(10_000_000, 0), 10_000_000); // 1^0 = 1
+        assert_eq!(pow_fixed_1e7(10_000_000, 5), 10_000_000); // 1^p = 1
+
+        assert_eq!(pow_fixed_1e7(0, 0), 10_000_000); // 0^0 -> 1 by convention here
+        assert_eq!(pow_fixed_1e7(0, 5), 0); // 0^p = 0
+
+        // 0.5^2 = 0.25
+        let half = 5_000_000u128;
+        assert_eq!(pow_fixed_1e7(half, 2), 2_500_000);
+
+        // 0.9^3 ~= 0.729
+        let nine_tenths = 9_000_000u128;
+        assert_eq!(pow_fixed_1e7(nine_tenths, 3), 7_290_000);
     }
 
     // ----------------------------
@@ -276,10 +322,11 @@ mod tests {
     }
 
     #[test]
-    fn apply_fee_to_input_full_fee_returns_zero() {
+    #[should_panic]
+    fn apply_fee_to_input_over_max_panics() {
         let e = Env::default();
         let amt = 1_234_567u128;
-        assert_eq!(apply_fee_to_input(&e, amt, PRICE_PRECISION), 0);
+        assert_eq!(apply_fee_to_input(&e, amt, PRICE_PRECISION + 1), 0);
     }
 
     #[test]
@@ -388,19 +435,21 @@ mod tests {
 
     #[test]
     fn test_isqrt_u128_basic() {
-        assert_eq!(isqrt_u128(0), 0);
-        assert_eq!(isqrt_u128(1), 1);
-        assert_eq!(isqrt_u128(4), 2);
-        assert_eq!(isqrt_u128(9), 3);
-        assert_eq!(isqrt_u128(15), 3);
-        assert_eq!(isqrt_u128(16), 4);
+        let e = env();
+        assert_eq!(isqrt_u128_strict(&e, 0), 0);
+        assert_eq!(isqrt_u128_strict(&e, 1), 1);
+        assert_eq!(isqrt_u128_strict(&e, 4), 2);
+        assert_eq!(isqrt_u128_strict(&e, 9), 3);
+        assert_eq!(isqrt_u128_strict(&e, 15), 3);
+        assert_eq!(isqrt_u128_strict(&e, 16), 4);
     }
 
     #[test]
     fn test_isqrt_u128_large_square() {
+        let e = env();
         let x = 123_456u128;
         let sq = x * x;
-        assert_eq!(isqrt_u128(sq), x);
+        assert_eq!(isqrt_u128_strict(&e, sq), x);
     }
 
     // --- fee ----------------------------------------------------------------
