@@ -77,11 +77,11 @@ pub struct UserSharesKey {
 #[derive(Clone)]
 #[contracttype]
 pub enum TreasuryDataKey {
-    // map of pair to TreasuryAddresses
+    // map of pair to Config
     Config(Address),
-    // map of pair to TreasuryPairBalances
+    // map of pair to Balances
     Balances(Address),
-    //
+    // map of pair to RiskParameters
     RiskParameters(Address),
     // map of pair to Total LP share supply
     TotalShares(Address),
@@ -124,6 +124,11 @@ generate_instance_storage_getter_and_setter_with_default!(
 );
 
 // Pair details
+pub(crate) fn has_config(e: &Env, pair: &Address) -> bool {
+    let key = TreasuryDataKey::Config(pair.clone());
+    e.storage().persistent().has(&key)
+}
+
 pub(crate) fn get_config(env: &Env, pair: &Address) -> PairConfig {
     let key = TreasuryDataKey::Config(pair.clone());
     match env.storage().persistent().get(&key) {
