@@ -399,6 +399,10 @@ impl TradingTrait for Treasury {
             &usdc_to_return.safe_to_i128(&e),
         );
 
+        // Panic if the trade removes too much USDC
+        let nav = crate::lp::nav(&e, &balances, &prices);
+        crate::risk::validate_usdc_floor(&e, balances.usdc, usdc_to_return, nav, prices.usdc);
+
         // Update balances
         crate::storage::set_balances(
             &e,
@@ -506,6 +510,10 @@ impl TradingTrait for Treasury {
             &user,
             &usdc_to_return.safe_to_i128(&e),
         );
+
+        // Panic if the trade removes too much USDC
+        let nav = crate::lp::nav(&e, &balances, &prices);
+        crate::risk::validate_usdc_floor(&e, balances.usdc, usdc_to_return, nav, prices.usdc);
 
         // Update balances
         crate::storage::set_balances(
