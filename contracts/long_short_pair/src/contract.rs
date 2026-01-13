@@ -299,13 +299,13 @@ impl LongShortPairTrait for LongShortPair {
             status: crate::storage::get_status(&e),
             collateral: Self::get_collateral_info(e.clone()),
             tokens: PairTokens {
-                long: token_pair::get_token_short(&e),
+                long: token_pair::get_token_long(&e),
                 short: token_pair::get_token_short(&e),
                 collateral: crate::storage::get_collateral_token(&e),
             },
             price_bounds: PairPriceBounds {
                 lower: crate::storage::get_lower_bound(&e),
-                upper: crate::storage::get_lower_bound(&e),
+                upper: crate::storage::get_upper_bound(&e),
             },
             calculator: crate::storage::get_calculator(&e),
             oracle: crate::storage::get_oracle(&e),
