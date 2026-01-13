@@ -39,12 +39,6 @@ pub trait TradingTrait {
     fn buy_short(e: Env, user: Address, pair: Address, usdc_in: u128, min_short_out: u128) -> u128;
     fn sell_short(e: Env, user: Address, pair: Address, short_in: u128, min_usdc_out: u128)
         -> u128;
-
-    fn mint_and_sell_short(e: Env, user: Address, pair: Address, usdc_in: u128) -> u128;
-    fn mint_and_sell_long(e: Env, user: Address, pair: Address, usdc_in: u128) -> u128;
-
-    fn buy_long_and_redeem(e: Env, user: Address, pair: Address, short_in: u128) -> u128;
-    fn buy_short_and_redeem(e: Env, user: Address, pair: Address, long_in: u128) -> u128;
 }
 
 pub trait AdminInterfaceTrait {

@@ -12,7 +12,6 @@ mod price;
 mod risk;
 mod storage;
 mod test_lp;
-// mod test_combined_trading;
 mod test_permissions;
 mod test_trading;
 mod testutils;

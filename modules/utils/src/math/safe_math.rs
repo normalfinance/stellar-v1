@@ -281,7 +281,7 @@ impl SafeConversion for u128 {
 impl PrecisionMath for u128 {
     #[track_caller]
     fn safe_fixed_mul_ceil(self, e: &Env, other: u128, precision: u128) -> u128 {
-        if precision == 0 || other == 0 {
+        if precision == 0 {
             panic_with_error!(e, MathError::DivisionByZero);
         }
 
@@ -316,7 +316,7 @@ impl PrecisionMath for u128 {
 
     #[track_caller]
     fn safe_fixed_mul_floor(self, e: &Env, other: u128, precision: u128) -> u128 {
-        if precision == 0 || other == 0 {
+        if precision == 0 {
             panic_with_error!(e, MathError::DivisionByZero);
         }
 
@@ -341,7 +341,7 @@ impl PrecisionMath for u128 {
 
     #[track_caller]
     fn safe_fixed_mul_round(self, e: &Env, other: u128, precision: u128) -> u128 {
-        if precision == 0 || other == 0 {
+        if precision == 0 {
             panic_with_error!(e, MathError::DivisionByZero);
         }
 

@@ -13,26 +13,39 @@ use utils::{
 
 /********** Storage Types **********/
 
+/// Static configuration for a supported LongShortPair.
+///
+/// Stored per-pair and used to find the token contracts the Treasury should interact with.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PairConfig {
+    /// The LongShortPair contract address.
     pub pair: Address,
+    /// LONG token contract address.
     pub long: Address,
+    /// SHORT token contract address.
     pub short: Address,
+    /// Collateral token contract address (USDC).
     pub usdc: Address,
 }
 
+/// Convenient aggregation used by frontend/indexers.
+///
+/// Note: this is not stored directly; it is assembled from other stored keys.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TreasurySummary {
     pub config: PairConfig,
+    /// Treasury inventory (what the Treasury actually holds / accounts for).
     pub balances: PairAmountsWithUSDC,
+    /// Quoting inputs (LONG/SHORT settlement fractions + USDC oracle TWAP).
     pub prices: PairAmountsWithUSDC,
-    // pub total_pairs: u128,
+    /// Total LP share supply for this pair.
     pub total_shares: u128,
     pub fee_config: TreasuryFeeConfig,
 }
 
+/// A per-user view that combines [`TreasurySummary`] plus the user's LP share balance.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TreasuryUserSummary {
@@ -40,33 +53,45 @@ pub struct TreasuryUserSummary {
     pub user_shares: u128,
 }
 
+/// Fee model parameters for a pair.
+///
+/// `maker_base_fee` / `taker_base_fee` are expressed in `PRICE_PRECISION` units.
+/// The remaining parameters are model-specific knobs used by `calculate_fee(...)`.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TreasuryFeeConfig {
     pub maker_base_fee: u128, // max = MAX_BASE_FEE
     pub taker_base_fee: u128, // max = MAX_BASE_FEE
     pub implied_volatility: u128,
-    pub reaction_time_secs: u128, // defualt to 10mins
-    pub coefficient_a: u128, // How much fee do we charge for being wrong about price movement during Δt?
-    pub coefficient_c: u128, // How much extra do we charge when the treasury is already unbalanced?
-    pub coefficient_d: u128, // How aggressively do we defend against holding assets that are going to zero?
-    pub bound_power: u32,    // how sharply the bound defense ramps; max = MAX_BOUND_POWER
+    pub reaction_time_secs: u128, // default to 10 mins
+    pub coefficient_a: u128,      // fee for price risk during Δt
+    pub coefficient_c: u128,      // fee for imbalance / skew
+    pub coefficient_d: u128,      // fee for holding-to-zero defense
+    pub bound_power: u32,         // how sharply bound defense ramps; max = MAX_BOUND_POWER
 }
 
+/// Risk parameters enforced by the Treasury when executing trades.
+///
+/// Values are interpreted by `crate::risk::*` checks.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TreasuryRiskParameters {
+    /// Threshold in `PRICE_PRECISION` units used by toxic-trade logic.
     pub toxic_threshold: u128, // similar to collateral_percent_long
 }
 
 /********** Storage Key Types **********/
 
+// Instance (non-pair-specific) keys.
 const KEY_USDC_FLOOR_FRACTION: &str = "UsdcFloorFraction";
 const KEY_ORACLE: &str = "Oracle";
 const KEY_IS_KILLED_DEPOSIT: &str = "IsKilledDeposit";
 const KEY_IS_KILLED_WITHDRAW: &str = "IsKilledWithdraw";
 const KEY_IS_KILLED_TRADE: &str = "IsKilledTrade";
 
+/// Composite key for `(pair, user)` LP share balances.
+///
+/// Stored under [`TreasuryDataKey::UserShares`].
 #[contracttype]
 #[derive(Clone)]
 pub struct UserSharesKey {
@@ -74,36 +99,38 @@ pub struct UserSharesKey {
     pub user: Address,
 }
 
+/// Persistent storage keys for all per-pair state.
+///
+/// Everything here is stored in **persistent** storage and must be TTL-bumped
+/// (`bump_persistent`) on read/write to avoid expiry.
 #[derive(Clone)]
 #[contracttype]
 pub enum TreasuryDataKey {
-    // map of pair to Config
+    /// Pair -> token/config addresses.
     Config(Address),
-    // map of pair to Balances
+    /// Pair -> Treasury inventory amounts.
     Balances(Address),
-    // map of pair to RiskParameters
+    /// Pair -> risk knobs (toxicity threshold, etc.).
     RiskParameters(Address),
-    // map of pair to Total LP share supply
+    /// Pair -> total LP share supply.
     TotalShares(Address),
-    // map of (pair, user) to LP share balance
+    /// (Pair, User) -> user's LP share balance.
     UserShares(UserSharesKey),
-    // map of pair to FeeConfig
+    /// Pair -> fee configuration.
     FeeConfig(Address),
-    // map of pair to collectable protocol fees
+    /// Pair -> accumulated protocol fees (in USDC units).
     ProtocolFees(Address),
 }
 
 /********** Storage **********/
 
 generate_instance_storage_getter_and_setter!(oracle, KEY_ORACLE, Address);
-
 generate_instance_storage_getter_and_setter_with_default!(
     usdc_floor_fraction,
     KEY_USDC_FLOOR_FRACTION,
     u128,
     PRICE_PRECISION / 10 // 10%
 );
-
 generate_instance_storage_getter_and_setter_with_default!(
     is_killed_deposit,
     KEY_IS_KILLED_DEPOSIT,
@@ -124,15 +151,21 @@ generate_instance_storage_getter_and_setter_with_default!(
 );
 
 // Pair details
+
+/// Returns `true` if this pair has been registered via `add_pair` (i.e. config exists).
 pub(crate) fn has_config(e: &Env, pair: &Address) -> bool {
     let key = TreasuryDataKey::Config(pair.clone());
     e.storage().persistent().has(&key)
 }
 
+/// Loads the stored token/config addresses for a pair.
+///
+/// Reverts if the pair has not been initialized (no config found).
 pub(crate) fn get_config(env: &Env, pair: &Address) -> PairConfig {
     let key = TreasuryDataKey::Config(pair.clone());
     match env.storage().persistent().get(&key) {
         Some(config) => {
+            // Prevent TTL expiry of critical config.
             bump_persistent(env, &key);
             config
         }
@@ -140,6 +173,7 @@ pub(crate) fn get_config(env: &Env, pair: &Address) -> PairConfig {
     }
 }
 
+/// Stores token/config addresses for a pair (called from admin `add_pair`).
 pub(crate) fn set_config(env: &Env, pair: &Address, config: &PairConfig) {
     let key = TreasuryDataKey::Config(pair.clone());
     env.storage().persistent().set(&key, config);
@@ -147,6 +181,10 @@ pub(crate) fn set_config(env: &Env, pair: &Address, config: &PairConfig) {
 }
 
 // Risk parameters
+
+/// Loads risk parameters for a pair (toxicity threshold, etc.).
+///
+/// Reverts if missing (pair not initialized).
 pub(crate) fn get_risk_parameters(env: &Env, pair: &Address) -> TreasuryRiskParameters {
     let key = TreasuryDataKey::RiskParameters(pair.clone());
     match env.storage().persistent().get(&key) {
@@ -158,6 +196,7 @@ pub(crate) fn get_risk_parameters(env: &Env, pair: &Address) -> TreasuryRiskPara
     }
 }
 
+/// Stores risk parameters for a pair (called from admin `add_pair` / updates).
 pub(crate) fn set_risk_parameters(env: &Env, pair: &Address, params: &TreasuryRiskParameters) {
     let key = TreasuryDataKey::RiskParameters(pair.clone());
     env.storage().persistent().set(&key, params);
@@ -165,6 +204,11 @@ pub(crate) fn set_risk_parameters(env: &Env, pair: &Address, params: &TreasuryRi
 }
 
 // Pair balances
+
+/// Loads the Treasury's accounted inventory for a pair.
+///
+/// These balances are the source-of-truth used for inventory checks and NAV calculations.
+/// Reverts if missing (pair not initialized).
 pub(crate) fn get_balances(env: &Env, pair: &Address) -> PairAmountsWithUSDC {
     let key = TreasuryDataKey::Balances(pair.clone());
     match env.storage().persistent().get(&key) {
@@ -176,6 +220,9 @@ pub(crate) fn get_balances(env: &Env, pair: &Address) -> PairAmountsWithUSDC {
     }
 }
 
+/// Stores the Treasury's accounted inventory for a pair.
+///
+/// Callers should ensure these balances remain consistent with token transfers.
 pub(crate) fn set_balances(env: &Env, pair: &Address, balances: &PairAmountsWithUSDC) {
     let key = TreasuryDataKey::Balances(pair.clone());
     env.storage().persistent().set(&key, balances);
@@ -183,6 +230,11 @@ pub(crate) fn set_balances(env: &Env, pair: &Address, balances: &PairAmountsWith
 }
 
 // Shares
+
+/// Loads the total LP share supply for a pair.
+///
+/// Shares represent pro-rata ownership of the Treasury inventory for that pair.
+/// Reverts if missing (pair not initialized).
 pub(crate) fn get_total_shares(env: &Env, pair: &Address) -> u128 {
     let key = TreasuryDataKey::TotalShares(pair.clone());
     match env.storage().persistent().get(&key) {
@@ -194,6 +246,7 @@ pub(crate) fn get_total_shares(env: &Env, pair: &Address) -> u128 {
     }
 }
 
+/// Stores the total LP share supply for a pair.
 pub(crate) fn set_total_shares(env: &Env, pair: &Address, shares: u128) {
     let key = TreasuryDataKey::TotalShares(pair.clone());
     env.storage().persistent().set(&key, &shares);
@@ -201,6 +254,14 @@ pub(crate) fn set_total_shares(env: &Env, pair: &Address, shares: u128) {
 }
 
 // User Shares
+
+/// Loads a user's LP share balance for a pair.
+///
+/// - If `return_zero == true`, missing storage returns `0` (useful for "view" calls).
+/// - If `return_zero == false`, missing storage reverts (useful when missing shares is an invariant violation).
+///
+/// Note: This key is in persistent storage; callers should ensure share keys are TTL-bumped
+/// on any path that must preserve withdrawability.
 pub(crate) fn get_user_shares(
     env: &Env,
     pair: &Address,
@@ -226,6 +287,7 @@ pub(crate) fn get_user_shares(
     }
 }
 
+/// Stores a user's LP share balance for a pair.
 pub(crate) fn set_user_shares(env: &Env, pair: &Address, user: &Address, shares: u128) {
     let key = TreasuryDataKey::UserShares(UserSharesKey {
         pair: pair.clone(),
@@ -236,6 +298,10 @@ pub(crate) fn set_user_shares(env: &Env, pair: &Address, user: &Address, shares:
 }
 
 // Fee Config
+
+/// Loads the fee configuration for a pair (maker/taker base fees + model parameters).
+///
+/// Reverts if missing (pair not initialized).
 pub(crate) fn get_fee_config(env: &Env, pair: &Address) -> TreasuryFeeConfig {
     let key = TreasuryDataKey::FeeConfig(pair.clone());
     match env.storage().persistent().get(&key) {
@@ -247,6 +313,7 @@ pub(crate) fn get_fee_config(env: &Env, pair: &Address) -> TreasuryFeeConfig {
     }
 }
 
+/// Stores the fee configuration for a pair.
 pub(crate) fn set_fee_config(env: &Env, pair: &Address, config: &TreasuryFeeConfig) {
     let key = TreasuryDataKey::FeeConfig(pair.clone());
     env.storage().persistent().set(&key, config);
@@ -254,17 +321,23 @@ pub(crate) fn set_fee_config(env: &Env, pair: &Address, config: &TreasuryFeeConf
 }
 
 // Protocol fee
+
+/// Loads accumulated protocol fees (denominated in USDC) for a pair.
+///
+/// This is the amount claimable by the admin via `claim_protocol_fees`.
+/// Reverts if missing (pair not initialized).
 pub(crate) fn get_protocol_fees(env: &Env, pair: &Address) -> u128 {
     let key = TreasuryDataKey::ProtocolFees(pair.clone());
     match env.storage().persistent().get(&key) {
-        Some(details) => {
+        Some(fees) => {
             bump_persistent(env, &key);
-            details
+            fees
         }
         None => panic_with_error!(env, StorageError::ValueNotInitialized),
     }
 }
 
+/// Stores accumulated protocol fees (denominated in USDC) for a pair.
 pub(crate) fn set_protocol_fees(env: &Env, pair: &Address, fees: &u128) {
     let key = TreasuryDataKey::ProtocolFees(pair.clone());
     env.storage().persistent().set(&key, fees);

@@ -92,6 +92,38 @@ pub fn validate_usdc_floor(
     }
 }
 
+/// Blocks trades on a side that has become **toxic** due to proximity to settlement bounds.
+///
+/// This function is a **risk guard** used during spot trading against the Treasury.
+/// When the price approaches an extreme (upper or lower bound), one side of the
+/// long–short pair is approaching zero terminal value. Allowing users to trade
+/// *into* that side would create an asymmetric loss for the Treasury.
+///
+/// ### Toxicity Rules
+/// - **Near the upper bound**: the **SHORT** side is toxic
+///   (price → max, SHORT → 0 at settlement)
+/// - **Near the lower bound**: the **LONG** side is toxic
+///   (price → min, LONG → 0 at settlement)
+///
+/// The `toxic_threshold` defines how close to the bound we start rejecting trades.
+/// It is expressed in the same normalized price space as `price` (typically
+/// `[0, PRICE_PRECISION]`).
+///
+/// ### Arguments
+/// - `e` — Soroban [`Env`].
+/// - `pair` — Address of the Long–Short Pair being traded.
+/// - `side` — The side the user is attempting to trade **into**.
+/// - `price` — Current normalized price of that side (oracle-derived).
+///
+/// ### Reverts
+/// - [`TreasuryError::ToxicSideNotAccepted`] if the trade would move inventory
+///   into a side that is near-worthless at settlement.
+///
+/// ### Notes
+/// - This does **not** depend on inventory levels.
+/// - This guard is purely about **terminal value risk**, not solvency.
+/// - Typically enforced on *sell* paths (Treasury buying user tokens),
+///   but may also be applied defensively on buys depending on strategy.
 pub fn block_toxic_trades(e: &Env, pair: &Address, side: Side, price: u128) {
     let risk_params = crate::storage::get_risk_parameters(e, pair);
 

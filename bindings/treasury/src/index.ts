@@ -36,6 +36,7 @@ if (typeof window !== 'undefined') {
 export const TreasuryError = {
   201: {message:"AlreadyInitialized"},
   204: {message:"InvalidInput"},
+  205: {message:"InvalidPair"},
   209: {message:"FailedToCallPairContract"},
   213: {message:"ActionPaused"},
   215: {message:"InsufficientInventory"},
@@ -51,29 +52,69 @@ export const TreasuryError = {
 }
 
 
+/**
+ * Static configuration for a supported LongShortPair.
+ * 
+ * Stored per-pair and used to find the token contracts the Treasury should interact with.
+ */
 export interface PairConfig {
-  long: string;
-  pair: string;
-  short: string;
-  usdc: string;
+  /**
+ * LONG token contract address.
+ */
+long: string;
+  /**
+ * The LongShortPair contract address.
+ */
+pair: string;
+  /**
+ * SHORT token contract address.
+ */
+short: string;
+  /**
+ * Collateral token contract address (USDC).
+ */
+usdc: string;
 }
 
 
+/**
+ * Convenient aggregation used by frontend/indexers.
+ * 
+ * Note: this is not stored directly; it is assembled from other stored keys.
+ */
 export interface TreasurySummary {
-  balances: PairAmountsWithUSDC;
+  /**
+ * Treasury inventory (what the Treasury actually holds / accounts for).
+ */
+balances: PairAmountsWithUSDC;
   config: PairConfig;
   fee_config: TreasuryFeeConfig;
-  prices: PairAmountsWithUSDC;
-  total_shares: u128;
+  /**
+ * Quoting inputs (LONG/SHORT settlement fractions + USDC oracle TWAP).
+ */
+prices: PairAmountsWithUSDC;
+  /**
+ * Total LP share supply for this pair.
+ */
+total_shares: u128;
 }
 
 
+/**
+ * A per-user view that combines [`TreasurySummary`] plus the user's LP share balance.
+ */
 export interface TreasuryUserSummary {
   summary: TreasurySummary;
   user_shares: u128;
 }
 
 
+/**
+ * Fee model parameters for a pair.
+ * 
+ * `maker_base_fee` / `taker_base_fee` are expressed in `PRICE_PRECISION` units.
+ * The remaining parameters are model-specific knobs used by `calculate_fee(...)`.
+ */
 export interface TreasuryFeeConfig {
   bound_power: u32;
   coefficient_a: u128;
@@ -86,16 +127,35 @@ export interface TreasuryFeeConfig {
 }
 
 
+/**
+ * Risk parameters enforced by the Treasury when executing trades.
+ * 
+ * Values are interpreted by `crate::risk::*` checks.
+ */
 export interface TreasuryRiskParameters {
-  toxic_threshold: u128;
+  /**
+ * Threshold in `PRICE_PRECISION` units used by toxic-trade logic.
+ */
+toxic_threshold: u128;
 }
 
 
+/**
+ * Composite key for `(pair, user)` LP share balances.
+ * 
+ * Stored under [`TreasuryDataKey::UserShares`].
+ */
 export interface UserSharesKey {
   pair: string;
   user: string;
 }
 
+/**
+ * Persistent storage keys for all per-pair state.
+ * 
+ * Everything here is stored in **persistent** storage and must be TTL-bumped
+ * (`bump_persistent`) on read/write to avoid expiry.
+ */
 export type TreasuryDataKey = {tag: "Config", values: readonly [string]} | {tag: "Balances", values: readonly [string]} | {tag: "RiskParameters", values: readonly [string]} | {tag: "TotalShares", values: readonly [string]} | {tag: "UserShares", values: readonly [UserSharesKey]} | {tag: "FeeConfig", values: readonly [string]} | {tag: "ProtocolFees", values: readonly [string]};
 
 export const AccessControlError = {
@@ -273,6 +333,21 @@ export type Delay = readonly [u64];
 export interface Client {
   /**
    * Construct and simulate a deposit transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Deposits LP collateral into the Treasury in exchange for newly-minted LP shares.
+   * 
+   * A deposit consists of:
+   * - `pairs_to_deposit` LONG tokens
+   * - `pairs_to_deposit` SHORT tokens
+   * - `pairs_to_deposit * collateral_per_pair` USDC
+   * 
+   * Shares are minted proportional to the deposit's NAV relative to the Treasury's total NAV.
+   * 
+   * ### Reverts
+   * - [`TreasuryError::InvalidInput`] if `pairs_to_deposit == 0`.
+   * - [`TreasuryError::ActionPaused`] if deposits are paused.
+   * 
+   * ### Returns
+   * Returns the number of LP shares minted for the depositor.
    */
   deposit: ({user, pair, pairs_to_deposit}: {user: string, pair: string, pairs_to_deposit: u128}, options?: {
     /**
@@ -293,6 +368,19 @@ export interface Client {
 
   /**
    * Construct and simulate a withdraw transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Withdraws LP collateral from the Treasury by burning LP shares.
+   * 
+   * The caller specifies the number of shares to burn. The Treasury computes the
+   * proportional amount of LONG/SHORT/USDC owed, validates safety constraints, and
+   * transfers the tokens to the user.
+   * 
+   * ### Reverts
+   * - [`TreasuryError::InvalidInput`] if `shares == 0`.
+   * - [`TreasuryError::ActionPaused`] if withdrawals are paused.
+   * - [`TreasuryError::InsufficientShares`] if `shares > user_shares` or `total_shares == 0`.
+   * 
+   * ### Returns
+   * Returns the token amounts withdrawn: `{ long, short, usdc }`.
    */
   withdraw: ({user, pair, shares}: {user: string, pair: string, shares: u128}, options?: {
     /**
@@ -313,6 +401,9 @@ export interface Client {
 
   /**
    * Construct and simulate a get_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the stored token configuration for a given Pair.
+   * 
+   * This includes the contract addresses for the Pair, LONG, SHORT, and collateral (USDC) tokens.
    */
   get_config: ({pair}: {pair: string}, options?: {
     /**
@@ -333,6 +424,9 @@ export interface Client {
 
   /**
    * Construct and simulate a get_prices transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the current oracle prices for the given Pair.
+   * 
+   * Prices are returned in the same precision as `PRICE_PRECISION`.
    */
   get_prices: ({pair}: {pair: string}, options?: {
     /**
@@ -353,6 +447,10 @@ export interface Client {
 
   /**
    * Construct and simulate a get_balances transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the Treasury’s internal accounting balances for the given Pair.
+   * 
+   * These balances represent the Treasury’s tracked inventory and may be used for quoting,
+   * risk checks, and LP accounting.
    */
   get_balances: ({pair}: {pair: string}, options?: {
     /**
@@ -373,6 +471,7 @@ export interface Client {
 
   /**
    * Construct and simulate a get_total_shares transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the total LP shares outstanding for the given Pair.
    */
   get_total_shares: ({pair}: {pair: string}, options?: {
     /**
@@ -393,6 +492,9 @@ export interface Client {
 
   /**
    * Construct and simulate a get_user_shares transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the LP share balance for `user` for the given Pair.
+   * 
+   * Missing records default to zero for read-only UX.
    */
   get_user_shares: ({pair, user}: {pair: string, user: string}, options?: {
     /**
@@ -413,6 +515,7 @@ export interface Client {
 
   /**
    * Construct and simulate a get_fee_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the current fee configuration for the given Pair.
    */
   get_fee_config: ({pair}: {pair: string}, options?: {
     /**
@@ -433,6 +536,9 @@ export interface Client {
 
   /**
    * Construct and simulate a get_summary transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns a snapshot of the Treasury state for the given Pair.
+   * 
+   * This is a convenience method for frontends/indexers to avoid multiple round-trips.
    */
   get_summary: ({pair}: {pair: string}, options?: {
     /**
@@ -453,6 +559,9 @@ export interface Client {
 
   /**
    * Construct and simulate a get_user_with_summary transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns a snapshot of the Treasury state for a Pair plus the user's share balance.
+   * 
+   * This is a convenience method for frontends/indexers to fetch summary + user position in one call.
    */
   get_user_with_summary: ({pair, user}: {pair: string, user: string}, options?: {
     /**
@@ -473,6 +582,17 @@ export interface Client {
 
   /**
    * Construct and simulate a estimate_trade transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Estimates a trade output and fee without executing any token transfers.
+   * 
+   * This helper is intended for quoting in UIs and off-chain routing. It uses the same
+   * pricing + fee model as the on-chain trade methods.
+   * 
+   * ### Reverts
+   * - [`TreasuryError::InvalidInput`] if `amount_in == 0`.
+   * - Reverts if `pair` is not configured (via `get_config`).
+   * 
+   * ### Returns
+   * Returns `(amount_out, usdc_fee)`.
    */
   estimate_trade: ({pair, direction, side, amount_in}: {pair: string, direction: Direction, side: Side, amount_in: u128}, options?: {
     /**
@@ -492,87 +612,29 @@ export interface Client {
   }) => Promise<AssembledTransaction<readonly [u128, u128]>>
 
   /**
-   * Construct and simulate a mint_and_sell_short transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  mint_and_sell_short: ({user, pair, usdc_in}: {user: string, pair: string, usdc_in: u128}, options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<u128>>
-
-  /**
-   * Construct and simulate a mint_and_sell_long transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  mint_and_sell_long: ({user, pair, usdc_in}: {user: string, pair: string, usdc_in: u128}, options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<u128>>
-
-  /**
-   * Construct and simulate a buy_long_and_redeem transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  buy_long_and_redeem: ({user, pair, short_in}: {user: string, pair: string, short_in: u128}, options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<u128>>
-
-  /**
-   * Construct and simulate a buy_short_and_redeem transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  buy_short_and_redeem: ({user, pair, long_in}: {user: string, pair: string, long_in: u128}, options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<u128>>
-
-  /**
    * Construct and simulate a buy_long transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Buys **LONG** tokens from the Treasury using USDC.
+   * 
+   * The caller supplies `usdc_in` and receives `long_out` quoted from the current
+   * oracle price and fee model. This trade is executed **against Treasury inventory**:
+   * the Treasury must already hold sufficient LONG to deliver the trade.
+   * 
+   * ### Pricing & Fees
+   * - Uses `prices.long` from the oracle.
+   * - Computes a dynamic taker fee via `calculate_fee(...)`.
+   * - `quote_buy_token` returns `(long_out, usdc_fee)`; `usdc_fee` is retained and tracked.
+   * 
+   * ### Slippage Protection
+   * Reverts if `long_out < min_long_out`.
+   * 
+   * ### Reverts
+   * - [`TreasuryError::InvalidInput`] if `usdc_in == 0`.
+   * - [`TreasuryError::ActionPaused`] if trading is paused.
+   * - [`TreasuryError::Slippage`] if output is zero or below `min_long_out`.
+   * - [`TreasuryError::InsufficientInventory`] if the Treasury lacks LONG inventory.
+   * 
+   * ### Returns
+   * Returns the amount of LONG transferred to the user.
    */
   buy_long: ({user, pair, usdc_in, min_long_out}: {user: string, pair: string, usdc_in: u128, min_long_out: u128}, options?: {
     /**
@@ -593,6 +655,29 @@ export interface Client {
 
   /**
    * Construct and simulate a sell_long transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Sells **LONG** tokens to the Treasury in exchange for USDC.
+   * 
+   * The caller supplies `long_in` and receives `usdc_out` quoted from the current
+   * oracle price and fee model. This trade is executed **against Treasury USDC inventory**:
+   * the Treasury must have sufficient USDC to pay out.
+   * 
+   * Additional safety checks apply to protect LPs:
+   * - LONG-side trades may be blocked as "toxic"
+   * - USDC floor constraints prevent draining too much collateral in a single trade
+   * 
+   * ### Slippage Protection
+   * Reverts if `usdc_out < min_usdc_out`.
+   * 
+   * ### Reverts
+   * - [`TreasuryError::InvalidInput`] if `long_in == 0`.
+   * - [`TreasuryError::ActionPaused`] if trading is paused.
+   * - [`TreasuryError::ToxicSideNotAccepted`] if risk logic blocks LONG sells.
+   * - [`TreasuryError::Slippage`] if output is zero or below `min_usdc_out`.
+   * - [`TreasuryError::InsufficientInventory`] if the Treasury lacks USDC to pay out.
+   * - [`TreasuryError::CannotPassFloor`] if paying out violates the USDC floor.
+   * 
+   * ### Returns
+   * Returns the amount of USDC transferred to the user.
    */
   sell_long: ({user, pair, long_in, min_usdc_out}: {user: string, pair: string, long_in: u128, min_usdc_out: u128}, options?: {
     /**
@@ -613,6 +698,28 @@ export interface Client {
 
   /**
    * Construct and simulate a buy_short transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Buys **SHORT** tokens from the Treasury using USDC.
+   * 
+   * The caller supplies `usdc_in` and receives `short_out` quoted from the current
+   * oracle price and fee model. This trade is executed **against Treasury inventory**:
+   * the Treasury must already hold sufficient SHORT to deliver the trade.
+   * 
+   * ### Pricing & Fees
+   * - Uses `prices.short` from the oracle.
+   * - Computes a dynamic taker fee via `calculate_fee(...)`.
+   * - `quote_buy_token` returns `(short_out, usdc_fee)`; `usdc_fee` is retained and tracked.
+   * 
+   * ### Slippage Protection
+   * Reverts if `short_out < min_short_out`.
+   * 
+   * ### Reverts
+   * - [`TreasuryError::InvalidInput`] if `usdc_in == 0`.
+   * - [`TreasuryError::ActionPaused`] if trading is paused.
+   * - [`TreasuryError::Slippage`] if output is zero or below `min_short_out`.
+   * - [`TreasuryError::InsufficientInventory`] if the Treasury lacks SHORT inventory.
+   * 
+   * ### Returns
+   * Returns the amount of SHORT transferred to the user.
    */
   buy_short: ({user, pair, usdc_in, min_short_out}: {user: string, pair: string, usdc_in: u128, min_short_out: u128}, options?: {
     /**
@@ -633,6 +740,29 @@ export interface Client {
 
   /**
    * Construct and simulate a sell_short transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Sells **SHORT** tokens to the Treasury in exchange for USDC.
+   * 
+   * The caller supplies `short_in` and receives `usdc_out` quoted from the current
+   * oracle price and fee model. This trade is executed **against Treasury USDC inventory**:
+   * the Treasury must have sufficient USDC to pay out.
+   * 
+   * Additional safety checks apply to protect LPs:
+   * - SHORT-side trades may be blocked as "toxic"
+   * - USDC floor constraints prevent draining too much collateral in a single trade
+   * 
+   * ### Slippage Protection
+   * Reverts if `usdc_out < min_usdc_out`.
+   * 
+   * ### Reverts
+   * - [`TreasuryError::InvalidInput`] if `short_in == 0`.
+   * - [`TreasuryError::ActionPaused`] if trading is paused.
+   * - [`TreasuryError::ToxicSideNotAccepted`] if risk logic blocks SHORT sells.
+   * - [`TreasuryError::Slippage`] if output is zero or below `min_usdc_out`.
+   * - [`TreasuryError::InsufficientInventory`] if the Treasury lacks USDC to pay out.
+   * - [`TreasuryError::CannotPassFloor`] if paying out violates the USDC floor.
+   * 
+   * ### Returns
+   * Returns the amount of USDC transferred to the user.
    */
   sell_short: ({user, pair, short_in, min_usdc_out}: {user: string, pair: string, short_in: u128, min_usdc_out: u128}, options?: {
     /**
@@ -653,6 +783,14 @@ export interface Client {
 
   /**
    * Construct and simulate a add_pair transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Registers a new Pair with the Treasury and initializes its state.
+   * 
+   * This call:
+   * - Stores the token addresses for LONG/SHORT/USDC from the Pair contract
+   * - Initializes balances, shares, risk parameters, fee config, and protocol fee counters
+   * 
+   * ### Reverts
+   * - [`TreasuryError::InvalidInput`] if fee fields are out of range.
    */
   add_pair: ({admin, pair, fee_config}: {admin: string, pair: string, fee_config: TreasuryFeeConfig}, options?: {
     /**
@@ -673,6 +811,10 @@ export interface Client {
 
   /**
    * Construct and simulate a set_fee_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Updates the fee configuration for an existing Pair.
+   * 
+   * ### Reverts
+   * - [`TreasuryError::InvalidInput`] if any configured fee exceeds its maximum bound.
    */
   set_fee_config: ({admin, pair, config}: {admin: string, pair: string, config: TreasuryFeeConfig}, options?: {
     /**
@@ -693,6 +835,12 @@ export interface Client {
 
   /**
    * Construct and simulate a set_usdc_floor transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Sets the global USDC floor fraction used by risk checks.
+   * 
+   * The floor fraction is expressed in `PRICE_PRECISION` units (e.g. `0.10e7` for 10%).
+   * 
+   * ### Reverts
+   * - [`TreasuryError::InvalidInput`] if `floor_fraction` is zero or below the minimum allowed.
    */
   set_usdc_floor: ({admin, floor_fraction}: {admin: string, floor_fraction: u128}, options?: {
     /**
@@ -713,6 +861,7 @@ export interface Client {
 
   /**
    * Construct and simulate a get_protocol_fees transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the protocol fees accumulated for the given Pair (denominated in USDC).
    */
   get_protocol_fees: ({pair}: {pair: string}, options?: {
     /**
@@ -733,6 +882,13 @@ export interface Client {
 
   /**
    * Construct and simulate a claim_protocol_fees transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Transfers accumulated protocol fees for `pair` to `destination`.
+   * 
+   * ### Reverts
+   * - Reverts if `admin` is not authorized.
+   * 
+   * ### Returns
+   * Returns the amount of fees transferred.
    */
   claim_protocol_fees: ({admin, pair, destination}: {admin: string, pair: string, destination: string}, options?: {
     /**
@@ -1171,31 +1327,27 @@ export class Client extends ContractClient {
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAGb3JhY2xlAAAAAAATAAAAAA==",
-        "AAAAAAAAAAAAAAAHZGVwb3NpdAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAEHBhaXJzX3RvX2RlcG9zaXQAAAAKAAAAAQAAAAo=",
-        "AAAAAAAAAAAAAAAId2l0aGRyYXcAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAABnNoYXJlcwAAAAAACgAAAAEAAAfQAAAAE1BhaXJBbW91bnRzV2l0aFVTREMA",
-        "AAAAAAAAAAAAAAAKZ2V0X2NvbmZpZwAAAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAH0AAAAApQYWlyQ29uZmlnAAA=",
-        "AAAAAAAAAAAAAAAKZ2V0X3ByaWNlcwAAAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAH0AAAABNQYWlyQW1vdW50c1dpdGhVU0RDAA==",
-        "AAAAAAAAAAAAAAAMZ2V0X2JhbGFuY2VzAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAH0AAAABNQYWlyQW1vdW50c1dpdGhVU0RDAA==",
-        "AAAAAAAAAAAAAAAQZ2V0X3RvdGFsX3NoYXJlcwAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAAAo=",
-        "AAAAAAAAAAAAAAAPZ2V0X3VzZXJfc2hhcmVzAAAAAAIAAAAAAAAABHBhaXIAAAATAAAAAAAAAAR1c2VyAAAAEwAAAAEAAAAK",
-        "AAAAAAAAAAAAAAAOZ2V0X2ZlZV9jb25maWcAAAAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAB9AAAAARVHJlYXN1cnlGZWVDb25maWcAAAA=",
-        "AAAAAAAAAAAAAAALZ2V0X3N1bW1hcnkAAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAH0AAAAA9UcmVhc3VyeVN1bW1hcnkA",
-        "AAAAAAAAAAAAAAAVZ2V0X3VzZXJfd2l0aF9zdW1tYXJ5AAAAAAAAAgAAAAAAAAAEcGFpcgAAABMAAAAAAAAABHVzZXIAAAATAAAAAQAAB9AAAAATVHJlYXN1cnlVc2VyU3VtbWFyeQA=",
-        "AAAAAAAAAAAAAAAOZXN0aW1hdGVfdHJhZGUAAAAAAAQAAAAAAAAABHBhaXIAAAATAAAAAAAAAAlkaXJlY3Rpb24AAAAAAAfQAAAACURpcmVjdGlvbgAAAAAAAAAAAAAEc2lkZQAAB9AAAAAEU2lkZQAAAAAAAAAJYW1vdW50X2luAAAAAAAACgAAAAEAAAPtAAAAAgAAAAoAAAAK",
-        "AAAAAAAAAAAAAAATbWludF9hbmRfc2VsbF9zaG9ydAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAB3VzZGNfaW4AAAAACgAAAAEAAAAK",
-        "AAAAAAAAAAAAAAASbWludF9hbmRfc2VsbF9sb25nAAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAB3VzZGNfaW4AAAAACgAAAAEAAAAK",
-        "AAAAAAAAAAAAAAATYnV5X2xvbmdfYW5kX3JlZGVlbQAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAACHNob3J0X2luAAAACgAAAAEAAAAK",
-        "AAAAAAAAAAAAAAAUYnV5X3Nob3J0X2FuZF9yZWRlZW0AAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAB2xvbmdfaW4AAAAACgAAAAEAAAAK",
-        "AAAAAAAAAAAAAAAIYnV5X2xvbmcAAAAEAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAB3VzZGNfaW4AAAAACgAAAAAAAAAMbWluX2xvbmdfb3V0AAAACgAAAAEAAAAK",
-        "AAAAAAAAAAAAAAAJc2VsbF9sb25nAAAAAAAABAAAAAAAAAAEdXNlcgAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAdsb25nX2luAAAAAAoAAAAAAAAADG1pbl91c2RjX291dAAAAAoAAAABAAAACg==",
-        "AAAAAAAAAAAAAAAJYnV5X3Nob3J0AAAAAAAABAAAAAAAAAAEdXNlcgAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAd1c2RjX2luAAAAAAoAAAAAAAAADW1pbl9zaG9ydF9vdXQAAAAAAAAKAAAAAQAAAAo=",
-        "AAAAAAAAAAAAAAAKc2VsbF9zaG9ydAAAAAAABAAAAAAAAAAEdXNlcgAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAhzaG9ydF9pbgAAAAoAAAAAAAAADG1pbl91c2RjX291dAAAAAoAAAABAAAACg==",
-        "AAAAAAAAAAAAAAAIYWRkX3BhaXIAAAADAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAApmZWVfY29uZmlnAAAAAAfQAAAAEVRyZWFzdXJ5RmVlQ29uZmlnAAAAAAAAAA==",
-        "AAAAAAAAAAAAAAAOc2V0X2ZlZV9jb25maWcAAAAAAAMAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAABmNvbmZpZwAAAAAH0AAAABFUcmVhc3VyeUZlZUNvbmZpZwAAAAAAAAA=",
-        "AAAAAAAAAAAAAAAOc2V0X3VzZGNfZmxvb3IAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAOZmxvb3JfZnJhY3Rpb24AAAAAAAoAAAAA",
-        "AAAAAAAAAAAAAAARZ2V0X3Byb3RvY29sX2ZlZXMAAAAAAAABAAAAAAAAAARwYWlyAAAAEwAAAAEAAAAK",
-        "AAAAAAAAAAAAAAATY2xhaW1fcHJvdG9jb2xfZmVlcwAAAAADAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAtkZXN0aW5hdGlvbgAAAAATAAAAAQAAAAo=",
+      new ContractSpec([ "AAAAAAAAAhBJbml0aWFsaXplcyB0aGUgVHJlYXN1cnkgY29udHJhY3QuCgpUaGlzIGNvbnN0cnVjdG9yIGlzIGludGVuZGVkIHRvIGJlIGNhbGxlZCBleGFjdGx5IG9uY2UgYXQgZGVwbG95IHRpbWUuIEl0OgotIFNldHMgdXAgY29yZSBhZG1pbiByb2xlcyAoYEFkbWluYCwgYFBhdXNlQWRtaW5gLCBgRW1lcmdlbmN5QWRtaW5gKSB0byB0aGUgcHJvdmlkZWQgYGFkbWluYAotIFN0b3JlcyB0aGUgY2Fub25pY2FsIFVTREMgb3JhY2xlIHVzZWQgYnkgdGhlIFRyZWFzdXJ5CgojIyMgUmV2ZXJ0cwotIFtgVHJlYXN1cnlFcnJvcjo6QWxyZWFkeUluaXRpYWxpemVkYF0gaWYgdGhlIGNvbnRyYWN0IGhhcyBhbHJlYWR5IGJlZW4gaW5pdGlhbGl6ZWQuCgojIyMgQXJndW1lbnRzCi0gYGVgOiBTb3JvYmFuIGVudmlyb25tZW50LgotIGBhZG1pbmA6IEFkZHJlc3MgdG8gYXNzaWduIGFkbWluaXN0cmF0aXZlIHJvbGVzIHRvLgotIGBvcmFjbGVgOiBBZGRyZXNzIG9mIHRoZSBOb3JtYWwgT3JhY2xlIGNvbnRyYWN0IHVzZWQgZm9yIFVTREMgcHJpY2luZy4AAAANX19jb25zdHJ1Y3RvcgAAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAGb3JhY2xlAAAAAAATAAAAAA==",
+        "AAAAAAAAAgJEZXBvc2l0cyBMUCBjb2xsYXRlcmFsIGludG8gdGhlIFRyZWFzdXJ5IGluIGV4Y2hhbmdlIGZvciBuZXdseS1taW50ZWQgTFAgc2hhcmVzLgoKQSBkZXBvc2l0IGNvbnNpc3RzIG9mOgotIGBwYWlyc190b19kZXBvc2l0YCBMT05HIHRva2VucwotIGBwYWlyc190b19kZXBvc2l0YCBTSE9SVCB0b2tlbnMKLSBgcGFpcnNfdG9fZGVwb3NpdCAqIGNvbGxhdGVyYWxfcGVyX3BhaXJgIFVTREMKClNoYXJlcyBhcmUgbWludGVkIHByb3BvcnRpb25hbCB0byB0aGUgZGVwb3NpdCdzIE5BViByZWxhdGl2ZSB0byB0aGUgVHJlYXN1cnkncyB0b3RhbCBOQVYuCgojIyMgUmV2ZXJ0cwotIFtgVHJlYXN1cnlFcnJvcjo6SW52YWxpZElucHV0YF0gaWYgYHBhaXJzX3RvX2RlcG9zaXQgPT0gMGAuCi0gW2BUcmVhc3VyeUVycm9yOjpBY3Rpb25QYXVzZWRgXSBpZiBkZXBvc2l0cyBhcmUgcGF1c2VkLgoKIyMjIFJldHVybnMKUmV0dXJucyB0aGUgbnVtYmVyIG9mIExQIHNoYXJlcyBtaW50ZWQgZm9yIHRoZSBkZXBvc2l0b3IuAAAAAAAHZGVwb3NpdAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAEHBhaXJzX3RvX2RlcG9zaXQAAAAKAAAAAQAAAAo=",
+        "AAAAAAAAAiFXaXRoZHJhd3MgTFAgY29sbGF0ZXJhbCBmcm9tIHRoZSBUcmVhc3VyeSBieSBidXJuaW5nIExQIHNoYXJlcy4KClRoZSBjYWxsZXIgc3BlY2lmaWVzIHRoZSBudW1iZXIgb2Ygc2hhcmVzIHRvIGJ1cm4uIFRoZSBUcmVhc3VyeSBjb21wdXRlcyB0aGUKcHJvcG9ydGlvbmFsIGFtb3VudCBvZiBMT05HL1NIT1JUL1VTREMgb3dlZCwgdmFsaWRhdGVzIHNhZmV0eSBjb25zdHJhaW50cywgYW5kCnRyYW5zZmVycyB0aGUgdG9rZW5zIHRvIHRoZSB1c2VyLgoKIyMjIFJldmVydHMKLSBbYFRyZWFzdXJ5RXJyb3I6OkludmFsaWRJbnB1dGBdIGlmIGBzaGFyZXMgPT0gMGAuCi0gW2BUcmVhc3VyeUVycm9yOjpBY3Rpb25QYXVzZWRgXSBpZiB3aXRoZHJhd2FscyBhcmUgcGF1c2VkLgotIFtgVHJlYXN1cnlFcnJvcjo6SW5zdWZmaWNpZW50U2hhcmVzYF0gaWYgYHNoYXJlcyA+IHVzZXJfc2hhcmVzYCBvciBgdG90YWxfc2hhcmVzID09IDBgLgoKIyMjIFJldHVybnMKUmV0dXJucyB0aGUgdG9rZW4gYW1vdW50cyB3aXRoZHJhd246IGB7IGxvbmcsIHNob3J0LCB1c2RjIH1gLgAAAAAAAAh3aXRoZHJhdwAAAAMAAAAAAAAABHVzZXIAAAATAAAAAAAAAARwYWlyAAAAEwAAAAAAAAAGc2hhcmVzAAAAAAAKAAAAAQAAB9AAAAATUGFpckFtb3VudHNXaXRoVVNEQwA=",
+        "AAAAAAAAAJdSZXR1cm5zIHRoZSBzdG9yZWQgdG9rZW4gY29uZmlndXJhdGlvbiBmb3IgYSBnaXZlbiBQYWlyLgoKVGhpcyBpbmNsdWRlcyB0aGUgY29udHJhY3QgYWRkcmVzc2VzIGZvciB0aGUgUGFpciwgTE9ORywgU0hPUlQsIGFuZCBjb2xsYXRlcmFsIChVU0RDKSB0b2tlbnMuAAAAAApnZXRfY29uZmlnAAAAAAABAAAAAAAAAARwYWlyAAAAEwAAAAEAAAfQAAAAClBhaXJDb25maWcAAA==",
+        "AAAAAAAAAHZSZXR1cm5zIHRoZSBjdXJyZW50IG9yYWNsZSBwcmljZXMgZm9yIHRoZSBnaXZlbiBQYWlyLgoKUHJpY2VzIGFyZSByZXR1cm5lZCBpbiB0aGUgc2FtZSBwcmVjaXNpb24gYXMgYFBSSUNFX1BSRUNJU0lPTmAuAAAAAAAKZ2V0X3ByaWNlcwAAAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAH0AAAABNQYWlyQW1vdW50c1dpdGhVU0RDAA==",
+        "AAAAAAAAAMNSZXR1cm5zIHRoZSBUcmVhc3VyeeKAmXMgaW50ZXJuYWwgYWNjb3VudGluZyBiYWxhbmNlcyBmb3IgdGhlIGdpdmVuIFBhaXIuCgpUaGVzZSBiYWxhbmNlcyByZXByZXNlbnQgdGhlIFRyZWFzdXJ54oCZcyB0cmFja2VkIGludmVudG9yeSBhbmQgbWF5IGJlIHVzZWQgZm9yIHF1b3RpbmcsCnJpc2sgY2hlY2tzLCBhbmQgTFAgYWNjb3VudGluZy4AAAAADGdldF9iYWxhbmNlcwAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAB9AAAAATUGFpckFtb3VudHNXaXRoVVNEQwA=",
+        "AAAAAAAAADtSZXR1cm5zIHRoZSB0b3RhbCBMUCBzaGFyZXMgb3V0c3RhbmRpbmcgZm9yIHRoZSBnaXZlbiBQYWlyLgAAAAAQZ2V0X3RvdGFsX3NoYXJlcwAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAAAo=",
+        "AAAAAAAAAG5SZXR1cm5zIHRoZSBMUCBzaGFyZSBiYWxhbmNlIGZvciBgdXNlcmAgZm9yIHRoZSBnaXZlbiBQYWlyLgoKTWlzc2luZyByZWNvcmRzIGRlZmF1bHQgdG8gemVybyBmb3IgcmVhZC1vbmx5IFVYLgAAAAAAD2dldF91c2VyX3NoYXJlcwAAAAACAAAAAAAAAARwYWlyAAAAEwAAAAAAAAAEdXNlcgAAABMAAAABAAAACg==",
+        "AAAAAAAAADlSZXR1cm5zIHRoZSBjdXJyZW50IGZlZSBjb25maWd1cmF0aW9uIGZvciB0aGUgZ2l2ZW4gUGFpci4AAAAAAAAOZ2V0X2ZlZV9jb25maWcAAAAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAB9AAAAARVHJlYXN1cnlGZWVDb25maWcAAAA=",
+        "AAAAAAAAAJBSZXR1cm5zIGEgc25hcHNob3Qgb2YgdGhlIFRyZWFzdXJ5IHN0YXRlIGZvciB0aGUgZ2l2ZW4gUGFpci4KClRoaXMgaXMgYSBjb252ZW5pZW5jZSBtZXRob2QgZm9yIGZyb250ZW5kcy9pbmRleGVycyB0byBhdm9pZCBtdWx0aXBsZSByb3VuZC10cmlwcy4AAAALZ2V0X3N1bW1hcnkAAAAAAQAAAAAAAAAEcGFpcgAAABMAAAABAAAH0AAAAA9UcmVhc3VyeVN1bW1hcnkA",
+        "AAAAAAAAALVSZXR1cm5zIGEgc25hcHNob3Qgb2YgdGhlIFRyZWFzdXJ5IHN0YXRlIGZvciBhIFBhaXIgcGx1cyB0aGUgdXNlcidzIHNoYXJlIGJhbGFuY2UuCgpUaGlzIGlzIGEgY29udmVuaWVuY2UgbWV0aG9kIGZvciBmcm9udGVuZHMvaW5kZXhlcnMgdG8gZmV0Y2ggc3VtbWFyeSArIHVzZXIgcG9zaXRpb24gaW4gb25lIGNhbGwuAAAAAAAAFWdldF91c2VyX3dpdGhfc3VtbWFyeQAAAAAAAAIAAAAAAAAABHBhaXIAAAATAAAAAAAAAAR1c2VyAAAAEwAAAAEAAAfQAAAAE1RyZWFzdXJ5VXNlclN1bW1hcnkA",
+        "AAAAAAAAAXtFc3RpbWF0ZXMgYSB0cmFkZSBvdXRwdXQgYW5kIGZlZSB3aXRob3V0IGV4ZWN1dGluZyBhbnkgdG9rZW4gdHJhbnNmZXJzLgoKVGhpcyBoZWxwZXIgaXMgaW50ZW5kZWQgZm9yIHF1b3RpbmcgaW4gVUlzIGFuZCBvZmYtY2hhaW4gcm91dGluZy4gSXQgdXNlcyB0aGUgc2FtZQpwcmljaW5nICsgZmVlIG1vZGVsIGFzIHRoZSBvbi1jaGFpbiB0cmFkZSBtZXRob2RzLgoKIyMjIFJldmVydHMKLSBbYFRyZWFzdXJ5RXJyb3I6OkludmFsaWRJbnB1dGBdIGlmIGBhbW91bnRfaW4gPT0gMGAuCi0gUmV2ZXJ0cyBpZiBgcGFpcmAgaXMgbm90IGNvbmZpZ3VyZWQgKHZpYSBgZ2V0X2NvbmZpZ2ApLgoKIyMjIFJldHVybnMKUmV0dXJucyBgKGFtb3VudF9vdXQsIHVzZGNfZmVlKWAuAAAAAA5lc3RpbWF0ZV90cmFkZQAAAAAABAAAAAAAAAAEcGFpcgAAABMAAAAAAAAACWRpcmVjdGlvbgAAAAAAB9AAAAAJRGlyZWN0aW9uAAAAAAAAAAAAAARzaWRlAAAH0AAAAARTaWRlAAAAAAAAAAlhbW91bnRfaW4AAAAAAAAKAAAAAQAAA+0AAAACAAAACgAAAAo=",
+        "AAAAAAAAA3hCdXlzICoqTE9ORyoqIHRva2VucyBmcm9tIHRoZSBUcmVhc3VyeSB1c2luZyBVU0RDLgoKVGhlIGNhbGxlciBzdXBwbGllcyBgdXNkY19pbmAgYW5kIHJlY2VpdmVzIGBsb25nX291dGAgcXVvdGVkIGZyb20gdGhlIGN1cnJlbnQKb3JhY2xlIHByaWNlIGFuZCBmZWUgbW9kZWwuIFRoaXMgdHJhZGUgaXMgZXhlY3V0ZWQgKiphZ2FpbnN0IFRyZWFzdXJ5IGludmVudG9yeSoqOgp0aGUgVHJlYXN1cnkgbXVzdCBhbHJlYWR5IGhvbGQgc3VmZmljaWVudCBMT05HIHRvIGRlbGl2ZXIgdGhlIHRyYWRlLgoKIyMjIFByaWNpbmcgJiBGZWVzCi0gVXNlcyBgcHJpY2VzLmxvbmdgIGZyb20gdGhlIG9yYWNsZS4KLSBDb21wdXRlcyBhIGR5bmFtaWMgdGFrZXIgZmVlIHZpYSBgY2FsY3VsYXRlX2ZlZSguLi4pYC4KLSBgcXVvdGVfYnV5X3Rva2VuYCByZXR1cm5zIGAobG9uZ19vdXQsIHVzZGNfZmVlKWA7IGB1c2RjX2ZlZWAgaXMgcmV0YWluZWQgYW5kIHRyYWNrZWQuCgojIyMgU2xpcHBhZ2UgUHJvdGVjdGlvbgpSZXZlcnRzIGlmIGBsb25nX291dCA8IG1pbl9sb25nX291dGAuCgojIyMgUmV2ZXJ0cwotIFtgVHJlYXN1cnlFcnJvcjo6SW52YWxpZElucHV0YF0gaWYgYHVzZGNfaW4gPT0gMGAuCi0gW2BUcmVhc3VyeUVycm9yOjpBY3Rpb25QYXVzZWRgXSBpZiB0cmFkaW5nIGlzIHBhdXNlZC4KLSBbYFRyZWFzdXJ5RXJyb3I6OlNsaXBwYWdlYF0gaWYgb3V0cHV0IGlzIHplcm8gb3IgYmVsb3cgYG1pbl9sb25nX291dGAuCi0gW2BUcmVhc3VyeUVycm9yOjpJbnN1ZmZpY2llbnRJbnZlbnRvcnlgXSBpZiB0aGUgVHJlYXN1cnkgbGFja3MgTE9ORyBpbnZlbnRvcnkuCgojIyMgUmV0dXJucwpSZXR1cm5zIHRoZSBhbW91bnQgb2YgTE9ORyB0cmFuc2ZlcnJlZCB0byB0aGUgdXNlci4AAAAIYnV5X2xvbmcAAAAEAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAEcGFpcgAAABMAAAAAAAAAB3VzZGNfaW4AAAAACgAAAAAAAAAMbWluX2xvbmdfb3V0AAAACgAAAAEAAAAK",
+        "AAAAAAAAA+5TZWxscyAqKkxPTkcqKiB0b2tlbnMgdG8gdGhlIFRyZWFzdXJ5IGluIGV4Y2hhbmdlIGZvciBVU0RDLgoKVGhlIGNhbGxlciBzdXBwbGllcyBgbG9uZ19pbmAgYW5kIHJlY2VpdmVzIGB1c2RjX291dGAgcXVvdGVkIGZyb20gdGhlIGN1cnJlbnQKb3JhY2xlIHByaWNlIGFuZCBmZWUgbW9kZWwuIFRoaXMgdHJhZGUgaXMgZXhlY3V0ZWQgKiphZ2FpbnN0IFRyZWFzdXJ5IFVTREMgaW52ZW50b3J5Kio6CnRoZSBUcmVhc3VyeSBtdXN0IGhhdmUgc3VmZmljaWVudCBVU0RDIHRvIHBheSBvdXQuCgpBZGRpdGlvbmFsIHNhZmV0eSBjaGVja3MgYXBwbHkgdG8gcHJvdGVjdCBMUHM6Ci0gTE9ORy1zaWRlIHRyYWRlcyBtYXkgYmUgYmxvY2tlZCBhcyAidG94aWMiCi0gVVNEQyBmbG9vciBjb25zdHJhaW50cyBwcmV2ZW50IGRyYWluaW5nIHRvbyBtdWNoIGNvbGxhdGVyYWwgaW4gYSBzaW5nbGUgdHJhZGUKCiMjIyBTbGlwcGFnZSBQcm90ZWN0aW9uClJldmVydHMgaWYgYHVzZGNfb3V0IDwgbWluX3VzZGNfb3V0YC4KCiMjIyBSZXZlcnRzCi0gW2BUcmVhc3VyeUVycm9yOjpJbnZhbGlkSW5wdXRgXSBpZiBgbG9uZ19pbiA9PSAwYC4KLSBbYFRyZWFzdXJ5RXJyb3I6OkFjdGlvblBhdXNlZGBdIGlmIHRyYWRpbmcgaXMgcGF1c2VkLgotIFtgVHJlYXN1cnlFcnJvcjo6VG94aWNTaWRlTm90QWNjZXB0ZWRgXSBpZiByaXNrIGxvZ2ljIGJsb2NrcyBMT05HIHNlbGxzLgotIFtgVHJlYXN1cnlFcnJvcjo6U2xpcHBhZ2VgXSBpZiBvdXRwdXQgaXMgemVybyBvciBiZWxvdyBgbWluX3VzZGNfb3V0YC4KLSBbYFRyZWFzdXJ5RXJyb3I6Okluc3VmZmljaWVudEludmVudG9yeWBdIGlmIHRoZSBUcmVhc3VyeSBsYWNrcyBVU0RDIHRvIHBheSBvdXQuCi0gW2BUcmVhc3VyeUVycm9yOjpDYW5ub3RQYXNzRmxvb3JgXSBpZiBwYXlpbmcgb3V0IHZpb2xhdGVzIHRoZSBVU0RDIGZsb29yLgoKIyMjIFJldHVybnMKUmV0dXJucyB0aGUgYW1vdW50IG9mIFVTREMgdHJhbnNmZXJyZWQgdG8gdGhlIHVzZXIuAAAAAAAJc2VsbF9sb25nAAAAAAAABAAAAAAAAAAEdXNlcgAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAdsb25nX2luAAAAAAoAAAAAAAAADG1pbl91c2RjX291dAAAAAoAAAABAAAACg==",
+        "AAAAAAAAA4JCdXlzICoqU0hPUlQqKiB0b2tlbnMgZnJvbSB0aGUgVHJlYXN1cnkgdXNpbmcgVVNEQy4KClRoZSBjYWxsZXIgc3VwcGxpZXMgYHVzZGNfaW5gIGFuZCByZWNlaXZlcyBgc2hvcnRfb3V0YCBxdW90ZWQgZnJvbSB0aGUgY3VycmVudApvcmFjbGUgcHJpY2UgYW5kIGZlZSBtb2RlbC4gVGhpcyB0cmFkZSBpcyBleGVjdXRlZCAqKmFnYWluc3QgVHJlYXN1cnkgaW52ZW50b3J5Kio6CnRoZSBUcmVhc3VyeSBtdXN0IGFscmVhZHkgaG9sZCBzdWZmaWNpZW50IFNIT1JUIHRvIGRlbGl2ZXIgdGhlIHRyYWRlLgoKIyMjIFByaWNpbmcgJiBGZWVzCi0gVXNlcyBgcHJpY2VzLnNob3J0YCBmcm9tIHRoZSBvcmFjbGUuCi0gQ29tcHV0ZXMgYSBkeW5hbWljIHRha2VyIGZlZSB2aWEgYGNhbGN1bGF0ZV9mZWUoLi4uKWAuCi0gYHF1b3RlX2J1eV90b2tlbmAgcmV0dXJucyBgKHNob3J0X291dCwgdXNkY19mZWUpYDsgYHVzZGNfZmVlYCBpcyByZXRhaW5lZCBhbmQgdHJhY2tlZC4KCiMjIyBTbGlwcGFnZSBQcm90ZWN0aW9uClJldmVydHMgaWYgYHNob3J0X291dCA8IG1pbl9zaG9ydF9vdXRgLgoKIyMjIFJldmVydHMKLSBbYFRyZWFzdXJ5RXJyb3I6OkludmFsaWRJbnB1dGBdIGlmIGB1c2RjX2luID09IDBgLgotIFtgVHJlYXN1cnlFcnJvcjo6QWN0aW9uUGF1c2VkYF0gaWYgdHJhZGluZyBpcyBwYXVzZWQuCi0gW2BUcmVhc3VyeUVycm9yOjpTbGlwcGFnZWBdIGlmIG91dHB1dCBpcyB6ZXJvIG9yIGJlbG93IGBtaW5fc2hvcnRfb3V0YC4KLSBbYFRyZWFzdXJ5RXJyb3I6Okluc3VmZmljaWVudEludmVudG9yeWBdIGlmIHRoZSBUcmVhc3VyeSBsYWNrcyBTSE9SVCBpbnZlbnRvcnkuCgojIyMgUmV0dXJucwpSZXR1cm5zIHRoZSBhbW91bnQgb2YgU0hPUlQgdHJhbnNmZXJyZWQgdG8gdGhlIHVzZXIuAAAAAAAJYnV5X3Nob3J0AAAAAAAABAAAAAAAAAAEdXNlcgAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAd1c2RjX2luAAAAAAoAAAAAAAAADW1pbl9zaG9ydF9vdXQAAAAAAAAKAAAAAQAAAAo=",
+        "AAAAAAAAA/NTZWxscyAqKlNIT1JUKiogdG9rZW5zIHRvIHRoZSBUcmVhc3VyeSBpbiBleGNoYW5nZSBmb3IgVVNEQy4KClRoZSBjYWxsZXIgc3VwcGxpZXMgYHNob3J0X2luYCBhbmQgcmVjZWl2ZXMgYHVzZGNfb3V0YCBxdW90ZWQgZnJvbSB0aGUgY3VycmVudApvcmFjbGUgcHJpY2UgYW5kIGZlZSBtb2RlbC4gVGhpcyB0cmFkZSBpcyBleGVjdXRlZCAqKmFnYWluc3QgVHJlYXN1cnkgVVNEQyBpbnZlbnRvcnkqKjoKdGhlIFRyZWFzdXJ5IG11c3QgaGF2ZSBzdWZmaWNpZW50IFVTREMgdG8gcGF5IG91dC4KCkFkZGl0aW9uYWwgc2FmZXR5IGNoZWNrcyBhcHBseSB0byBwcm90ZWN0IExQczoKLSBTSE9SVC1zaWRlIHRyYWRlcyBtYXkgYmUgYmxvY2tlZCBhcyAidG94aWMiCi0gVVNEQyBmbG9vciBjb25zdHJhaW50cyBwcmV2ZW50IGRyYWluaW5nIHRvbyBtdWNoIGNvbGxhdGVyYWwgaW4gYSBzaW5nbGUgdHJhZGUKCiMjIyBTbGlwcGFnZSBQcm90ZWN0aW9uClJldmVydHMgaWYgYHVzZGNfb3V0IDwgbWluX3VzZGNfb3V0YC4KCiMjIyBSZXZlcnRzCi0gW2BUcmVhc3VyeUVycm9yOjpJbnZhbGlkSW5wdXRgXSBpZiBgc2hvcnRfaW4gPT0gMGAuCi0gW2BUcmVhc3VyeUVycm9yOjpBY3Rpb25QYXVzZWRgXSBpZiB0cmFkaW5nIGlzIHBhdXNlZC4KLSBbYFRyZWFzdXJ5RXJyb3I6OlRveGljU2lkZU5vdEFjY2VwdGVkYF0gaWYgcmlzayBsb2dpYyBibG9ja3MgU0hPUlQgc2VsbHMuCi0gW2BUcmVhc3VyeUVycm9yOjpTbGlwcGFnZWBdIGlmIG91dHB1dCBpcyB6ZXJvIG9yIGJlbG93IGBtaW5fdXNkY19vdXRgLgotIFtgVHJlYXN1cnlFcnJvcjo6SW5zdWZmaWNpZW50SW52ZW50b3J5YF0gaWYgdGhlIFRyZWFzdXJ5IGxhY2tzIFVTREMgdG8gcGF5IG91dC4KLSBbYFRyZWFzdXJ5RXJyb3I6OkNhbm5vdFBhc3NGbG9vcmBdIGlmIHBheWluZyBvdXQgdmlvbGF0ZXMgdGhlIFVTREMgZmxvb3IuCgojIyMgUmV0dXJucwpSZXR1cm5zIHRoZSBhbW91bnQgb2YgVVNEQyB0cmFuc2ZlcnJlZCB0byB0aGUgdXNlci4AAAAACnNlbGxfc2hvcnQAAAAAAAQAAAAAAAAABHVzZXIAAAATAAAAAAAAAARwYWlyAAAAEwAAAAAAAAAIc2hvcnRfaW4AAAAKAAAAAAAAAAxtaW5fdXNkY19vdXQAAAAKAAAAAQAAAAo=",
+        "AAAAAAAAATtSZWdpc3RlcnMgYSBuZXcgUGFpciB3aXRoIHRoZSBUcmVhc3VyeSBhbmQgaW5pdGlhbGl6ZXMgaXRzIHN0YXRlLgoKVGhpcyBjYWxsOgotIFN0b3JlcyB0aGUgdG9rZW4gYWRkcmVzc2VzIGZvciBMT05HL1NIT1JUL1VTREMgZnJvbSB0aGUgUGFpciBjb250cmFjdAotIEluaXRpYWxpemVzIGJhbGFuY2VzLCBzaGFyZXMsIHJpc2sgcGFyYW1ldGVycywgZmVlIGNvbmZpZywgYW5kIHByb3RvY29sIGZlZSBjb3VudGVycwoKIyMjIFJldmVydHMKLSBbYFRyZWFzdXJ5RXJyb3I6OkludmFsaWRJbnB1dGBdIGlmIGZlZSBmaWVsZHMgYXJlIG91dCBvZiByYW5nZS4AAAAACGFkZF9wYWlyAAAAAwAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAARwYWlyAAAAEwAAAAAAAAAKZmVlX2NvbmZpZwAAAAAH0AAAABFUcmVhc3VyeUZlZUNvbmZpZwAAAAAAAAA=",
+        "AAAAAAAAAJNVcGRhdGVzIHRoZSBmZWUgY29uZmlndXJhdGlvbiBmb3IgYW4gZXhpc3RpbmcgUGFpci4KCiMjIyBSZXZlcnRzCi0gW2BUcmVhc3VyeUVycm9yOjpJbnZhbGlkSW5wdXRgXSBpZiBhbnkgY29uZmlndXJlZCBmZWUgZXhjZWVkcyBpdHMgbWF4aW11bSBib3VuZC4AAAAADnNldF9mZWVfY29uZmlnAAAAAAADAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAABHBhaXIAAAATAAAAAAAAAAZjb25maWcAAAAAB9AAAAARVHJlYXN1cnlGZWVDb25maWcAAAAAAAAA",
+        "AAAAAAAAAPZTZXRzIHRoZSBnbG9iYWwgVVNEQyBmbG9vciBmcmFjdGlvbiB1c2VkIGJ5IHJpc2sgY2hlY2tzLgoKVGhlIGZsb29yIGZyYWN0aW9uIGlzIGV4cHJlc3NlZCBpbiBgUFJJQ0VfUFJFQ0lTSU9OYCB1bml0cyAoZS5nLiBgMC4xMGU3YCBmb3IgMTAlKS4KCiMjIyBSZXZlcnRzCi0gW2BUcmVhc3VyeUVycm9yOjpJbnZhbGlkSW5wdXRgXSBpZiBgZmxvb3JfZnJhY3Rpb25gIGlzIHplcm8gb3IgYmVsb3cgdGhlIG1pbmltdW0gYWxsb3dlZC4AAAAAAA5zZXRfdXNkY19mbG9vcgAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAA5mbG9vcl9mcmFjdGlvbgAAAAAACgAAAAA=",
+        "AAAAAAAAAE9SZXR1cm5zIHRoZSBwcm90b2NvbCBmZWVzIGFjY3VtdWxhdGVkIGZvciB0aGUgZ2l2ZW4gUGFpciAoZGVub21pbmF0ZWQgaW4gVVNEQykuAAAAABFnZXRfcHJvdG9jb2xfZmVlcwAAAAAAAAEAAAAAAAAABHBhaXIAAAATAAAAAQAAAAo=",
+        "AAAAAAAAAKpUcmFuc2ZlcnMgYWNjdW11bGF0ZWQgcHJvdG9jb2wgZmVlcyBmb3IgYHBhaXJgIHRvIGBkZXN0aW5hdGlvbmAuCgojIyMgUmV2ZXJ0cwotIFJldmVydHMgaWYgYGFkbWluYCBpcyBub3QgYXV0aG9yaXplZC4KCiMjIyBSZXR1cm5zClJldHVybnMgdGhlIGFtb3VudCBvZiBmZWVzIHRyYW5zZmVycmVkLgAAAAAAE2NsYWltX3Byb3RvY29sX2ZlZXMAAAAAAwAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAARwYWlyAAAAEwAAAAAAAAALZGVzdGluYXRpb24AAAAAEwAAAAEAAAAK",
         "AAAAAAAAAAAAAAAMa2lsbF9kZXBvc2l0AAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
         "AAAAAAAAAAAAAAANa2lsbF93aXRoZHJhdwAAAAAAAAEAAAAAAAAABWFkbWluAAAAAAAAEwAAAAA=",
         "AAAAAAAAAAAAAAAKa2lsbF90cmFkZQAAAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
@@ -1216,14 +1368,14 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAAYYXBwbHlfdHJhbnNmZXJfb3duZXJzaGlwAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAlyb2xlX25hbWUAAAAAAAARAAAAAA==",
         "AAAAAAAAAAAAAAAZcmV2ZXJ0X3RyYW5zZmVyX293bmVyc2hpcAAAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAJcm9sZV9uYW1lAAAAAAAAEQAAAAA=",
         "AAAAAAAAAAAAAAASZ2V0X2Z1dHVyZV9hZGRyZXNzAAAAAAABAAAAAAAAAAlyb2xlX25hbWUAAAAAAAARAAAAAQAAABM=",
-        "AAAABAAAAAAAAAAAAAAADVRyZWFzdXJ5RXJyb3IAAAAAAAAOAAAAAAAAABJBbHJlYWR5SW5pdGlhbGl6ZWQAAAAAAMkAAAAAAAAADEludmFsaWRJbnB1dAAAAMwAAAAAAAAAGEZhaWxlZFRvQ2FsbFBhaXJDb250cmFjdAAAANEAAAAAAAAADEFjdGlvblBhdXNlZAAAANUAAAAAAAAAFUluc3VmZmljaWVudEludmVudG9yeQAAAAAAANcAAAAAAAAACFNsaXBwYWdlAAAA2AAAAAAAAAASSW5zdWZmaWNpZW50U2hhcmVzAAAAAADZAAAAAAAAAA9EZXBvc2l0VG9vU21hbGwAAAAA2gAAAAAAAAAQV2l0aGRyYXdUb29TbWFsbAAAANsAAAAAAAAADkludmFsaWRCYWxhbmNlAAAAAADcAAAAAAAAAA9DYW5ub3RQYXNzRmxvb3IAAAAA3QAAAAAAAAAUVG94aWNTaWRlTm90QWNjZXB0ZWQAAADeAAAAAAAAABZGYWlsZWRUb0dldE9yYWNsZVByaWNlAAAAAADfAAAAAAAAAApJbnZhbGlkRmVlAAAAAADg",
-        "AAAAAQAAAAAAAAAAAAAAClBhaXJDb25maWcAAAAAAAQAAAAAAAAABGxvbmcAAAATAAAAAAAAAARwYWlyAAAAEwAAAAAAAAAFc2hvcnQAAAAAAAATAAAAAAAAAAR1c2RjAAAAEw==",
-        "AAAAAQAAAAAAAAAAAAAAD1RyZWFzdXJ5U3VtbWFyeQAAAAAFAAAAAAAAAAhiYWxhbmNlcwAAB9AAAAATUGFpckFtb3VudHNXaXRoVVNEQwAAAAAAAAAABmNvbmZpZwAAAAAH0AAAAApQYWlyQ29uZmlnAAAAAAAAAAAACmZlZV9jb25maWcAAAAAB9AAAAARVHJlYXN1cnlGZWVDb25maWcAAAAAAAAAAAAABnByaWNlcwAAAAAH0AAAABNQYWlyQW1vdW50c1dpdGhVU0RDAAAAAAAAAAAMdG90YWxfc2hhcmVzAAAACg==",
-        "AAAAAQAAAAAAAAAAAAAAE1RyZWFzdXJ5VXNlclN1bW1hcnkAAAAAAgAAAAAAAAAHc3VtbWFyeQAAAAfQAAAAD1RyZWFzdXJ5U3VtbWFyeQAAAAAAAAAAC3VzZXJfc2hhcmVzAAAAAAo=",
-        "AAAAAQAAAAAAAAAAAAAAEVRyZWFzdXJ5RmVlQ29uZmlnAAAAAAAACAAAAAAAAAALYm91bmRfcG93ZXIAAAAABAAAAAAAAAANY29lZmZpY2llbnRfYQAAAAAAAAoAAAAAAAAADWNvZWZmaWNpZW50X2MAAAAAAAAKAAAAAAAAAA1jb2VmZmljaWVudF9kAAAAAAAACgAAAAAAAAASaW1wbGllZF92b2xhdGlsaXR5AAAAAAAKAAAAAAAAAA5tYWtlcl9iYXNlX2ZlZQAAAAAACgAAAAAAAAAScmVhY3Rpb25fdGltZV9zZWNzAAAAAAAKAAAAAAAAAA50YWtlcl9iYXNlX2ZlZQAAAAAACg==",
-        "AAAAAQAAAAAAAAAAAAAAFlRyZWFzdXJ5Umlza1BhcmFtZXRlcnMAAAAAAAEAAAAAAAAAD3RveGljX3RocmVzaG9sZAAAAAAK",
-        "AAAAAQAAAAAAAAAAAAAADVVzZXJTaGFyZXNLZXkAAAAAAAACAAAAAAAAAARwYWlyAAAAEwAAAAAAAAAEdXNlcgAAABM=",
-        "AAAAAgAAAAAAAAAAAAAAD1RyZWFzdXJ5RGF0YUtleQAAAAAHAAAAAQAAAAAAAAAGQ29uZmlnAAAAAAABAAAAEwAAAAEAAAAAAAAACEJhbGFuY2VzAAAAAQAAABMAAAABAAAAAAAAAA5SaXNrUGFyYW1ldGVycwAAAAAAAQAAABMAAAABAAAAAAAAAAtUb3RhbFNoYXJlcwAAAAABAAAAEwAAAAEAAAAAAAAAClVzZXJTaGFyZXMAAAAAAAEAAAfQAAAADVVzZXJTaGFyZXNLZXkAAAAAAAABAAAAAAAAAAlGZWVDb25maWcAAAAAAAABAAAAEwAAAAEAAAAAAAAADFByb3RvY29sRmVlcwAAAAEAAAAT",
+        "AAAABAAAAAAAAAAAAAAADVRyZWFzdXJ5RXJyb3IAAAAAAAAPAAAAAAAAABJBbHJlYWR5SW5pdGlhbGl6ZWQAAAAAAMkAAAAAAAAADEludmFsaWRJbnB1dAAAAMwAAAAAAAAAC0ludmFsaWRQYWlyAAAAAM0AAAAAAAAAGEZhaWxlZFRvQ2FsbFBhaXJDb250cmFjdAAAANEAAAAAAAAADEFjdGlvblBhdXNlZAAAANUAAAAAAAAAFUluc3VmZmljaWVudEludmVudG9yeQAAAAAAANcAAAAAAAAACFNsaXBwYWdlAAAA2AAAAAAAAAASSW5zdWZmaWNpZW50U2hhcmVzAAAAAADZAAAAAAAAAA9EZXBvc2l0VG9vU21hbGwAAAAA2gAAAAAAAAAQV2l0aGRyYXdUb29TbWFsbAAAANsAAAAAAAAADkludmFsaWRCYWxhbmNlAAAAAADcAAAAAAAAAA9DYW5ub3RQYXNzRmxvb3IAAAAA3QAAAAAAAAAUVG94aWNTaWRlTm90QWNjZXB0ZWQAAADeAAAAAAAAABZGYWlsZWRUb0dldE9yYWNsZVByaWNlAAAAAADfAAAAAAAAAApJbnZhbGlkRmVlAAAAAADg",
+        "AAAAAQAAAIxTdGF0aWMgY29uZmlndXJhdGlvbiBmb3IgYSBzdXBwb3J0ZWQgTG9uZ1Nob3J0UGFpci4KClN0b3JlZCBwZXItcGFpciBhbmQgdXNlZCB0byBmaW5kIHRoZSB0b2tlbiBjb250cmFjdHMgdGhlIFRyZWFzdXJ5IHNob3VsZCBpbnRlcmFjdCB3aXRoLgAAAAAAAAAKUGFpckNvbmZpZwAAAAAABAAAABxMT05HIHRva2VuIGNvbnRyYWN0IGFkZHJlc3MuAAAABGxvbmcAAAATAAAAI1RoZSBMb25nU2hvcnRQYWlyIGNvbnRyYWN0IGFkZHJlc3MuAAAAAARwYWlyAAAAEwAAAB1TSE9SVCB0b2tlbiBjb250cmFjdCBhZGRyZXNzLgAAAAAAAAVzaG9ydAAAAAAAABMAAAApQ29sbGF0ZXJhbCB0b2tlbiBjb250cmFjdCBhZGRyZXNzIChVU0RDKS4AAAAAAAAEdXNkYwAAABM=",
+        "AAAAAQAAAH1Db252ZW5pZW50IGFnZ3JlZ2F0aW9uIHVzZWQgYnkgZnJvbnRlbmQvaW5kZXhlcnMuCgpOb3RlOiB0aGlzIGlzIG5vdCBzdG9yZWQgZGlyZWN0bHk7IGl0IGlzIGFzc2VtYmxlZCBmcm9tIG90aGVyIHN0b3JlZCBrZXlzLgAAAAAAAAAAAAAPVHJlYXN1cnlTdW1tYXJ5AAAAAAUAAABFVHJlYXN1cnkgaW52ZW50b3J5ICh3aGF0IHRoZSBUcmVhc3VyeSBhY3R1YWxseSBob2xkcyAvIGFjY291bnRzIGZvcikuAAAAAAAACGJhbGFuY2VzAAAH0AAAABNQYWlyQW1vdW50c1dpdGhVU0RDAAAAAAAAAAAGY29uZmlnAAAAAAfQAAAAClBhaXJDb25maWcAAAAAAAAAAAAKZmVlX2NvbmZpZwAAAAAH0AAAABFUcmVhc3VyeUZlZUNvbmZpZwAAAAAAAERRdW90aW5nIGlucHV0cyAoTE9ORy9TSE9SVCBzZXR0bGVtZW50IGZyYWN0aW9ucyArIFVTREMgb3JhY2xlIFRXQVApLgAAAAZwcmljZXMAAAAAB9AAAAATUGFpckFtb3VudHNXaXRoVVNEQwAAAAAkVG90YWwgTFAgc2hhcmUgc3VwcGx5IGZvciB0aGlzIHBhaXIuAAAADHRvdGFsX3NoYXJlcwAAAAo=",
+        "AAAAAQAAAFNBIHBlci11c2VyIHZpZXcgdGhhdCBjb21iaW5lcyBbYFRyZWFzdXJ5U3VtbWFyeWBdIHBsdXMgdGhlIHVzZXIncyBMUCBzaGFyZSBiYWxhbmNlLgAAAAAAAAAAE1RyZWFzdXJ5VXNlclN1bW1hcnkAAAAAAgAAAAAAAAAHc3VtbWFyeQAAAAfQAAAAD1RyZWFzdXJ5U3VtbWFyeQAAAAAAAAAAC3VzZXJfc2hhcmVzAAAAAAo=",
+        "AAAAAQAAAL9GZWUgbW9kZWwgcGFyYW1ldGVycyBmb3IgYSBwYWlyLgoKYG1ha2VyX2Jhc2VfZmVlYCAvIGB0YWtlcl9iYXNlX2ZlZWAgYXJlIGV4cHJlc3NlZCBpbiBgUFJJQ0VfUFJFQ0lTSU9OYCB1bml0cy4KVGhlIHJlbWFpbmluZyBwYXJhbWV0ZXJzIGFyZSBtb2RlbC1zcGVjaWZpYyBrbm9icyB1c2VkIGJ5IGBjYWxjdWxhdGVfZmVlKC4uLilgLgAAAAAAAAAAEVRyZWFzdXJ5RmVlQ29uZmlnAAAAAAAACAAAAAAAAAALYm91bmRfcG93ZXIAAAAABAAAAAAAAAANY29lZmZpY2llbnRfYQAAAAAAAAoAAAAAAAAADWNvZWZmaWNpZW50X2MAAAAAAAAKAAAAAAAAAA1jb2VmZmljaWVudF9kAAAAAAAACgAAAAAAAAASaW1wbGllZF92b2xhdGlsaXR5AAAAAAAKAAAAAAAAAA5tYWtlcl9iYXNlX2ZlZQAAAAAACgAAAAAAAAAScmVhY3Rpb25fdGltZV9zZWNzAAAAAAAKAAAAAAAAAA50YWtlcl9iYXNlX2ZlZQAAAAAACg==",
+        "AAAAAQAAAHNSaXNrIHBhcmFtZXRlcnMgZW5mb3JjZWQgYnkgdGhlIFRyZWFzdXJ5IHdoZW4gZXhlY3V0aW5nIHRyYWRlcy4KClZhbHVlcyBhcmUgaW50ZXJwcmV0ZWQgYnkgYGNyYXRlOjpyaXNrOjoqYCBjaGVja3MuAAAAAAAAAAAWVHJlYXN1cnlSaXNrUGFyYW1ldGVycwAAAAAAAQAAAD9UaHJlc2hvbGQgaW4gYFBSSUNFX1BSRUNJU0lPTmAgdW5pdHMgdXNlZCBieSB0b3hpYy10cmFkZSBsb2dpYy4AAAAAD3RveGljX3RocmVzaG9sZAAAAAAK",
+        "AAAAAQAAAGJDb21wb3NpdGUga2V5IGZvciBgKHBhaXIsIHVzZXIpYCBMUCBzaGFyZSBiYWxhbmNlcy4KClN0b3JlZCB1bmRlciBbYFRyZWFzdXJ5RGF0YUtleTo6VXNlclNoYXJlc2BdLgAAAAAAAAAAAA1Vc2VyU2hhcmVzS2V5AAAAAAAAAgAAAAAAAAAEcGFpcgAAABMAAAAAAAAABHVzZXIAAAAT",
+        "AAAAAgAAAK5QZXJzaXN0ZW50IHN0b3JhZ2Uga2V5cyBmb3IgYWxsIHBlci1wYWlyIHN0YXRlLgoKRXZlcnl0aGluZyBoZXJlIGlzIHN0b3JlZCBpbiAqKnBlcnNpc3RlbnQqKiBzdG9yYWdlIGFuZCBtdXN0IGJlIFRUTC1idW1wZWQKKGBidW1wX3BlcnNpc3RlbnRgKSBvbiByZWFkL3dyaXRlIHRvIGF2b2lkIGV4cGlyeS4AAAAAAAAAAAAPVHJlYXN1cnlEYXRhS2V5AAAAAAcAAAABAAAAH1BhaXIgLT4gdG9rZW4vY29uZmlnIGFkZHJlc3Nlcy4AAAAABkNvbmZpZwAAAAAAAQAAABMAAAABAAAAI1BhaXIgLT4gVHJlYXN1cnkgaW52ZW50b3J5IGFtb3VudHMuAAAAAAhCYWxhbmNlcwAAAAEAAAATAAAAAQAAAC5QYWlyIC0+IHJpc2sga25vYnMgKHRveGljaXR5IHRocmVzaG9sZCwgZXRjLikuAAAAAAAOUmlza1BhcmFtZXRlcnMAAAAAAAEAAAATAAAAAQAAAB5QYWlyIC0+IHRvdGFsIExQIHNoYXJlIHN1cHBseS4AAAAAAAtUb3RhbFNoYXJlcwAAAAABAAAAEwAAAAEAAAAoKFBhaXIsIFVzZXIpIC0+IHVzZXIncyBMUCBzaGFyZSBiYWxhbmNlLgAAAApVc2VyU2hhcmVzAAAAAAABAAAH0AAAAA1Vc2VyU2hhcmVzS2V5AAAAAAAAAQAAABpQYWlyIC0+IGZlZSBjb25maWd1cmF0aW9uLgAAAAAACUZlZUNvbmZpZwAAAAAAAAEAAAATAAAAAQAAADJQYWlyIC0+IGFjY3VtdWxhdGVkIHByb3RvY29sIGZlZXMgKGluIFVTREMgdW5pdHMpLgAAAAAADFByb3RvY29sRmVlcwAAAAEAAAAT",
         "AAAABAAAAAAAAAAAAAAAEkFjY2Vzc0NvbnRyb2xFcnJvcgAAAAAABwAAAAAAAAAMUm9sZU5vdEZvdW5kAAAAZQAAAAAAAAAMVW5hdXRob3JpemVkAAAAZgAAAAAAAAAPQWRtaW5BbHJlYWR5U2V0AAAAAGcAAAAAAAAADEJhZFJvbGVVc2FnZQAAAGgAAAAAAAAAE0Fub3RoZXJBY3Rpb25BY3RpdmUAAAALWgAAAAAAAAAOTm9BY3Rpb25BY3RpdmUAAAAAC1sAAAAAAAAAEUFjdGlvbk5vdFJlYWR5WWV0AAAAAAALXA==",
         "AAAABAAAAAAAAAAAAAAAC09yYWNsZUVycm9yAAAAAAYAAAAeT3JhY2xlRXJyb3I6IE9yYWNsZU5vblBvc2l0aXZlAAAAAAART3JhY2xlTm9uUG9zaXRpdmUAAAAAAAJZAAAAAAAAABFPcmFjbGVUb29Wb2xhdGlsZQAAAAAAAloAAAAAAAAAEk9yYWNsZVN0YWxlRm9yUGFpcgAAAAACWwAAAAAAAAANT3JhY2xlSW52YWxpZAAAAAAAAlwAAAAAAAAAFkZhaWxlZFRvR2V0T3JhY2xlUHJpY2UAAAAAAl0AAAAAAAAADEludmFsaWRJbnB1dAAAAl4=",
         "AAAAAgAAAAAAAAAAAAAADk9yYWNsZVZhbGlkaXR5AAAAAAAFAAAAAAAAAAAAAAALTm9uUG9zaXRpdmUAAAAAAAAAAAAAAAALVG9vVm9sYXRpbGUAAAAAAAAAAAAAAAAMU3RhbGVGb3JQYWlyAAAAAAAAAAAAAAAGRnJvemVuAAAAAAAAAAAAAAAAAAVWYWxpZAAAAA==",
@@ -1260,10 +1412,6 @@ export class Client extends ContractClient {
         get_summary: this.txFromJSON<TreasurySummary>,
         get_user_with_summary: this.txFromJSON<TreasuryUserSummary>,
         estimate_trade: this.txFromJSON<readonly [u128, u128]>,
-        mint_and_sell_short: this.txFromJSON<u128>,
-        mint_and_sell_long: this.txFromJSON<u128>,
-        buy_long_and_redeem: this.txFromJSON<u128>,
-        buy_short_and_redeem: this.txFromJSON<u128>,
         buy_long: this.txFromJSON<u128>,
         sell_long: this.txFromJSON<u128>,
         buy_short: this.txFromJSON<u128>,

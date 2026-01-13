@@ -1,6 +1,6 @@
 use soroban_sdk::{panic_with_error, Address, Env};
-use types::pair::{PairAmountsWithUSDC, Side};
-use utils::constant::{ONE_U128, PRICE_PRECISION};
+use types::pair::PairAmountsWithUSDC;
+use utils::constant::PRICE_PRECISION;
 use utils::math::safe_math::{PrecisionMath, SafeMath};
 
 use crate::errors::TreasuryError;

@@ -1,5 +1,7 @@
 use soroban_sdk::{Address, Env};
-use types::pair::{CollateralInfo, PairAmounts, PairPriceBounds, PairSummary, PairTokens, Side};
+use types::pair::{
+    CollateralInfo, PairAmounts, PairPriceBounds, PairStatus, PairSummary, PairTokens, Side,
+};
 
 pub trait LongShortPairTrait {
     /// Creates a pair of long and short tokens equal in number to tokens_to_mint. Pulls the required collateral
@@ -30,7 +32,9 @@ pub trait LongShortPairTrait {
 
     fn get_collateral_info(e: Env) -> CollateralInfo;
 
-    fn get_pair_summary(e: Env) -> PairSummary;
+    fn get_summary(e: Env) -> PairSummary;
+
+    fn get_status(e: Env) -> PairStatus;
 }
 
 pub trait AdminInterfaceTrait {

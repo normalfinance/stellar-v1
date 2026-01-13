@@ -4,11 +4,9 @@ use crate::interface::{AdminInterfaceTrait, TradingTrait, TreasuryTrait};
 use crate::storage::{
     PairConfig, TreasuryFeeConfig, TreasuryRiskParameters, TreasurySummary, TreasuryUserSummary,
 };
-use soroban_sdk::auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation};
 use soroban_sdk::token::TokenClient as SorobanTokenClient;
 use soroban_sdk::{
-    contract, contractimpl, contractmeta, panic_with_error, vec, Address, BytesN, Env, IntoVal,
-    Symbol, Vec,
+    contract, contractimpl, contractmeta, panic_with_error, Address, BytesN, Env, Symbol, Vec,
 };
 use types::pair::{Direction, PairAmountsWithUSDC, Side};
 use utils::constant::{MAX_BASE_FEE, MAX_BOUND_POWER, PRICE_PRECISION};
@@ -39,29 +37,54 @@ pub struct Treasury;
 
 #[contractimpl]
 impl Treasury {
-    // __constructor
-    // Initializes the treasury by setting the admin roles and storing critical parameters.
-    //
-    // Arguments:
-    //   - e: The Soroban environment.
-    //   - admin: The address to be assigned the Admin role.
-    //   - oracle: The address of Normal Oracle specifically for USDC.
+    /// Initializes the Treasury contract.
+    ///
+    /// This constructor is intended to be called exactly once at deploy time. It:
+    /// - Sets up core admin roles (`Admin`, `PauseAdmin`, `EmergencyAdmin`) to the provided `admin`
+    /// - Stores the canonical USDC oracle used by the Treasury
+    ///
+    /// ### Reverts
+    /// - [`TreasuryError::AlreadyInitialized`] if the contract has already been initialized.
+    ///
+    /// ### Arguments
+    /// - `e`: Soroban environment.
+    /// - `admin`: Address to assign administrative roles to.
+    /// - `oracle`: Address of the Normal Oracle contract used for USDC pricing.
     pub fn __constructor(e: Env, admin: Address, oracle: Address) {
+        // NOTE: constructor auth is intentionally omitted because deployer auth patterns can vary.
+        // If you want strict deploy-time auth, uncomment the line below:
         // admin.require_auth();
 
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
             panic_with_error!(&e, TreasuryError::AlreadyInitialized);
         }
+
         access_control.set_role_address(&Role::Admin, &admin);
         access_control.set_role_address(&Role::PauseAdmin, &admin);
         access_control.set_role_address(&Role::EmergencyAdmin, &admin);
+
         crate::storage::set_oracle(&e, &oracle);
     }
 }
 
 #[contractimpl]
 impl TreasuryTrait for Treasury {
+    /// Deposits LP collateral into the Treasury in exchange for newly-minted LP shares.
+    ///
+    /// A deposit consists of:
+    /// - `pairs_to_deposit` LONG tokens
+    /// - `pairs_to_deposit` SHORT tokens
+    /// - `pairs_to_deposit * collateral_per_pair` USDC
+    ///
+    /// Shares are minted proportional to the deposit's NAV relative to the Treasury's total NAV.
+    ///
+    /// ### Reverts
+    /// - [`TreasuryError::InvalidInput`] if `pairs_to_deposit == 0`.
+    /// - [`TreasuryError::ActionPaused`] if deposits are paused.
+    ///
+    /// ### Returns
+    /// Returns the number of LP shares minted for the depositor.
     fn deposit(e: Env, user: Address, pair: Address, pairs_to_deposit: u128) -> u128 {
         user.require_auth();
 
@@ -75,15 +98,15 @@ impl TreasuryTrait for Treasury {
 
         let config = crate::storage::get_config(&e, &pair);
 
-        // Fetch collateral info from the Pair
+        // Pull collateral parameters (e.g., collateral_per_pair) from the Pair contract.
         let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
 
-        // Compute the current Net Asset Value (NAV)
+        // Snapshot current state for pricing/share math.
         let balances = crate::storage::get_balances(&e, &pair);
         let prices = crate::price::get_prices(&e, &pair);
         let nav = crate::lp::nav(&e, &balances, &prices);
 
-        // Compute how many shares to mint the deposit
+        // Convert deposit into NAV, then NAV into newly minted shares.
         let total_shares = crate::storage::get_total_shares(&e, &pair);
         let deposit_nav = crate::lp::pairs_to_nav(
             &e,
@@ -93,8 +116,10 @@ impl TreasuryTrait for Treasury {
         );
         let shares_to_mint = crate::lp::nav_to_shares(&e, &pair, nav, deposit_nav, total_shares);
 
-        // Transfer long, short, and USDC tokens from the user into the Treasury
+        // Transfers happen before state writes so we only mutate storage after successful token movement.
         let treasury = e.current_contract_address();
+
+        // Move LONG and SHORT into the Treasury.
         SorobanTokenClient::new(&e, &config.long).transfer(
             &user,
             &treasury,
@@ -105,6 +130,8 @@ impl TreasuryTrait for Treasury {
             &treasury,
             &pairs_to_deposit.safe_to_i128(&e),
         );
+
+        // Compute and transfer the required USDC collateral.
         let required_usdc = pairs_to_deposit.safe_fixed_mul_floor(
             &e,
             collateral_info.collateral_per_pair,
@@ -116,16 +143,15 @@ impl TreasuryTrait for Treasury {
             &required_usdc.safe_to_i128(&e),
         );
 
-        // Update total shares
+        // Update share accounting.
         let new_total_shares = total_shares.safe_add(&e, shares_to_mint);
         crate::storage::set_total_shares(&e, &pair, new_total_shares);
 
-        // Update user shares
         let user_shares = crate::storage::get_user_shares(&e, &pair, &user, true);
         let new_user_shares = user_shares.safe_add(&e, shares_to_mint);
         crate::storage::set_user_shares(&e, &pair, &user, new_user_shares);
 
-        // Update balances
+        // Update Treasury balances to reflect assets received.
         crate::storage::set_balances(
             &e,
             &pair,
@@ -151,6 +177,19 @@ impl TreasuryTrait for Treasury {
         shares_to_mint
     }
 
+    /// Withdraws LP collateral from the Treasury by burning LP shares.
+    ///
+    /// The caller specifies the number of shares to burn. The Treasury computes the
+    /// proportional amount of LONG/SHORT/USDC owed, validates safety constraints, and
+    /// transfers the tokens to the user.
+    ///
+    /// ### Reverts
+    /// - [`TreasuryError::InvalidInput`] if `shares == 0`.
+    /// - [`TreasuryError::ActionPaused`] if withdrawals are paused.
+    /// - [`TreasuryError::InsufficientShares`] if `shares > user_shares` or `total_shares == 0`.
+    ///
+    /// ### Returns
+    /// Returns the token amounts withdrawn: `{ long, short, usdc }`.
     fn withdraw(e: Env, user: Address, pair: Address, shares: u128) -> PairAmountsWithUSDC {
         user.require_auth();
 
@@ -165,27 +204,29 @@ impl TreasuryTrait for Treasury {
         let config = crate::storage::get_config(&e, &pair);
 
         let total_shares = crate::storage::get_total_shares(&e, &pair);
-        let user_shares = crate::storage::get_user_shares(&e, &pair, &user, false); // return_zero = false > to revert if UserShares not initialized for the user
+        // return_zero = false so we revert if the user never initialized shares for this pair.
+        let user_shares = crate::storage::get_user_shares(&e, &pair, &user, false);
 
         if shares > user_shares || total_shares <= 0 {
             panic_with_error!(&e, TreasuryError::InsufficientShares);
         }
 
-        // Convert shares to withdrawable token amounts
+        // Convert shares into token amounts, validating that the withdrawal is safe for LPs.
         let balances = crate::storage::get_balances(&e, &pair);
         let prices = crate::price::get_prices(&e, &pair);
         let tokens_out =
             crate::lp::validate_lp_withdrawal(&e, &balances, &prices, total_shares, shares);
 
-        // Burn shares
+        // Burn shares in storage.
         let new_total_shares = total_shares.safe_sub(&e, shares);
         crate::storage::set_total_shares(&e, &pair, new_total_shares);
 
         let new_user_shares = user_shares.safe_sub(&e, shares);
         crate::storage::set_user_shares(&e, &pair, &user, new_user_shares);
 
-        // Transfers
+        // Transfers happen after checks but before balance writes for correctness.
         let treasury = e.current_contract_address();
+
         SorobanTokenClient::new(&e, &config.usdc).transfer(
             &treasury,
             &user,
@@ -202,7 +243,7 @@ impl TreasuryTrait for Treasury {
             &tokens_out.short.safe_to_i128(&e),
         );
 
-        // Update balances
+        // Update stored balances to reflect assets paid out.
         crate::storage::set_balances(
             &e,
             &pair,
@@ -230,30 +271,48 @@ impl TreasuryTrait for Treasury {
         tokens_out
     }
 
+    /// Returns the stored token configuration for a given Pair.
+    ///
+    /// This includes the contract addresses for the Pair, LONG, SHORT, and collateral (USDC) tokens.
     fn get_config(e: Env, pair: Address) -> PairConfig {
         crate::storage::get_config(&e, &pair)
     }
 
+    /// Returns the current oracle prices for the given Pair.
+    ///
+    /// Prices are returned in the same precision as `PRICE_PRECISION`.
     fn get_prices(e: Env, pair: Address) -> PairAmountsWithUSDC {
         crate::price::get_prices(&e, &pair)
     }
 
+    /// Returns the Treasury’s internal accounting balances for the given Pair.
+    ///
+    /// These balances represent the Treasury’s tracked inventory and may be used for quoting,
+    /// risk checks, and LP accounting.
     fn get_balances(e: Env, pair: Address) -> PairAmountsWithUSDC {
         crate::storage::get_balances(&e, &pair)
     }
 
+    /// Returns the total LP shares outstanding for the given Pair.
     fn get_total_shares(e: Env, pair: Address) -> u128 {
         crate::storage::get_total_shares(&e, &pair)
     }
 
+    /// Returns the LP share balance for `user` for the given Pair.
+    ///
+    /// Missing records default to zero for read-only UX.
     fn get_user_shares(e: Env, pair: Address, user: Address) -> u128 {
         crate::storage::get_user_shares(&e, &pair, &user, true)
     }
 
+    /// Returns the current fee configuration for the given Pair.
     fn get_fee_config(e: Env, pair: Address) -> TreasuryFeeConfig {
         crate::storage::get_fee_config(&e, &pair)
     }
 
+    /// Returns a snapshot of the Treasury state for the given Pair.
+    ///
+    /// This is a convenience method for frontends/indexers to avoid multiple round-trips.
     fn get_summary(e: Env, pair: Address) -> TreasurySummary {
         TreasurySummary {
             config: crate::storage::get_config(&e, &pair),
@@ -264,6 +323,9 @@ impl TreasuryTrait for Treasury {
         }
     }
 
+    /// Returns a snapshot of the Treasury state for a Pair plus the user's share balance.
+    ///
+    /// This is a convenience method for frontends/indexers to fetch summary + user position in one call.
     fn get_user_with_summary(e: Env, pair: Address, user: Address) -> TreasuryUserSummary {
         TreasuryUserSummary {
             summary: TreasurySummary {
@@ -280,6 +342,17 @@ impl TreasuryTrait for Treasury {
 
 #[contractimpl]
 impl TradingTrait for Treasury {
+    /// Estimates a trade output and fee without executing any token transfers.
+    ///
+    /// This helper is intended for quoting in UIs and off-chain routing. It uses the same
+    /// pricing + fee model as the on-chain trade methods.
+    ///
+    /// ### Reverts
+    /// - [`TreasuryError::InvalidInput`] if `amount_in == 0`.
+    /// - Reverts if `pair` is not configured (via `get_config`).
+    ///
+    /// ### Returns
+    /// Returns `(amount_out, usdc_fee)`.
     fn estimate_trade(
         e: Env,
         pair: Address,
@@ -291,7 +364,8 @@ impl TradingTrait for Treasury {
             panic_with_error!(&e, TreasuryError::InvalidInput);
         }
 
-        crate::storage::get_config(&e, &pair); // call to ensure pair exists
+        // Ensure the pair exists / is configured. The return value isn't needed here.
+        crate::storage::get_config(&e, &pair);
 
         let fee_config = crate::storage::get_fee_config(&e, &pair);
         let balances = crate::storage::get_balances(&e, &pair);
@@ -325,451 +399,28 @@ impl TradingTrait for Treasury {
         panic_with_error!(&e, TreasuryError::InvalidInput)
     }
 
-    fn mint_and_sell_short(e: Env, user: Address, pair: Address, usdc_in: u128) -> u128 {
-        user.require_auth();
-
-        if usdc_in <= 0 {
-            panic_with_error!(&e, TreasuryError::InvalidInput);
-        }
-
-        if crate::storage::get_is_killed_trade(&e) {
-            panic_with_error!(&e, TreasuryError::ActionPaused);
-        }
-
-        let config = crate::storage::get_config(&e, &pair);
-
-        let fee_config = crate::storage::get_fee_config(&e, &pair);
-        let balances = crate::storage::get_balances(&e, &pair);
-        let prices = crate::price::get_prices(&e, &pair);
-        let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
-        let fee = crate::fees::calculate_fee(
-            &e,
-            Side::Short,
-            &fee_config,
-            &balances,
-            &prices,
-            collateral_info.collateral_percent_long,
-        );
-
-        // Compute how many tokens to mint
-        let (tokens_to_mint, usdc_fee) =
-            crate::price::quote_buy_token(&e, usdc_in, prices.long, fee);
-
-        // Transfer enough USDC from the user to the Treasury to mint
-        let treasury = e.current_contract_address();
-        let collateral_required = tokens_to_mint.safe_fixed_mul_floor(
-            &e,
-            collateral_info.collateral_per_pair,
-            PRICE_PRECISION,
-        );
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
-            &user,
-            &treasury,
-            &collateral_required.safe_to_i128(&e),
-        );
-
-        // Mint tokens via the Long Short Pair
-        e.authorize_as_current_contract(vec![
-            &e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: config.usdc.clone(),
-                    fn_name: Symbol::new(&e, "transfer"),
-                    args: (
-                        e.current_contract_address(),
-                        pair.clone(),
-                        collateral_required.safe_to_i128(&e),
-                    )
-                        .into_val(&e),
-                },
-                sub_invocations: vec![&e],
-            }),
-        ]);
-        let _collateral_used = crate::pair::mint_pair_as_treasury(&e, &pair, tokens_to_mint);
-
-        // Transfer the newly minted long tokens to the user
-        SorobanTokenClient::new(&e, &config.long).transfer(
-            &treasury,
-            &user,
-            &tokens_to_mint.safe_to_i128(&e),
-        );
-
-        // Then sell the short token by keeping it in the Treasury and returning it's value in USDC
-        let usdc_to_return = collateral_required.safe_sub(&e, usdc_in);
-
-        // Transfer the USDC proceeds from the "sale" of short token(s) back to the user
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
-            &treasury,
-            &user,
-            &usdc_to_return.safe_to_i128(&e),
-        );
-
-        // Panic if the trade removes too much USDC
-        let nav = crate::lp::nav(&e, &balances, &prices);
-        crate::risk::validate_usdc_floor(&e, balances.usdc, usdc_to_return, nav, prices.usdc);
-
-        // Update balances
-        crate::storage::set_balances(
-            &e,
-            &pair,
-            &(PairAmountsWithUSDC {
-                long: balances.long,
-                short: balances.short.safe_add(&e, tokens_to_mint),
-                usdc: balances.usdc.safe_add(&e, usdc_in.safe_sub(&e, usdc_fee)),
-            }),
-        );
-
-        Events::new(&e).trade(
-            user,
-            pair,
-            true,
-            Side::Long,
-            Direction::Buy,
-            usdc_in,
-            tokens_to_mint,
-            prices.long,
-            fee,
-            usdc_fee,
-            e.ledger().timestamp(),
-        );
-
-        tokens_to_mint
-    }
-
-    fn mint_and_sell_long(e: Env, user: Address, pair: Address, usdc_in: u128) -> u128 {
-        user.require_auth();
-
-        if usdc_in <= 0 {
-            panic_with_error!(&e, TreasuryError::InvalidInput);
-        }
-
-        if crate::storage::get_is_killed_trade(&e) {
-            panic_with_error!(&e, TreasuryError::ActionPaused);
-        }
-
-        let config = crate::storage::get_config(&e, &pair);
-
-        let fee_config = crate::storage::get_fee_config(&e, &pair);
-        let balances = crate::storage::get_balances(&e, &pair);
-        let prices = crate::price::get_prices(&e, &pair);
-        let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
-        let fee = crate::fees::calculate_fee(
-            &e,
-            Side::Long,
-            &fee_config,
-            &balances,
-            &prices,
-            collateral_info.collateral_percent_long,
-        );
-
-        // Compute how many tokens to mint
-        let (tokens_to_mint, usdc_fee) =
-            crate::price::quote_buy_token(&e, usdc_in, prices.short, fee);
-
-        // Transfer enough USDC from the user to the Treasury to mint
-        let treasury = e.current_contract_address();
-        let collateral_required = tokens_to_mint.safe_fixed_mul_floor(
-            &e,
-            collateral_info.collateral_per_pair,
-            PRICE_PRECISION,
-        );
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
-            &user,
-            &treasury,
-            &collateral_required.safe_to_i128(&e),
-        );
-
-        // Mint tokens via the Long Short Pair
-        e.authorize_as_current_contract(vec![
-            &e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: config.usdc.clone(),
-                    fn_name: Symbol::new(&e, "transfer"),
-                    args: (
-                        e.current_contract_address(),
-                        pair.clone(),
-                        collateral_required.safe_to_i128(&e),
-                    )
-                        .into_val(&e),
-                },
-                sub_invocations: vec![&e],
-            }),
-        ]);
-
-        crate::pair::mint_pair_as_treasury(&e, &pair, tokens_to_mint);
-
-        // Transfer the newly minted short token(s) to the user
-        SorobanTokenClient::new(&e, &config.short).transfer(
-            &treasury,
-            &user,
-            &tokens_to_mint.safe_to_i128(&e),
-        );
-
-        // Then sell the long token(s) by keeping them in the Treasury and returning their value in USDC
-        let usdc_to_return = collateral_required.safe_sub(&e, usdc_in);
-
-        // Transfer the USDC proceeds from the "sale" of long token(s) back to the user
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
-            &treasury,
-            &user,
-            &usdc_to_return.safe_to_i128(&e),
-        );
-
-        // Panic if the trade removes too much USDC
-        let nav = crate::lp::nav(&e, &balances, &prices);
-        crate::risk::validate_usdc_floor(&e, balances.usdc, usdc_to_return, nav, prices.usdc);
-
-        // Update balances
-        crate::storage::set_balances(
-            &e,
-            &pair,
-            &(PairAmountsWithUSDC {
-                long: balances.long.safe_add(&e, tokens_to_mint),
-                short: balances.short,
-                usdc: balances.usdc.safe_add(&e, usdc_in.safe_sub(&e, usdc_fee)),
-            }),
-        );
-
-        Events::new(&e).trade(
-            user,
-            pair,
-            true,
-            Side::Short,
-            Direction::Buy,
-            usdc_in,
-            tokens_to_mint,
-            prices.short,
-            fee,
-            usdc_fee,
-            e.ledger().timestamp(),
-        );
-
-        tokens_to_mint
-    }
-
-    fn buy_long_and_redeem(e: Env, user: Address, pair: Address, short_in: u128) -> u128 {
-        user.require_auth();
-
-        if short_in <= 0 {
-            panic_with_error!(&e, TreasuryError::InvalidInput);
-        }
-
-        if crate::storage::get_is_killed_trade(&e) {
-            panic_with_error!(&e, TreasuryError::ActionPaused);
-        }
-
-        let config = crate::storage::get_config(&e, &pair);
-
-        let fee_config = crate::storage::get_fee_config(&e, &pair);
-        let balances = crate::storage::get_balances(&e, &pair);
-        let prices = crate::price::get_prices(&e, &pair);
-        let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
-        let fee = crate::fees::calculate_fee(
-            &e,
-            Side::Short,
-            &fee_config,
-            &balances,
-            &prices,
-            collateral_info.collateral_percent_long,
-        );
-
-        // Transfer USDC from user to Treasury
-        let treasury = e.current_contract_address();
-        let usdc_required =
-            short_in.safe_fixed_mul_floor(&e, collateral_info.collateral_per_pair, PRICE_PRECISION);
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
-            &user,
-            &treasury,
-            &usdc_required.safe_to_i128(&e),
-        );
-
-        // Transfer the short token(s) from the user to the Treasury
-        SorobanTokenClient::new(&e, &config.short).transfer(
-            &user,
-            &treasury,
-            &short_in.safe_to_i128(&e),
-        );
-
-        // Redeem tokens via the Long Short Pair
-        e.authorize_as_current_contract(vec![
-            &e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: config.long.clone(),
-                    fn_name: Symbol::new(&e, "transfer"),
-                    args: (
-                        e.current_contract_address(),
-                        pair.clone(),
-                        short_in.safe_to_i128(&e),
-                    )
-                        .into_val(&e),
-                },
-                sub_invocations: vec![&e],
-            }),
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: config.short.clone(),
-                    fn_name: Symbol::new(&e, "transfer"),
-                    args: (
-                        e.current_contract_address(),
-                        pair.clone(),
-                        short_in.safe_to_i128(&e),
-                    )
-                        .into_val(&e),
-                },
-                sub_invocations: vec![&e],
-            }),
-        ]);
-
-        let collateral_returned = crate::pair::redeem_pair_as_treasury(&e, &pair, short_in);
-
-        // Transfer the total amount of USDC back to the user
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
-            &treasury,
-            &user,
-            &collateral_returned.safe_to_i128(&e),
-        );
-
-        // Update balances
-        crate::storage::set_balances(
-            &e,
-            &pair,
-            &(PairAmountsWithUSDC {
-                long: balances.long.saturating_sub(short_in),
-                short: balances.short,
-                usdc: balances.usdc.saturating_sub(collateral_returned), // saturated to avoid asserting collateral_returned <= balances.usdc
-            }),
-        );
-
-        Events::new(&e).trade(
-            user,
-            pair,
-            true,
-            Side::Short,
-            Direction::Sell,
-            short_in,
-            collateral_returned,
-            prices.short,
-            fee,
-            0,
-            e.ledger().timestamp(),
-        );
-
-        collateral_returned
-    }
-
-    fn buy_short_and_redeem(e: Env, user: Address, pair: Address, long_in: u128) -> u128 {
-        user.require_auth();
-
-        if long_in <= 0 {
-            panic_with_error!(&e, TreasuryError::InvalidInput);
-        }
-
-        if crate::storage::get_is_killed_trade(&e) {
-            panic_with_error!(&e, TreasuryError::ActionPaused);
-        }
-
-        let config = crate::storage::get_config(&e, &pair);
-
-        let fee_config = crate::storage::get_fee_config(&e, &pair);
-        let balances = crate::storage::get_balances(&e, &pair);
-        let prices = crate::price::get_prices(&e, &pair);
-        let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
-        let fee = crate::fees::calculate_fee(
-            &e,
-            Side::Long,
-            &fee_config,
-            &balances,
-            &prices,
-            collateral_info.collateral_percent_long,
-        );
-
-        // Transfer USDC from user to Treasury
-        let treasury = e.current_contract_address();
-        let usdc_required =
-            long_in.safe_fixed_mul_floor(&e, collateral_info.collateral_per_pair, PRICE_PRECISION);
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
-            &user,
-            &treasury,
-            &usdc_required.safe_to_i128(&e),
-        );
-
-        // Transfer the long token(s) from the user to the Treasury
-        SorobanTokenClient::new(&e, &config.long).transfer(
-            &user,
-            &treasury,
-            &long_in.safe_to_i128(&e),
-        );
-
-        // Redeem tokens via the Long Short Pair
-        e.authorize_as_current_contract(vec![
-            &e,
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: config.long.clone(),
-                    fn_name: Symbol::new(&e, "transfer"),
-                    args: (
-                        e.current_contract_address(),
-                        pair.clone(),
-                        long_in.safe_to_i128(&e),
-                    )
-                        .into_val(&e),
-                },
-                sub_invocations: vec![&e],
-            }),
-            InvokerContractAuthEntry::Contract(SubContractInvocation {
-                context: ContractContext {
-                    contract: config.short.clone(),
-                    fn_name: Symbol::new(&e, "transfer"),
-                    args: (
-                        e.current_contract_address(),
-                        pair.clone(),
-                        long_in.safe_to_i128(&e),
-                    )
-                        .into_val(&e),
-                },
-                sub_invocations: vec![&e],
-            }),
-        ]);
-
-        let collateral_returned = crate::pair::redeem_pair_as_treasury(&e, &pair, long_in);
-
-        // Transfer the total amount of USDC back to the user
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
-            &treasury,
-            &user,
-            &collateral_returned.safe_to_i128(&e),
-        );
-
-        // Update balances
-        crate::storage::set_balances(
-            &e,
-            &pair,
-            &(PairAmountsWithUSDC {
-                long: balances.long,
-                short: balances.short.saturating_sub(long_in),
-                usdc: balances.usdc.saturating_sub(collateral_returned), // saturated to avoid asserting collateral_returned <= balances.usdc
-            }),
-        );
-
-        Events::new(&e).trade(
-            user,
-            pair,
-            true,
-            Side::Long,
-            Direction::Sell,
-            long_in,
-            collateral_returned,
-            prices.long,
-            fee,
-            0,
-            e.ledger().timestamp(),
-        );
-
-        collateral_returned
-    }
-
+    /// Buys **LONG** tokens from the Treasury using USDC.
+    ///
+    /// The caller supplies `usdc_in` and receives `long_out` quoted from the current
+    /// oracle price and fee model. This trade is executed **against Treasury inventory**:
+    /// the Treasury must already hold sufficient LONG to deliver the trade.
+    ///
+    /// ### Pricing & Fees
+    /// - Uses `prices.long` from the oracle.
+    /// - Computes a dynamic taker fee via `calculate_fee(...)`.
+    /// - `quote_buy_token` returns `(long_out, usdc_fee)`; `usdc_fee` is retained and tracked.
+    ///
+    /// ### Slippage Protection
+    /// Reverts if `long_out < min_long_out`.
+    ///
+    /// ### Reverts
+    /// - [`TreasuryError::InvalidInput`] if `usdc_in == 0`.
+    /// - [`TreasuryError::ActionPaused`] if trading is paused.
+    /// - [`TreasuryError::Slippage`] if output is zero or below `min_long_out`.
+    /// - [`TreasuryError::InsufficientInventory`] if the Treasury lacks LONG inventory.
+    ///
+    /// ### Returns
+    /// Returns the amount of LONG transferred to the user.
     fn buy_long(e: Env, user: Address, pair: Address, usdc_in: u128, min_long_out: u128) -> u128 {
         user.require_auth();
 
@@ -782,13 +433,14 @@ impl TradingTrait for Treasury {
         }
 
         let config = crate::storage::get_config(&e, &pair);
-
         let treasury = e.current_contract_address();
 
+        // Snapshot state used for pricing + fee calculation.
         let fee_config = crate::storage::get_fee_config(&e, &pair);
         let balances = crate::storage::get_balances(&e, &pair);
         let prices = crate::price::get_prices(&e, &pair);
         let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
+
         let fee = crate::fees::calculate_fee(
             &e,
             Side::Long,
@@ -800,6 +452,7 @@ impl TradingTrait for Treasury {
 
         let (long_out, usdc_fee) = crate::price::quote_buy_token(&e, usdc_in, prices.long, fee);
 
+        // Ensure the Treasury has enough LONG to fulfill this purchase.
         if long_out <= 0 || long_out < min_long_out {
             panic_with_error!(&e, TreasuryError::Slippage);
         }
@@ -809,25 +462,23 @@ impl TradingTrait for Treasury {
             panic_with_error!(&e, TreasuryError::InsufficientInventory);
         }
 
-        // Move USDC in (fee stays in treasury because we net it inside quote)
+        // Token movements first (atomic execution ensures revert on failure).
         SorobanTokenClient::new(&e, &config.usdc).transfer(
             &user,
             &treasury,
             &usdc_in.safe_to_i128(&e),
         );
-
-        // Move LONG out
         SorobanTokenClient::new(&e, &config.long).transfer(
             &treasury,
             &user,
             &long_out.safe_to_i128(&e),
         );
 
-        // Increment protocol fees
+        // Track protocol fee in USDC.
         let current_protocol_fees = crate::storage::get_protocol_fees(&e, &pair);
         crate::storage::set_protocol_fees(&e, &pair, &current_protocol_fees.safe_add(&e, usdc_fee));
 
-        // Update balances
+        // Persist updated accounting balances.
         crate::storage::set_balances(
             &e,
             &pair,
@@ -855,6 +506,29 @@ impl TradingTrait for Treasury {
         long_out
     }
 
+    /// Sells **LONG** tokens to the Treasury in exchange for USDC.
+    ///
+    /// The caller supplies `long_in` and receives `usdc_out` quoted from the current
+    /// oracle price and fee model. This trade is executed **against Treasury USDC inventory**:
+    /// the Treasury must have sufficient USDC to pay out.
+    ///
+    /// Additional safety checks apply to protect LPs:
+    /// - LONG-side trades may be blocked as "toxic"
+    /// - USDC floor constraints prevent draining too much collateral in a single trade
+    ///
+    /// ### Slippage Protection
+    /// Reverts if `usdc_out < min_usdc_out`.
+    ///
+    /// ### Reverts
+    /// - [`TreasuryError::InvalidInput`] if `long_in == 0`.
+    /// - [`TreasuryError::ActionPaused`] if trading is paused.
+    /// - [`TreasuryError::ToxicSideNotAccepted`] if risk logic blocks LONG sells.
+    /// - [`TreasuryError::Slippage`] if output is zero or below `min_usdc_out`.
+    /// - [`TreasuryError::InsufficientInventory`] if the Treasury lacks USDC to pay out.
+    /// - [`TreasuryError::CannotPassFloor`] if paying out violates the USDC floor.
+    ///
+    /// ### Returns
+    /// Returns the amount of USDC transferred to the user.
     fn sell_long(e: Env, user: Address, pair: Address, long_in: u128, min_usdc_out: u128) -> u128 {
         user.require_auth();
 
@@ -867,16 +541,19 @@ impl TradingTrait for Treasury {
         }
 
         let config = crate::storage::get_config(&e, &pair);
-
         let treasury = e.current_contract_address();
+
+        // Pull oracle prices early for toxicity checks.
         let fee_config = crate::storage::get_fee_config(&e, &pair);
         let prices = crate::price::get_prices(&e, &pair);
 
-        // Block the trade if long tokens are toxic
+        // Block the trade if LONG is currently considered toxic.
         crate::risk::block_toxic_trades(&e, &pair, Side::Long, prices.long);
 
+        // Snapshot state used for pricing + fee calculation.
         let balances = crate::storage::get_balances(&e, &pair);
         let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
+
         let fee = crate::fees::calculate_fee(
             &e,
             Side::Long,
@@ -892,35 +569,32 @@ impl TradingTrait for Treasury {
             panic_with_error!(&e, TreasuryError::Slippage);
         }
 
-        // Inventory check: treasury must have enough LONG to sell
-        let balances = crate::storage::get_balances(&e, &pair);
+        // Ensure the Treasury has enough USDC to pay out.
         if usdc_out > balances.usdc {
             panic_with_error!(&e, TreasuryError::InsufficientInventory);
         }
 
-        // Panic if the trade removes too much USDC
+        // Prevent a single trade from pushing the Treasury below its configured USDC floor.
         let nav = crate::lp::nav(&e, &balances, &prices);
         crate::risk::validate_usdc_floor(&e, balances.usdc, usdc_out, nav, prices.usdc);
 
-        // Move LONG in
+        // Token movements: receive LONG, pay USDC.
         SorobanTokenClient::new(&e, &config.long).transfer(
             &user,
             &treasury,
             &long_in.safe_to_i128(&e),
         );
-
-        // Pay USDC out
         SorobanTokenClient::new(&e, &config.usdc).transfer(
             &treasury,
             &user,
             &usdc_out.safe_to_i128(&e),
         );
 
-        // Increment protocol fees
+        // Track protocol fee in USDC.
         let current_protocol_fees = crate::storage::get_protocol_fees(&e, &pair);
         crate::storage::set_protocol_fees(&e, &pair, &current_protocol_fees.safe_add(&e, usdc_fee));
 
-        // Update balances
+        // Persist updated accounting balances.
         crate::storage::set_balances(
             &e,
             &pair,
@@ -948,6 +622,28 @@ impl TradingTrait for Treasury {
         usdc_out
     }
 
+    /// Buys **SHORT** tokens from the Treasury using USDC.
+    ///
+    /// The caller supplies `usdc_in` and receives `short_out` quoted from the current
+    /// oracle price and fee model. This trade is executed **against Treasury inventory**:
+    /// the Treasury must already hold sufficient SHORT to deliver the trade.
+    ///
+    /// ### Pricing & Fees
+    /// - Uses `prices.short` from the oracle.
+    /// - Computes a dynamic taker fee via `calculate_fee(...)`.
+    /// - `quote_buy_token` returns `(short_out, usdc_fee)`; `usdc_fee` is retained and tracked.
+    ///
+    /// ### Slippage Protection
+    /// Reverts if `short_out < min_short_out`.
+    ///
+    /// ### Reverts
+    /// - [`TreasuryError::InvalidInput`] if `usdc_in == 0`.
+    /// - [`TreasuryError::ActionPaused`] if trading is paused.
+    /// - [`TreasuryError::Slippage`] if output is zero or below `min_short_out`.
+    /// - [`TreasuryError::InsufficientInventory`] if the Treasury lacks SHORT inventory.
+    ///
+    /// ### Returns
+    /// Returns the amount of SHORT transferred to the user.
     fn buy_short(e: Env, user: Address, pair: Address, usdc_in: u128, min_short_out: u128) -> u128 {
         user.require_auth();
 
@@ -960,12 +656,14 @@ impl TradingTrait for Treasury {
         }
 
         let config = crate::storage::get_config(&e, &pair);
-
         let treasury = e.current_contract_address();
+
+        // Snapshot state used for pricing + fee calculation.
         let fee_config = crate::storage::get_fee_config(&e, &pair);
         let prices = crate::price::get_prices(&e, &pair);
         let balances = crate::storage::get_balances(&e, &pair);
         let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
+
         let fee = crate::fees::calculate_fee(
             &e,
             Side::Long,
@@ -981,30 +679,28 @@ impl TradingTrait for Treasury {
             panic_with_error!(&e, TreasuryError::Slippage);
         }
 
-        // Inventory check: treasury must have enough SHORT to sell
+        // Ensure the Treasury has enough SHORT to fulfill this purchase.
         if short_out > balances.short {
             panic_with_error!(&e, TreasuryError::InsufficientInventory);
         }
 
-        // Move USDC in (fee stays in treasury because we net it inside quote)
+        // Token movements first.
         SorobanTokenClient::new(&e, &config.usdc).transfer(
             &user,
             &treasury,
             &usdc_in.safe_to_i128(&e),
         );
-
-        // Move LONG out
         SorobanTokenClient::new(&e, &config.short).transfer(
             &treasury,
             &user,
             &short_out.safe_to_i128(&e),
         );
 
-        // Increment protocol fees
+        // Track protocol fee in USDC.
         let current_protocol_fees = crate::storage::get_protocol_fees(&e, &pair);
         crate::storage::set_protocol_fees(&e, &pair, &current_protocol_fees.safe_add(&e, usdc_fee));
 
-        // Update balances
+        // Persist updated accounting balances.
         crate::storage::set_balances(
             &e,
             &pair,
@@ -1032,6 +728,29 @@ impl TradingTrait for Treasury {
         short_out
     }
 
+    /// Sells **SHORT** tokens to the Treasury in exchange for USDC.
+    ///
+    /// The caller supplies `short_in` and receives `usdc_out` quoted from the current
+    /// oracle price and fee model. This trade is executed **against Treasury USDC inventory**:
+    /// the Treasury must have sufficient USDC to pay out.
+    ///
+    /// Additional safety checks apply to protect LPs:
+    /// - SHORT-side trades may be blocked as "toxic"
+    /// - USDC floor constraints prevent draining too much collateral in a single trade
+    ///
+    /// ### Slippage Protection
+    /// Reverts if `usdc_out < min_usdc_out`.
+    ///
+    /// ### Reverts
+    /// - [`TreasuryError::InvalidInput`] if `short_in == 0`.
+    /// - [`TreasuryError::ActionPaused`] if trading is paused.
+    /// - [`TreasuryError::ToxicSideNotAccepted`] if risk logic blocks SHORT sells.
+    /// - [`TreasuryError::Slippage`] if output is zero or below `min_usdc_out`.
+    /// - [`TreasuryError::InsufficientInventory`] if the Treasury lacks USDC to pay out.
+    /// - [`TreasuryError::CannotPassFloor`] if paying out violates the USDC floor.
+    ///
+    /// ### Returns
+    /// Returns the amount of USDC transferred to the user.
     fn sell_short(
         e: Env,
         user: Address,
@@ -1050,16 +769,18 @@ impl TradingTrait for Treasury {
         }
 
         let config = crate::storage::get_config(&e, &pair);
-
         let treasury = e.current_contract_address();
+
         let fee_config = crate::storage::get_fee_config(&e, &pair);
         let prices = crate::price::get_prices(&e, &pair);
 
-        // Block the trade if short tokens are toxic
+        // Block the trade if SHORT is currently considered toxic.
         crate::risk::block_toxic_trades(&e, &pair, Side::Short, prices.short);
 
+        // Snapshot state used for pricing + fee calculation.
         let balances = crate::storage::get_balances(&e, &pair);
         let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
+
         let fee = crate::fees::calculate_fee(
             &e,
             Side::Long,
@@ -1070,39 +791,37 @@ impl TradingTrait for Treasury {
         );
 
         let (usdc_out, usdc_fee) = crate::price::quote_sell_token(&e, short_in, prices.short, fee);
+
         if usdc_out <= 0 || usdc_out < min_usdc_out {
             panic_with_error!(&e, TreasuryError::Slippage);
         }
 
-        // Inventory check: treasury must have enough USDC to buy SHORT
-        let balances = crate::storage::get_balances(&e, &pair);
+        // Ensure the Treasury has enough USDC to pay out.
         if usdc_out > balances.usdc {
             panic_with_error!(&e, TreasuryError::InsufficientInventory);
         }
 
-        // Panic if the trade removes too much USDC
+        // Prevent a single trade from pushing the Treasury below its configured USDC floor.
         let nav = crate::lp::nav(&e, &balances, &prices);
         crate::risk::validate_usdc_floor(&e, balances.usdc, usdc_out, nav, prices.usdc);
 
-        // Move SHORT in
+        // Token movements: receive SHORT, pay USDC.
         SorobanTokenClient::new(&e, &config.short).transfer(
             &user,
             &treasury,
             &short_in.safe_to_i128(&e),
         );
-
-        // Pay USDC out
         SorobanTokenClient::new(&e, &config.usdc).transfer(
             &treasury,
             &user,
             &usdc_out.safe_to_i128(&e),
         );
 
-        // Increment protocol fees
+        // Track protocol fee in USDC.
         let current_protocol_fees = crate::storage::get_protocol_fees(&e, &pair);
         crate::storage::set_protocol_fees(&e, &pair, &current_protocol_fees.safe_add(&e, usdc_fee));
 
-        // Update balances
+        // Persist updated accounting balances.
         crate::storage::set_balances(
             &e,
             &pair,
@@ -1133,6 +852,14 @@ impl TradingTrait for Treasury {
 
 #[contractimpl]
 impl AdminInterfaceTrait for Treasury {
+    /// Registers a new Pair with the Treasury and initializes its state.
+    ///
+    /// This call:
+    /// - Stores the token addresses for LONG/SHORT/USDC from the Pair contract
+    /// - Initializes balances, shares, risk parameters, fee config, and protocol fee counters
+    ///
+    /// ### Reverts
+    /// - [`TreasuryError::InvalidInput`] if fee fields are out of range.
     fn add_pair(e: Env, admin: Address, pair: Address, fee_config: TreasuryFeeConfig) {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
@@ -1180,6 +907,10 @@ impl AdminInterfaceTrait for Treasury {
         crate::storage::set_protocol_fees(&e, &pair, &0);
     }
 
+    /// Updates the fee configuration for an existing Pair.
+    ///
+    /// ### Reverts
+    /// - [`TreasuryError::InvalidInput`] if any configured fee exceeds its maximum bound.
     fn set_fee_config(e: Env, admin: Address, pair: Address, config: TreasuryFeeConfig) {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
@@ -1195,6 +926,12 @@ impl AdminInterfaceTrait for Treasury {
         crate::storage::set_fee_config(&e, &pair, &config);
     }
 
+    /// Sets the global USDC floor fraction used by risk checks.
+    ///
+    /// The floor fraction is expressed in `PRICE_PRECISION` units (e.g. `0.10e7` for 10%).
+    ///
+    /// ### Reverts
+    /// - [`TreasuryError::InvalidInput`] if `floor_fraction` is zero or below the minimum allowed.
     fn set_usdc_floor(e: Env, admin: Address, floor_fraction: u128) {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
@@ -1206,33 +943,37 @@ impl AdminInterfaceTrait for Treasury {
         crate::storage::set_usdc_floor_fraction(&e, &floor_fraction);
     }
 
-    // Returns the protocol fees accumulated in the pair.
+    /// Returns the protocol fees accumulated for the given Pair (denominated in USDC).
     fn get_protocol_fees(e: Env, pair: Address) -> u128 {
         crate::storage::get_protocol_fees(&e, &pair)
     }
 
-    // Claims the protocol fees accumulated in the pair.
+    /// Transfers accumulated protocol fees for `pair` to `destination`.
+    ///
+    /// ### Reverts
+    /// - Reverts if `admin` is not authorized.
+    ///
+    /// ### Returns
+    /// Returns the amount of fees transferred.
     fn claim_protocol_fees(e: Env, admin: Address, pair: Address, destination: Address) -> u128 {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
         let config = crate::storage::get_config(&e, &pair);
-
         let fee = crate::storage::get_protocol_fees(&e, &pair);
 
         if fee == 0 {
             return 0;
         }
 
-        if fee > 0 {
-            SorobanTokenClient::new(&e, &config.usdc).transfer(
-                &e.current_contract_address(),
-                &destination,
-                &fee.safe_to_i128(&e),
-            );
-            crate::storage::set_protocol_fees(&e, &pair, &0);
-            Events::new(&e).claim_protocol_fee(pair, config.usdc, destination.clone(), fee);
-        }
+        SorobanTokenClient::new(&e, &config.usdc).transfer(
+            &e.current_contract_address(),
+            &destination,
+            &fee.safe_to_i128(&e),
+        );
+
+        crate::storage::set_protocol_fees(&e, &pair, &0);
+        Events::new(&e).claim_protocol_fee(pair, config.usdc, destination.clone(), fee);
 
         fee
     }

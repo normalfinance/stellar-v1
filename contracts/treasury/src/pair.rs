@@ -3,9 +3,17 @@ use types::pair::{CollateralInfo, PairTokens};
 
 use crate::errors::TreasuryError;
 
+pub fn validate_pair(e: &Env, pair: &Address) {
+    let has_config = crate::storage::has_config(e, pair);
+    // TODO: ensure pair status is Active
+
+    if !has_config {
+        panic_with_error!(e, TreasuryError::InvalidPair);
+    }
+}
+
 pub fn get_pair_tokens(e: &Env, pair: &Address) -> PairTokens {
-    // Validate the pair exists
-    crate::storage::has_config(e, pair);
+    validate_pair(e, pair);
 
     match e.try_invoke_contract::<PairTokens, soroban_sdk::Error>(
         pair,
@@ -20,8 +28,7 @@ pub fn get_pair_tokens(e: &Env, pair: &Address) -> PairTokens {
 }
 
 pub fn get_pair_collateral_info(e: &Env, pair: &Address) -> CollateralInfo {
-    // Validate the pair exists
-    crate::storage::has_config(e, pair);
+    validate_pair(e, pair);
 
     match e.try_invoke_contract::<CollateralInfo, soroban_sdk::Error>(
         pair,
@@ -36,8 +43,7 @@ pub fn get_pair_collateral_info(e: &Env, pair: &Address) -> CollateralInfo {
 }
 
 pub fn mint_pair_as_treasury(e: &Env, pair: &Address, tokens_to_mint: u128) -> u128 {
-    // Validate the pair exists
-    crate::storage::has_config(e, pair);
+    validate_pair(e, pair);
 
     match e.try_invoke_contract::<u128, soroban_sdk::Error>(
         pair,
@@ -58,8 +64,7 @@ pub fn mint_pair_as_treasury(e: &Env, pair: &Address, tokens_to_mint: u128) -> u
 }
 
 pub fn redeem_pair_as_treasury(e: &Env, pair: &Address, tokens_to_redeem: u128) -> u128 {
-    // Validate the pair exists
-    crate::storage::has_config(e, pair);
+    validate_pair(e, pair);
 
     match e.try_invoke_contract::<u128, soroban_sdk::Error>(
         pair,
