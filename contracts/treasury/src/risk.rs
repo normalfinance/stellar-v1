@@ -1,65 +1,100 @@
-use soroban_sdk::{panic_with_error, Address, Env};
-use types::pair::Side;
+use soroban_sdk::{log, panic_with_error, Address, Env};
+use types::pair::{PairAmountsWithUSDC, Side};
 use utils::constant::{ONE_U128, PRICE_PRECISION};
-use utils::math::safe_math::PrecisionMath;
+use utils::math::safe_math::{PrecisionMath, SafeMath};
 
 use crate::errors::TreasuryError;
+use crate::storage::TreasuryRiskParameters;
+
+/* ========================================================================
+ * USDC floor
+ * ======================================================================== */
 
 /// Computes the minimum USDC token balance ("USDC floor") required to back
-/// `floor_fraction` of total NAV.
+/// a configured fraction of total treasury NAV.
 ///
-/// All values use `PRICE_PRECISION` (1e7) fixed-point.
+/// All monetary values are expressed in `PRICE_PRECISION` fixed-point (typically 1e7),
+/// meaning `PRICE_PRECISION == 1.0`.
 ///
-/// # Arguments
-/// - `nav_total`: total treasury NAV (quote units, 1e7 precision)
-/// - `floor_fraction`: fraction of NAV to keep as USDC (0..=1e7)
-/// - `usdc_price`: quote price of 1 USDC (normally == 1e7)
+/// This is used to prevent the Treasury from paying out so much USDC that it becomes
+/// unable to meet withdrawals, settle, or otherwise remain liquid.
 ///
-/// # Returns
-/// Minimum USDC token amount that must remain in the treasury.
+/// ## Definitions
+/// - `nav_total`: Total NAV of the Treasury in **quote units**, scaled by `PRICE_PRECISION`.
+/// - `floor_fraction`: Fraction of NAV that must remain as USDC, in `[0, PRICE_PRECISION]`.
+/// - `usdc_price`: Quote price of 1 USDC token, scaled by `PRICE_PRECISION`
+///   (normally `PRICE_PRECISION`, but may deviate if you model depegs).
 ///
-/// # Panics
-/// - If `floor_fraction > PRICE_PRECISION`
-/// - If `usdc_price == 0`
+/// ## Formula
+/// ```text
+/// floor_nav   = nav_total * floor_fraction
+/// usdc_floor  = floor_nav / usdc_price
+/// ```
+///
+/// Because `nav_total` and `usdc_price` are both `PRICE_PRECISION`-scaled quote units,
+/// the division yields a **token amount** (in USDC smallest units).
+///
+/// ## Panics
+/// - [`TreasuryError::InvalidInput`] if `floor_fraction > PRICE_PRECISION`
+/// - [`TreasuryError::InvalidInput`] if `usdc_price == 0`
 pub fn get_usdc_floor(e: &Env, nav_total: u128, floor_fraction: u128, usdc_price: u128) -> u128 {
-    // Sanity checks
-    if floor_fraction > PRICE_PRECISION {
-        panic_with_error!(e, TreasuryError::InvalidInput);
-    }
-    if usdc_price == 0 {
+    if floor_fraction > PRICE_PRECISION || usdc_price == 0 {
         panic_with_error!(e, TreasuryError::InvalidInput);
     }
 
-    // floor_nav = NAV * floor_fraction
-    // still in quote units (1e7 precision)
+    // floor_nav = NAV * floor_fraction (quote units)
     let floor_nav = nav_total.safe_fixed_mul_floor(e, floor_fraction, PRICE_PRECISION);
 
-    // Convert NAV value into token amount:
-    //
-    // floor_amount = floor_nav / usdc_price
-    //
-    // Both are 1e7 precision quote units, so divide directly.
-    let floor_amount = floor_nav.safe_fixed_div_floor(e, usdc_price, PRICE_PRECISION);
-
-    floor_amount
+    // Convert quote value into USDC token amount (token units)
+    floor_nav.safe_fixed_div_floor(e, usdc_price, PRICE_PRECISION)
 }
 
-/// Validates that a USDC-out trade will not reduce the treasury USDC balance below the configured floor.
+/// Internal helper: validate a USDC floor using an explicitly provided fraction.
 ///
-/// The floor is expressed as a fraction of total NAV:
-/// `floor_nav = floor_fraction * nav_total`
-/// and converted into a USDC token amount:
-/// `usdc_floor_amount = floor_nav / usdc_price`
+/// This lets tests exercise the full floor logic without depending on storage access.
+/// The public [`validate_usdc_floor`] reads the fraction from storage then calls this.
 ///
-/// # Arguments
-/// - `usdc_balance`: current treasury USDC token balance
-/// - `usdc_out`: USDC tokens that would be paid out by the trade
-/// - `nav_total`: current total treasury NAV (quote units, PRICE_PRECISION-scaled)
-/// - `usdc_price`: quote price per 1 USDC token (PRICE_PRECISION-scaled, usually == PRICE_PRECISION)
+/// ## Panics
+/// - [`TreasuryError::InvalidInput`] if:
+///   - `usdc_price == 0`
+///   - `usdc_out > usdc_balance`
+///   - `floor_fraction > PRICE_PRECISION`
+/// - [`TreasuryError::CannotPassFloor`] if `usdc_balance - usdc_out < usdc_floor`
+fn validate_usdc_floor_with_fraction(
+    e: &Env,
+    floor_fraction: u128,
+    usdc_balance: u128,
+    usdc_out: u128,
+    nav_total: u128,
+    usdc_price: u128,
+) {
+    if usdc_price == 0 || floor_fraction > PRICE_PRECISION || usdc_out > usdc_balance {
+        panic_with_error!(e, TreasuryError::InvalidInput);
+    }
+
+    let usdc_floor = get_usdc_floor(e, nav_total, floor_fraction, usdc_price);
+    let remaining = usdc_balance.safe_sub(e, usdc_out);
+
+    if remaining < usdc_floor {
+        panic_with_error!(e, TreasuryError::CannotPassFloor);
+    }
+}
+
+/// Validates that a USDC-out trade will not reduce the Treasury’s USDC balance below the
+/// configured floor fraction of NAV.
 ///
-/// # Panics
-/// - `TreasuryError::InvalidInput` if `usdc_price == 0` or `usdc_out > usdc_balance`
-/// - `TreasuryError::CannotPassFloor` if the resulting USDC balance would be below the floor
+/// The floor is stored in contract storage as a fraction of NAV (in `PRICE_PRECISION` units).
+/// This function:
+/// 1) reads `floor_fraction` from storage
+/// 2) converts that to a USDC token amount via [`get_usdc_floor`]
+/// 3) rejects a trade if the post-trade USDC balance would be below the floor.
+///
+/// ## Panics
+/// - [`TreasuryError::InvalidInput`] if:
+///   - `usdc_price == 0`
+///   - `usdc_out > usdc_balance`
+///   - stored `floor_fraction > PRICE_PRECISION`
+/// - [`TreasuryError::CannotPassFloor`] if the resulting USDC balance would be below the floor
 pub fn validate_usdc_floor(
     e: &Env,
     usdc_balance: u128,
@@ -67,339 +102,446 @@ pub fn validate_usdc_floor(
     nav_total: u128,
     usdc_price: u128,
 ) {
-    if usdc_price == 0 {
-        panic_with_error!(e, TreasuryError::InvalidInput);
-    }
-
-    // Disallow underflow; this should be a hard revert (trying to pay more USDC than exists).
-    if usdc_out > usdc_balance {
-        panic_with_error!(e, TreasuryError::InvalidInput);
-    }
-
     let floor_fraction = crate::storage::get_usdc_floor_fraction(e);
-    if floor_fraction > PRICE_PRECISION {
-        panic_with_error!(e, TreasuryError::InvalidInput);
-    }
-
-    let usdc_floor = get_usdc_floor(e, nav_total, floor_fraction, usdc_price);
-
-    // Remaining USDC after payout
-    let remaining = usdc_balance - usdc_out;
-
-    // Panic if the trade would violate the USDC floor
-    if remaining < usdc_floor {
-        panic_with_error!(e, TreasuryError::CannotPassFloor);
-    }
+    validate_usdc_floor_with_fraction(
+        e,
+        floor_fraction,
+        usdc_balance,
+        usdc_out,
+        nav_total,
+        usdc_price,
+    );
 }
 
-/// Blocks trades on a side that has become **toxic** due to proximity to settlement bounds.
-///
-/// This function is a **risk guard** used during spot trading against the Treasury.
-/// When the price approaches an extreme (upper or lower bound), one side of the
-/// long–short pair is approaching zero terminal value. Allowing users to trade
-/// *into* that side would create an asymmetric loss for the Treasury.
-///
-/// ### Toxicity Rules
-/// - **Near the upper bound**: the **SHORT** side is toxic
-///   (price → max, SHORT → 0 at settlement)
-/// - **Near the lower bound**: the **LONG** side is toxic
-///   (price → min, LONG → 0 at settlement)
-///
-/// The `toxic_threshold` defines how close to the bound we start rejecting trades.
-/// It is expressed in the same normalized price space as `price` (typically
-/// `[0, PRICE_PRECISION]`).
-///
-/// ### Arguments
-/// - `e` — Soroban [`Env`].
-/// - `pair` — Address of the Long–Short Pair being traded.
-/// - `side` — The side the user is attempting to trade **into**.
-/// - `price` — Current normalized price of that side (oracle-derived).
-///
-/// ### Reverts
-/// - [`TreasuryError::ToxicSideNotAccepted`] if the trade would move inventory
-///   into a side that is near-worthless at settlement.
-///
-/// ### Notes
-/// - This does **not** depend on inventory levels.
-/// - This guard is purely about **terminal value risk**, not solvency.
-/// - Typically enforced on *sell* paths (Treasury buying user tokens),
-///   but may also be applied defensively on buys depending on strategy.
-pub fn block_toxic_trades(e: &Env, pair: &Address, side: Side, price: u128) {
-    let risk_params = crate::storage::get_risk_parameters(e, pair);
+/* ========================================================================
+ * Toxic-side guard
+ * ======================================================================== */
 
+/// Internal helper: block toxic trades using explicitly provided risk parameters.
+///
+/// The public [`block_toxic_trades`] reads parameters from storage then calls this.
+/// This helper exists to make the logic unit-testable without storage wiring.
+///
+/// ## Toxicity rules (normalized price space)
+/// - Near the upper bound: **SHORT** is toxic when `price >= toxic_threshold`
+/// - Near the lower bound: **LONG** is toxic when `price <= 1 - toxic_threshold`
+///
+/// `price` and `toxic_threshold` are expected to be scaled to `ONE_U128`
+/// (typically `PRICE_PRECISION` / 1.0).
+///
+/// ## Panics
+/// - [`TreasuryError::ToxicSideNotAccepted`] when the trade is into the toxic side.
+fn block_toxic_trades_with_params(
+    e: &Env,
+    side: Side,
+    price: u128,
+    risk_params: &TreasuryRiskParameters,
+) {
     // Near upper bound: short is toxic
     if side == Side::Short && price >= risk_params.toxic_threshold {
         panic_with_error!(e, TreasuryError::ToxicSideNotAccepted);
     }
 
     // Near lower bound: long is toxic
-    if side == Side::Long && price <= ONE_U128.saturating_sub(risk_params.toxic_threshold) {
+    // mirrored threshold: lower = 1 - toxic_threshold
+    let lower = ONE_U128.saturating_sub(risk_params.toxic_threshold);
+    if side == Side::Long && price <= lower {
         panic_with_error!(e, TreasuryError::ToxicSideNotAccepted);
     }
 }
 
-#[cfg(test)]
-mod risk_validation_tests {
-    use super::*;
-    use soroban_sdk::{testutils::Address as _, Address, Env};
+/// Blocks trades on a side that has become **toxic** due to proximity to settlement bounds.
+///
+/// This is a *terminal-value* guard: when price is near an extreme, one side of the
+/// long–short pair is approaching near-zero settlement value. Allowing the Treasury to
+/// accumulate that side creates asymmetric loss (the Treasury buys something that is
+/// close to worthless at settlement).
+///
+/// - Near the **upper bound**: `SHORT` becomes toxic (settles toward 0).
+/// - Near the **lower bound**: `LONG` becomes toxic (settles toward 0).
+///
+/// `risk_params.toxic_threshold` defines how close to the bound we reject trades, in the
+/// same normalized price space as `price`.
+///
+/// ## Panics
+/// - [`TreasuryError::ToxicSideNotAccepted`] if the side is toxic at the given `price`.
+pub fn block_toxic_trades(e: &Env, pair: &Address, side: Side, price: u128) {
+    let risk_params = crate::storage::get_risk_parameters(e, pair);
+    block_toxic_trades_with_params(e, side, price, &risk_params);
+}
 
-    use crate::{storage::TreasuryRiskParameters, Treasury};
-    use types::pair::Side;
+/* ========================================================================
+ * Net inventory imbalance (token-count based)
+ * ======================================================================== */
+
+/// Computes the Treasury’s signed net inventory imbalance in **token units**:
+///
+/// ```text
+/// net = long_tokens - short_tokens
+/// ```
+///
+/// - `net > 0` means the Treasury is net LONG (holds more long tokens than short)
+/// - `net < 0` means the Treasury is net SHORT
+///
+/// This is intentionally **token-count based** (not value-based) so it is stable under
+/// oracle price moves and only changes due to trade flow and inventory operations.
+pub fn net_imbalance_tokens(e: &Env, balances: &PairAmountsWithUSDC) -> i128 {
+    let long = balances.long as i128;
+    let short = balances.short as i128;
+    long.safe_sub(e, short)
+}
+
+/// Absolute value of a signed imbalance (token units).
+pub fn abs_imbalance_tokens(net: i128) -> u128 {
+    if net >= 0 {
+        net as u128
+    } else {
+        -net as u128
+    }
+}
+
+/// Validates that a post-trade state does not exceed the configured hard net-imbalance limit.
+///
+/// The hard limit is enforced in **token units**:
+/// ```text
+/// abs(long_tokens - short_tokens) <= max_net_imbalance_tokens
+/// ```
+///
+/// If `max_net_imbalance_tokens == 0`, the hard limit is treated as disabled.
+///
+/// ## Returns
+/// `(abs_before, abs_after, abs_delta, increases)` where:
+/// - `abs_before`  = `abs(net_before)`
+/// - `abs_after`   = `abs(net_after)`
+/// - `abs_delta`   = `abs(abs_after - abs_before)`
+/// - `increases`   = `abs_after > abs_before`
+///
+/// The `(abs_delta, increases)` pair is convenient for fee logic that adds a surcharge when
+/// a trade **worsens** imbalance, and gives a rebate when it **improves** imbalance.
+///
+/// ## Panics
+/// - [`TreasuryError::InvalidBalance`] if the hard limit is enabled and would be exceeded.
+pub fn validate_net_imbalance_after(
+    e: &Env,
+    risk_params: &TreasuryRiskParameters,
+    balances_before: &PairAmountsWithUSDC,
+    balances_after: &PairAmountsWithUSDC,
+) -> (u128, u128, u128, bool) {
+    let net_before = net_imbalance_tokens(e, balances_before);
+    let net_after = net_imbalance_tokens(e, balances_after);
+
+    let abs_before = abs_imbalance_tokens(net_before);
+    let abs_after = abs_imbalance_tokens(net_after);
+
+    if risk_params.max_net_imbalance_tokens != 0 && abs_after > risk_params.max_net_imbalance_tokens
+    {
+        panic_with_error!(e, TreasuryError::InvalidBalance);
+    }
+
+    let increases = abs_after > abs_before;
+    let abs_delta = if increases {
+        abs_after.safe_sub(e, abs_before)
+    } else {
+        abs_before.safe_sub(e, abs_after)
+    };
+
+    (abs_before, abs_after, abs_delta, increases)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::Env;
     use utils::constant::{ONE_U128, PRICE_PRECISION};
 
-    fn env() -> Env {
+    fn e() -> Env {
         Env::default()
     }
 
-    fn setup_test_contract(e: &Env) -> (Address, Address) {
-        let admin = Address::generate(e);
-        let treasury_contract = e.register(Treasury, (&admin,));
-
-        (treasury_contract, admin)
+    fn risk_params(max_net: u128, toxic_threshold: u128) -> TreasuryRiskParameters {
+        TreasuryRiskParameters {
+            toxic_threshold,
+            max_net_imbalance_tokens: max_net,
+            imbalance_fee_max: 0, // not used in risk.rs
+        }
     }
 
-    // ------------------------------------------------------------
+    fn bals(long: u128, short: u128, usdc: u128) -> PairAmountsWithUSDC {
+        PairAmountsWithUSDC { long, short, usdc }
+    }
+
+    // ============================================================
     // get_usdc_floor
-    // ------------------------------------------------------------
+    // ============================================================
 
     #[test]
-    fn get_usdc_floor_zero_nav_is_zero() {
-        let e = env();
-        let out = get_usdc_floor(&e, 0, 5_000_000, PRICE_PRECISION);
-        assert_eq!(out, 0);
+    fn usdc_floor_zero_nav_or_zero_fraction_is_zero() {
+        let env = e();
+        assert_eq!(get_usdc_floor(&env, 0, 5_000_000, PRICE_PRECISION), 0);
+        assert_eq!(
+            get_usdc_floor(&env, 1_000_0000 * 1000, 0, PRICE_PRECISION),
+            0
+        );
     }
 
     #[test]
-    fn get_usdc_floor_zero_fraction_is_zero() {
-        let e = env();
-        let nav = 1_000_0000u128 * 1_000; // 1000.0
-        let out = get_usdc_floor(&e, nav, 0, PRICE_PRECISION);
-        assert_eq!(out, 0);
-    }
-
-    #[test]
-    fn get_usdc_floor_one_to_one_when_usdc_price_is_one() {
-        let e = env();
-
-        // nav_total is in quote units (1e7). Use exact numbers for clean asserts.
+    fn usdc_floor_matches_expected_at_par() {
+        let env = e();
         let nav_total = 1_000_0000u128 * 1_000; // 1000.0
-        let floor_fraction = 2_500_000; // 0.25
-        let usdc_price = PRICE_PRECISION; // 1.0
+        let floor_fraction = 2_500_000; // 25%
 
-        // floor_nav = 1000 * 0.25 = 250
-        let floor = get_usdc_floor(&e, nav_total, floor_fraction, usdc_price);
+        let floor = get_usdc_floor(&env, nav_total, floor_fraction, PRICE_PRECISION);
         assert_eq!(floor, 1_000_0000u128 * 250);
     }
 
     #[test]
-    fn get_usdc_floor_increases_when_usdc_depegs_down() {
-        let e = env();
+    fn usdc_floor_monotonic_in_usdc_price() {
+        let env = e();
+        let nav_total = 1_000_0000u128 * 1_000;
+        let floor_fraction = 5_000_000; // 50%
 
-        let nav_total = 1_000_0000u128 * 1_000; // 1000
-        let floor_fraction = 5_000_000; // 0.5
+        let floor_par = get_usdc_floor(&env, nav_total, floor_fraction, PRICE_PRECISION);
+        let floor_depeg = get_usdc_floor(&env, nav_total, floor_fraction, 9_000_000);
+        let floor_premium = get_usdc_floor(&env, nav_total, floor_fraction, 11_000_000);
 
-        let usdc_price_par = PRICE_PRECISION; // 1.0
-        let usdc_price_depeg = 9_000_000; // 0.9
-
-        let floor_par = get_usdc_floor(&e, nav_total, floor_fraction, usdc_price_par);
-        let floor_depeg = get_usdc_floor(&e, nav_total, floor_fraction, usdc_price_depeg);
-
-        // if price is lower, you need more tokens to meet same value floor
         assert!(floor_depeg > floor_par);
-    }
-
-    #[test]
-    fn get_usdc_floor_decreases_when_usdc_premium() {
-        let e = env();
-
-        let nav_total = 1_000_0000u128 * 1_000; // 1000
-        let floor_fraction = 5_000_000; // 0.5
-
-        let usdc_price_par = PRICE_PRECISION; // 1.0
-        let usdc_price_premium = 11_000_000; // 1.1
-
-        let floor_par = get_usdc_floor(&e, nav_total, floor_fraction, usdc_price_par);
-        let floor_premium = get_usdc_floor(&e, nav_total, floor_fraction, usdc_price_premium);
-
         assert!(floor_premium < floor_par);
     }
 
     #[test]
     #[should_panic]
-    fn get_usdc_floor_panics_if_fraction_gt_one() {
-        let e = env();
-        let _ = get_usdc_floor(&e, 1_000_0000, PRICE_PRECISION + 1, PRICE_PRECISION);
+    fn usdc_floor_panics_on_fraction_gt_one() {
+        let env = e();
+        let _ = get_usdc_floor(&env, 1_000_0000, PRICE_PRECISION + 1, PRICE_PRECISION);
     }
 
     #[test]
     #[should_panic]
-    fn get_usdc_floor_panics_if_usdc_price_zero() {
-        let e = env();
-        let _ = get_usdc_floor(&e, 1_000_0000, 1, 0);
+    fn usdc_floor_panics_on_zero_price() {
+        let env = e();
+        let _ = get_usdc_floor(&env, 1_000_0000, 1, 0);
     }
 
-    // ------------------------------------------------------------
-    // validate_usdc_floor
-    //
-    // NOTE: validate_usdc_floor reads `crate::storage::get_usdc_floor_fraction(e)`.
-    // These tests assume you have a corresponding setter available in test builds.
-    // If your storage module uses a DataKey, replace the `set_...` helper below
-    // with the appropriate direct write.
-    // ------------------------------------------------------------
-
-    fn set_usdc_floor_fraction(e: &Env, treasury: &Address, frac: u128) {
-        e.as_contract(treasury, || {
-            crate::storage::set_usdc_floor_fraction(&e, &frac);
-        });
-    }
+    // ============================================================
+    // validate_usdc_floor_with_fraction
+    // ============================================================
 
     #[test]
-    fn validate_usdc_floor_allows_trade_when_remaining_equals_floor() {
-        let e = env();
-        let (treasury, _) = setup_test_contract(&e);
+    fn validate_usdc_floor_allows_remaining_equal_to_floor() {
+        let env = e();
+        let nav_total = 1_000_0000u128 * 1_000;
+        let floor_fraction = 5_000_000;
+        let usdc_price = PRICE_PRECISION;
 
-        set_usdc_floor_fraction(&e, &treasury, 5_000_000); // 0.5
+        let floor = get_usdc_floor(&env, nav_total, floor_fraction, usdc_price);
+        let usdc_balance = floor + 100;
+        let usdc_out = 100;
 
-        let nav_total = 1_000_0000u128 * 1_000; // 1000
-        let usdc_price = PRICE_PRECISION; // 1.0
-
-        // floor = 500
-        let floor = get_usdc_floor(&e, nav_total, 5_000_000, usdc_price);
-        assert_eq!(floor, 1_000_0000u128 * 500);
-
-        // If remaining == floor, should pass
-        let usdc_balance = 1_000_0000u128 * 800;
-        let usdc_out = usdc_balance - floor;
-
-        validate_usdc_floor(&e, usdc_balance, usdc_out, nav_total, usdc_price);
+        validate_usdc_floor_with_fraction(
+            &env,
+            floor_fraction,
+            usdc_balance,
+            usdc_out,
+            nav_total,
+            usdc_price,
+        );
     }
 
     #[test]
     #[should_panic]
     fn validate_usdc_floor_panics_when_remaining_below_floor() {
-        let e = env();
-        let (treasury, _) = setup_test_contract(&e);
+        let env = e();
+        let nav_total = 1_000_0000u128 * 1_000;
+        let floor_fraction = 5_000_000;
+        let usdc_price = PRICE_PRECISION;
 
-        set_usdc_floor_fraction(&e, &treasury, 5_000_000); // 0.5
+        let floor = get_usdc_floor(&env, nav_total, floor_fraction, usdc_price);
+        let usdc_balance = floor + 100;
+        let usdc_out = 101;
 
-        let nav_total = 1_000_0000u128 * 1_000; // 1000
-        let usdc_price = PRICE_PRECISION; // 1.0
-        let floor = get_usdc_floor(&e, nav_total, 5_000_000, usdc_price);
-
-        let usdc_balance = 1_000_0000u128 * 800;
-        // Make remaining < floor by 1
-        let usdc_out = usdc_balance - floor + 1;
-
-        let _ = validate_usdc_floor(&e, usdc_balance, usdc_out, nav_total, usdc_price);
+        validate_usdc_floor_with_fraction(
+            &env,
+            floor_fraction,
+            usdc_balance,
+            usdc_out,
+            nav_total,
+            usdc_price,
+        );
     }
 
     #[test]
     #[should_panic]
-    fn validate_usdc_floor_panics_if_usdc_out_gt_balance() {
-        let e = env();
-        let (treasury, _) = setup_test_contract(&e);
-
-        set_usdc_floor_fraction(&e, &treasury, 1_000_000); // 0.1
-
-        let _ = validate_usdc_floor(&e, 100, 101, 1_000_0000, PRICE_PRECISION);
+    fn validate_usdc_floor_panics_when_usdc_out_exceeds_balance() {
+        let env = e();
+        validate_usdc_floor_with_fraction(&env, 1_000_000, 100, 101, 1_000_0000, PRICE_PRECISION);
     }
 
     #[test]
     #[should_panic]
-    fn validate_usdc_floor_panics_if_usdc_price_zero() {
-        let e = env();
-        let (treasury, _) = setup_test_contract(&e);
-
-        set_usdc_floor_fraction(&e, &treasury, 1_000_000); // 0.1
-
-        let _ = validate_usdc_floor(&e, 100, 1, 1_000_0000, 0);
+    fn validate_usdc_floor_panics_when_fraction_invalid() {
+        let env = e();
+        validate_usdc_floor_with_fraction(
+            &env,
+            PRICE_PRECISION + 1,
+            100,
+            1,
+            1_000_0000,
+            PRICE_PRECISION,
+        );
     }
 
     #[test]
     #[should_panic]
-    fn validate_usdc_floor_panics_if_floor_fraction_invalid() {
-        let e = env();
-        let (treasury, _) = setup_test_contract(&e);
-
-        set_usdc_floor_fraction(&e, &treasury, PRICE_PRECISION + 1);
-
-        let _ = validate_usdc_floor(&e, 1_000_0000, 1, 1_000_0000, PRICE_PRECISION);
+    fn validate_usdc_floor_panics_when_usdc_price_zero() {
+        let env = e();
+        validate_usdc_floor_with_fraction(&env, 1_000_000, 100, 1, 1_000_0000, 0);
     }
 
-    // ------------------------------------------------------------
-    // block_toxic_trades
-    //
-    // NOTE: block_toxic_trades reads `crate::storage::get_risk_parameters(e, pair)`.
-    // These tests assume you have a setter for risk parameters in test builds.
-    // Also: your "near lower bound" logic currently looks wrong:
-    //   `price <= ONE_U128.saturating_sub(price)`
-    // It should likely be `price <= risk_params.lower_toxic_threshold`
-    // or `price <= (ONE_U128 - risk_params.toxic_threshold)` depending on how you store thresholds.
-    // The tests below validate the "upper bound short toxic" path as written,
-    // and include an explicit test that will likely FAIL for the long side,
-    // which is a useful red flag.
-    // ------------------------------------------------------------
-
-    fn set_risk_params_toxic_threshold(e: &Env, pair: &Address, toxic_threshold: u128) {
-        // Replace with your real setter or a cfg(test) helper.
-        e.as_contract(pair, || {
-            crate::storage::set_risk_parameters(
-                &e,
-                pair,
-                &(TreasuryRiskParameters { toxic_threshold }),
-            );
-        });
-    }
+    // ============================================================
+    // block_toxic_trades_with_params
+    // ============================================================
 
     #[test]
-    fn block_toxic_trades_allows_short_below_threshold() {
-        let e = env();
-        let pair = Address::generate(&e);
+    fn toxic_guard_allows_short_below_threshold() {
+        let env = e();
+        let rp = risk_params(0, 9_000_000);
 
-        set_risk_params_toxic_threshold(&e, &pair, 9_000_000);
-
-        // price below threshold => ok
-        block_toxic_trades(&e, &pair, Side::Short, 8_999_999);
+        block_toxic_trades_with_params(&env, Side::Short, 8_999_999, &rp);
     }
 
     #[test]
     #[should_panic]
-    fn block_toxic_trades_panics_short_at_or_above_threshold() {
-        let e = env();
-        let pair = Address::generate(&e);
+    fn toxic_guard_blocks_short_at_threshold() {
+        let env = e();
+        let rp = risk_params(0, 9_000_000);
 
-        set_risk_params_toxic_threshold(&e, &pair, 9_000_000);
-
-        // price >= threshold => short side blocked
-        block_toxic_trades(&e, &pair, Side::Short, 9_000_000);
+        block_toxic_trades_with_params(&env, Side::Short, 9_000_000, &rp);
     }
 
     #[test]
-    fn block_toxic_trades_allows_long_above_lower_threshold() {
-        let e = env();
-        let pair = Address::generate(&e);
+    fn toxic_guard_allows_long_above_lower_threshold() {
+        let env = e();
+        let rp = risk_params(0, 9_000_000);
+        let lower = ONE_U128.saturating_sub(rp.toxic_threshold);
 
-        // upper threshold = 0.90
-        set_risk_params_toxic_threshold(&e, &pair, 9_000_000);
-
-        // mirrored lower threshold = 0.10
-        let lower = ONE_U128 - 9_000_000;
-
-        // price just above lower threshold => OK
-        block_toxic_trades(&e, &pair, Side::Long, lower + 1);
+        block_toxic_trades_with_params(&env, Side::Long, lower + 1, &rp);
     }
 
     #[test]
     #[should_panic]
-    fn block_toxic_trades_panics_long_at_or_below_lower_threshold() {
-        let e = env();
-        let pair = Address::generate(&e);
+    fn toxic_guard_blocks_long_at_lower_threshold() {
+        let env = e();
+        let rp = risk_params(0, 9_000_000);
+        let lower = ONE_U128.saturating_sub(rp.toxic_threshold);
 
-        set_risk_params_toxic_threshold(&e, &pair, 9_000_000);
+        block_toxic_trades_with_params(&env, Side::Long, lower, &rp);
+    }
 
-        let lower = ONE_U128 - 9_000_000;
+    #[test]
+    #[should_panic]
+    fn toxic_guard_blocks_long_below_lower_threshold() {
+        let env = e();
+        let rp = risk_params(0, 9_000_000);
+        let lower = ONE_U128.saturating_sub(rp.toxic_threshold);
 
-        // price exactly at lower threshold => panic
-        block_toxic_trades(&e, &pair, Side::Long, lower);
+        block_toxic_trades_with_params(&env, Side::Long, lower - 1, &rp);
+    }
+
+    #[test]
+    #[should_panic]
+    fn toxic_threshold_zero_blocks_short_always() {
+        let env = e();
+        let rp = risk_params(0, 0);
+
+        block_toxic_trades_with_params(&env, Side::Short, 0, &rp);
+    }
+
+    #[test]
+    fn toxic_threshold_one_allows_most_prices() {
+        let env = e();
+        let rp = risk_params(0, ONE_U128);
+
+        block_toxic_trades_with_params(&env, Side::Short, ONE_U128 - 1, &rp);
+        block_toxic_trades_with_params(&env, Side::Long, 1, &rp);
+    }
+
+    #[test]
+    #[should_panic]
+    fn toxic_threshold_one_blocks_short_at_upper_bound() {
+        let env = e();
+        let rp = risk_params(0, ONE_U128);
+
+        block_toxic_trades_with_params(&env, Side::Short, ONE_U128, &rp);
+    }
+
+    #[test]
+    #[should_panic]
+    fn toxic_threshold_one_blocks_long_at_lower_bound() {
+        let env = e();
+        let rp = risk_params(0, ONE_U128);
+
+        block_toxic_trades_with_params(&env, Side::Long, 0, &rp);
+    }
+
+    // ============================================================
+    // net imbalance
+    // ============================================================
+
+    #[test]
+    fn net_imbalance_sign_and_abs() {
+        let env = e();
+
+        let b1 = bals(10, 7, 0);
+        let net1 = net_imbalance_tokens(&env, &b1);
+        assert_eq!(net1, 3);
+        assert_eq!(abs_imbalance_tokens(net1), 3);
+
+        let b2 = bals(5, 9, 0);
+        let net2 = net_imbalance_tokens(&env, &b2);
+        assert_eq!(net2, -4);
+        assert_eq!(abs_imbalance_tokens(net2), 4);
+    }
+
+    #[test]
+    fn validate_net_imbalance_disabled_limit_returns_delta() {
+        let env = e();
+        let rp = risk_params(0, 0);
+
+        let before = bals(100, 100, 0);
+        let after = bals(90, 100, 0); // net = -10
+
+        let (abs_b, abs_a, delta, inc) = validate_net_imbalance_after(&env, &rp, &before, &after);
+
+        assert_eq!(abs_b, 0);
+        assert_eq!(abs_a, 10);
+        assert_eq!(delta, 10);
+        assert!(inc);
+    }
+
+    #[test]
+    fn validate_net_imbalance_reports_decrease_correctly() {
+        let env = e();
+        let rp = risk_params(1000, 0);
+
+        let before = bals(150, 100, 0); // abs = 50
+        let after = bals(120, 100, 0); // abs = 20
+
+        let (abs_b, abs_a, delta, inc) = validate_net_imbalance_after(&env, &rp, &before, &after);
+
+        assert_eq!(abs_b, 50);
+        assert_eq!(abs_a, 20);
+        assert_eq!(delta, 30);
+        assert!(!inc);
+    }
+
+    #[test]
+    #[should_panic]
+    fn validate_net_imbalance_panics_when_exceeds_hard_limit() {
+        let env = e();
+        let rp = risk_params(10, 0);
+
+        let before = bals(100, 100, 0);
+        let after = bals(100, 120, 0); // abs = 20 > 10
+
+        validate_net_imbalance_after(&env, &rp, &before, &after);
     }
 }

@@ -96,6 +96,7 @@ pub(crate) struct Setup<'a> {
 
     // Other
     pub(crate) solana: Symbol,
+    pub(crate) start_time: u64,
 }
 
 impl Default for Setup<'_> {
@@ -119,7 +120,7 @@ impl Setup<'_> {
         e.mock_all_auths();
         e.cost_estimate().budget().reset_unlimited();
 
-        let start_time = 1768330739; // e.ledger().timestamp();
+        let start_time = 1768369144; // e.ledger().timestamp();
         jump(&e, start_time);
 
         // Addresses
@@ -205,16 +206,7 @@ impl Setup<'_> {
         treasury.add_pair(
             &admin,
             &pair.address,
-            &(TreasuryFeeConfig {
-                taker_base_fee: 30,
-                maker_base_fee: 30,
-                implied_volatility: 0,
-                reaction_time_secs: 60,
-                coefficient_a: 1,
-                coefficient_c: 1,
-                coefficient_d: 1,
-                bound_power: 2,
-            }),
+            &(TreasuryFeeConfig { base_fee: 30_000 }),
         );
 
         Self {
@@ -244,6 +236,7 @@ impl Setup<'_> {
 
             // Other
             solana: sol_symbol,
+            start_time,
         }
     }
 

@@ -13,8 +13,7 @@ pub fn validate_pair(e: &Env, pair: &Address) {
 }
 
 pub fn get_pair_tokens(e: &Env, pair: &Address) -> PairTokens {
-    validate_pair(e, pair);
-
+    // does not validate pair as add_pair() requires this
     match e.try_invoke_contract::<PairTokens, soroban_sdk::Error>(
         pair,
         &Symbol::new(e, "get_tokens"),

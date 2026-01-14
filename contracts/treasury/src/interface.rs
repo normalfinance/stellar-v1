@@ -34,11 +34,34 @@ pub trait TradingTrait {
         amount_in: u128,
     ) -> (u128, u128);
 
-    fn buy_long(e: Env, user: Address, pair: Address, usdc_in: u128, min_long_out: u128) -> u128;
-    fn sell_long(e: Env, user: Address, pair: Address, long_in: u128, min_usdc_out: u128) -> u128;
-    fn buy_short(e: Env, user: Address, pair: Address, usdc_in: u128, min_short_out: u128) -> u128;
-    fn sell_short(e: Env, user: Address, pair: Address, short_in: u128, min_usdc_out: u128)
-        -> u128;
+    fn buy_long(
+        e: Env,
+        user: Address,
+        pair: Address,
+        usdc_in: u128,
+        min_long_out: u128,
+    ) -> (u128, u128);
+    fn sell_long(
+        e: Env,
+        user: Address,
+        pair: Address,
+        long_in: u128,
+        min_usdc_out: u128,
+    ) -> (u128, u128);
+    fn buy_short(
+        e: Env,
+        user: Address,
+        pair: Address,
+        usdc_in: u128,
+        min_short_out: u128,
+    ) -> (u128, u128);
+    fn sell_short(
+        e: Env,
+        user: Address,
+        pair: Address,
+        short_in: u128,
+        min_usdc_out: u128,
+    ) -> (u128, u128);
 }
 
 pub trait AdminInterfaceTrait {
@@ -66,6 +89,14 @@ pub trait AdminInterfaceTrait {
     fn get_is_killed_deposit(e: Env) -> bool;
     fn get_is_killed_withdraw(e: Env) -> bool;
     fn get_is_killed_trade(e: Env) -> bool;
+
+    //
+    // fn admin_failsafe(
+    //     e: Env,
+    //     emergency_admin: Address,
+    //     pair: Address,
+    //     amounts: PairAmountsWithUSDC
+    // );
 }
 
 pub trait UpgradeableContract {

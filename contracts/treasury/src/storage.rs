@@ -55,19 +55,12 @@ pub struct TreasuryUserSummary {
 
 /// Fee model parameters for a pair.
 ///
-/// `maker_base_fee` / `taker_base_fee` are expressed in `PRICE_PRECISION` units.
+/// `base_fee` are expressed in `PRICE_PRECISION` units.
 /// The remaining parameters are model-specific knobs used by `calculate_fee(...)`.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TreasuryFeeConfig {
-    pub maker_base_fee: u128, // max = MAX_BASE_FEE
-    pub taker_base_fee: u128, // max = MAX_BASE_FEE
-    pub implied_volatility: u128,
-    pub reaction_time_secs: u128, // default to 10 mins
-    pub coefficient_a: u128,      // fee for price risk during Δt
-    pub coefficient_c: u128,      // fee for imbalance / skew
-    pub coefficient_d: u128,      // fee for holding-to-zero defense
-    pub bound_power: u32,         // how sharply bound defense ramps; max = MAX_BOUND_POWER
+    pub base_fee: u128, // max = MAX_BASE_FEE
 }
 
 /// Risk parameters enforced by the Treasury when executing trades.
@@ -78,6 +71,18 @@ pub struct TreasuryFeeConfig {
 pub struct TreasuryRiskParameters {
     /// Threshold in `PRICE_PRECISION` units used by toxic-trade logic.
     pub toxic_threshold: u128, // similar to collateral_percent_long
+
+    /// Hard cap on absolute net inventory imbalance in **token units**:
+    /// `abs(long_balance - short_balance) <= max_net_imbalance_tokens`.
+    ///
+    /// Set to 0 to disable the guard (not recommended).
+    pub max_net_imbalance_tokens: u128,
+
+    /// Maximum fee adjustment (additive or subtractive) driven by whether a trade
+    /// increases or decreases `abs(net_imbalance)`; expressed in `PRICE_PRECISION`.
+    ///
+    /// Example: `50_000` = 0.50% max surcharge/rebate.
+    pub imbalance_fee_max: u128,
 }
 
 /********** Storage Key Types **********/

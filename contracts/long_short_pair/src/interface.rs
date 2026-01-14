@@ -52,6 +52,9 @@ pub trait AdminInterfaceTrait {
     // Get killswitch status
     fn get_is_killed_mint(e: Env) -> bool;
     fn get_is_killed_redeem(e: Env) -> bool;
+
+    // Failsafes
+    // fn admin_failsafe(e: Env, emergency_admin: Address);
 }
 
 pub trait OracleInterfaceTrait {

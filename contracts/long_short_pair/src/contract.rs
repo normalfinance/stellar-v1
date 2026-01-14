@@ -55,10 +55,6 @@ impl LongShortPair {
     /// - `e`: Soroban environment.
     /// - `params`: Full set of pair parameters used to bootstrap the contract.
     pub fn __constructor(e: Env, params: PairParams) {
-        // NOTE: constructor auth is intentionally omitted because deployer auth patterns can vary.
-        // If you want strict deploy-time auth, uncomment the line below:
-        params.admin.require_auth();
-
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
             panic_with_error!(&e, LongShortPairError::AlreadyInitialized);
@@ -511,6 +507,35 @@ impl AdminInterfaceTrait for LongShortPair {
     fn get_is_killed_redeem(e: Env) -> bool {
         crate::storage::get_is_killed_redeem(&e)
     }
+
+    //
+    // fn admin_failsafe(e: Env, emergency_admin: Address) {
+    //     emergency_admin.require_auth();
+    //     AccessControl::new(&e).assert_address_has_role(&emergency_admin, &Role::EmergencyAdmin);
+
+    //     crate::storage::set_is_killed_mint(&e, &true);
+    //     crate::storage::set_is_killed_redeem(&e, &true);
+
+    //     crate::storage::set_status(&e, &PairStatus::Inactive);
+
+    //     crate::storage::set_last_update_ts(&e, &e.ledger().timestamp());
+
+    //     // Update collateral
+    //     let new_total_collateral = total_collateral.safe_sub(&e, collateral_to_return);
+    //     crate::storage::set_total_collateral(&e, &new_total_collateral);
+
+    //     // Burn both legs 1:1 from the redeemer.
+    //     token_pair::burn_long_tokens(&e, &user, 0);
+    //     token_pair::burn_short_tokens(&e, &user, 0);
+
+    //     SorobanTokenClient::new(&e, &crate::storage::get_collateral_token(&e)).transfer(
+    //         &e.current_contract_address(),
+    //         &emergency_admin,
+    //         &0.safe_to_i128(&e)
+    //     );
+
+    //      Events::new(&e).admin_failsafe();
+    // }
 }
 
 #[contractimpl]

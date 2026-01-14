@@ -3,18 +3,24 @@ extern crate std;
 
 use crate::testutils::Setup;
 
-use soroban_sdk::{testutils::Address as _, Address};
+use soroban_sdk::{testutils::Address as _, Address, Env, Vec};
 use types::pair::PairAmountsWithUSDC;
-use utils::constant::PRICE_PRECISION;
-
-// Assumes your default oracle prices are:
-// long = 5_000_000, short = 5_000_000, usdc = PRICE_PRECISION (or equivalent).
-// Your existing tests already rely on 5_000_000 as the long/short "price".
-const DEFAULT_TOKEN_PRICE: u128 = 5_000_000;
+use utils::{
+    constant::{ONE_HOUR, PRICE_PRECISION},
+    test_utils::jump,
+};
 
 // -------------------------------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------------------------------
+
+const TOXIC_THRESHOLD: u128 = 9_000_000; // 90%
+const LONG_TOXIC_PRICE: u128 = 1_000_000; // 10%
+
+fn mint_user_usdc(setup: &Setup, user: &Address, amount: u128) {
+    setup.token_usdc_admin_client.mint(user, &(amount as i128));
+    assert_eq!(setup.token_usdc.balance(user), amount as i128);
+}
 
 fn bootstrap_with_liquidity(
     setup: &Setup,
@@ -25,658 +31,786 @@ fn bootstrap_with_liquidity(
     let admin = setup.admin.clone();
 
     // Mint admin USDC
-    setup
-        .token_usdc_admin_client
-        .mint(&admin, &(init_admin_usdc as i128));
-    assert_eq!(setup.token_usdc.balance(&admin), init_admin_usdc as i128);
+    mint_user_usdc(setup, &admin, init_admin_usdc);
 
-    // Mint pair (admin receives long+short, and posts collateral in USDC)
+    // Mint pair
     setup.pair.mint(&admin, &pair_tokens_to_mint);
 
-    // Deposit liquidity into treasury (moves long/short + some usdc via collateral mechanics)
+    // Deposit
     setup
         .treasury
         .deposit(&admin, &setup.pair.address, &pair_tokens_to_deposit);
 
-    // After deposit, admin should have deposited tokens; USDC should be 0 in your current behavior
+    // In your current behavior, admin ends with 0 balances after deposit
     assert_eq!(setup.token_usdc.balance(&admin), 0);
     assert_eq!(setup.token_long.balance(&admin), 0);
     assert_eq!(setup.token_short.balance(&admin), 0);
 }
 
-fn mint_user_usdc(setup: &Setup, user: &Address, amount: u128) {
-    setup.token_usdc_admin_client.mint(user, &(amount as i128));
-    assert_eq!(setup.token_usdc.balance(user), amount as i128);
+/// Fee delta in USDC: protocol_fees_after - protocol_fees_before
+fn protocol_fee_delta(setup: &Setup, pair: &Address, before: u128) -> u128 {
+    let after = setup.treasury.get_protocol_fees(pair);
+    after - before
 }
 
-// fee is expressed in PRICE_PRECISION units (same as your taker_base_fee)
-fn apply_fee_on_input(amount_in: u128, fee: u128) -> (u128, u128) {
-    let less_fee = (amount_in * (PRICE_PRECISION - fee)) / PRICE_PRECISION;
-    let fee_amt = amount_in - less_fee;
-    (less_fee, fee_amt)
+/// Expected buy out based on realized fee delta
+// fn expected_buy_out_from_realized_fee(usdc_in: u128, fee_charged: u128) -> u128 {
+//     let net_in = usdc_in - fee_charged;
+//     (net_in * PRICE_PRECISION) / DEFAULT_TOKEN_PRICE
+// }
+
+/// Expected sell out based on realized fee delta (fee taken from output)
+fn expected_sell_out_from_realized_fee(gross_out: u128, fee_charged: u128) -> u128 {
+    gross_out - fee_charged
 }
 
-fn apply_fee_on_output(gross_out: u128, fee: u128) -> (u128, u128) {
-    let less_fee = (gross_out * (PRICE_PRECISION - fee)) / PRICE_PRECISION;
-    let fee_amt = gross_out - less_fee;
-    (less_fee, fee_amt)
+/// (A) Set USDC floor via contract admin method.
+/// Your contract has `set_usdc_floor(admin, floor_fraction)` (not "...fraction").
+fn set_usdc_floor_fraction(setup: &Setup, floor_fraction: u128) {
+    let admin = setup.admin.clone();
+    setup.treasury.set_usdc_floor(&admin, &floor_fraction);
 }
 
-// -------------------------------------------------------------------------------------------------
-// Buy Long
-// -------------------------------------------------------------------------------------------------
+/// (B) Set risk parameters via storage (since contract doesn’t expose admin setter).
+/// IMPORTANT: must be inside env.as_contract() to access contract storage.
+fn set_risk_params_for_pair(
+    setup: &Setup,
+    toxic_threshold: u128,
+    max_net_imbalance_tokens: u128,
+    imbalance_fee_max: u128,
+) {
+    let env: &Env = &setup.env;
+    let pair = setup.pair.address.clone();
+    let treasury = setup.treasury.address.clone();
+
+    env.as_contract(&treasury, || {
+        crate::storage::set_risk_parameters(
+            env,
+            &pair,
+            &(crate::storage::TreasuryRiskParameters {
+                toxic_threshold,
+                max_net_imbalance_tokens,
+                imbalance_fee_max,
+            }),
+        );
+    });
+}
+
+/// (C) Set oracle prices for the pair.
+/// 🚨 EDIT THIS FUNCTION to match your mock oracle client API.
+/// Goal: make treasury read long/short normalized prices you choose.
+fn set_pair_price(setup: &Setup, new_price: i128, timestamp: u64) {
+    // oracle price
+    let new_prices: Vec<i128> = Vec::from_array(&setup.env, [new_price, 1_00000000000000]);
+    setup.reflector_client.set_price(&new_prices, &timestamp);
+
+    setup.pair.sync_collateral();
+}
+
+// --------------------------------------
+// BUY LONG
+// --------------------------------------
 
 #[test]
 #[should_panic(expected = "Error(Contract, #204)")]
-fn test_buy_long_invalid_amount() {
+fn buy_long_invalid_amount() {
     let setup = Setup::default();
-    let user1 = setup.users[1].clone();
-    setup.treasury.buy_long(&user1, &setup.pair.address, &0, &0);
+    let user = setup.users[1].clone();
+
+    setup.treasury.buy_long(&user, &setup.pair.address, &0, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #501)")]
+fn buy_long_invalid_pair() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+    let bad_pair = Address::generate(&setup.env);
+
+    setup.treasury.buy_long(&user, &bad_pair, &1_0000000, &0);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #213)")]
-fn test_buy_long_trading_kills() {
+fn buy_long_trading_paused() {
     let setup = Setup::default();
     let admin = setup.admin.clone();
-    let user1 = setup.users[1].clone();
+    let user = setup.users[1].clone();
 
     setup.treasury.kill_trade(&admin);
 
     setup
         .treasury
-        .buy_long(&user1, &setup.pair.address, &1_0000000_u128, &0);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #501)")]
-fn test_buy_long_invalid_pair() {
-    let setup = Setup::default();
-    let user1 = setup.users[1].clone();
-    let pair = Address::generate(&setup.env);
-
-    setup.treasury.buy_long(&user1, &pair, &1_0000000_u128, &0);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #216)")]
-fn test_buy_long_enforces_slippage() {
-    let setup = Setup::default();
-    let user1 = setup.users[1].clone();
-
-    setup.treasury.buy_long(
-        &user1,
-        &setup.pair.address,
-        &1_0000000_u128,
-        &100_0000000_u128,
-    );
+        .buy_long(&user, &setup.pair.address, &1_0000000, &0);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #215)")]
-fn test_buy_long_enforces_sufficient_inventory() {
+fn buy_long_min_long_out_insufficient_inventory() {
     let setup = Setup::default();
-    let user1 = setup.users[1].clone();
+    let user = setup.users[1].clone();
 
-    // No liquidity deposited => inventory should be 0
     setup
         .treasury
-        .buy_long(&user1, &setup.pair.address, &1_0000000_u128, &0);
+        .buy_long(&user, &setup.pair.address, &1_0000000, &1_0000000);
 }
 
 #[test]
-fn test_buy_long() {
+#[should_panic(expected = "Error(Contract, #215)")]
+fn buy_long_insufficient_inventory() {
     let setup = Setup::default();
+    let user = setup.users[1].clone();
 
-    let admin = setup.admin.clone();
-    let user1 = setup.users[1].clone();
-
-    let init_admin_usdc = 2000_0000000_u128;
-    let init_user_usdc = 1_0000000_u128;
-
-    let pair_tokens_to_mint = 10_0000000_u128;
-    let pair_tokens_to_deposit = 10_0000000_u128;
-    let usdc_to_deposit = 1000_0000000_u128;
-    let usdc_to_trade = 1_0000000_u128;
-
-    // Setup
-    mint_user_usdc(&setup, &admin, init_admin_usdc);
-    mint_user_usdc(&setup, &user1, init_user_usdc);
-
-    // Mint pair, compute collateral used (assert matches your existing expectations)
-    setup.pair.mint(&admin, &pair_tokens_to_mint);
-    let collateral_info = setup.pair.get_collateral_info();
-    let collateral_used =
-        (pair_tokens_to_mint * collateral_info.collateral_per_pair) / PRICE_PRECISION;
-
-    assert_eq!(
-        setup.token_usdc.balance(&admin),
-        (init_admin_usdc - collateral_used) as i128
-    );
-    assert_eq!(
-        setup.token_long.balance(&admin),
-        pair_tokens_to_mint as i128
-    );
-    assert_eq!(
-        setup.token_short.balance(&admin),
-        pair_tokens_to_mint as i128
-    );
-
-    // Deposit liquidity
     setup
         .treasury
-        .deposit(&admin, &setup.pair.address, &pair_tokens_to_deposit);
-    assert_eq!(setup.token_usdc.balance(&admin), 0);
-    assert_eq!(setup.token_long.balance(&admin), 0);
-    assert_eq!(setup.token_short.balance(&admin), 0);
+        .buy_long(&user, &setup.pair.address, &1_0000000, &0);
+}
 
-    // Test
-    let fee_config = setup.treasury.get_fee_config(&setup.pair.address);
-    let (usdc_less_fee, usdc_fee) = apply_fee_on_input(usdc_to_trade, fee_config.taker_base_fee);
+#[test]
+#[should_panic(expected = "Error(Contract, #216)")]
+fn buy_long_slippage() {
+    let setup = Setup::default();
+    let admin = setup.admin.clone();
+    let user = setup.users[1].clone();
 
-    let expected_out = (usdc_less_fee * PRICE_PRECISION) / DEFAULT_TOKEN_PRICE;
-    let long_out = setup
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    mint_user_usdc(&setup, &user, 1_0000000);
+
+    setup
         .treasury
-        .buy_long(&user1, &setup.pair.address, &usdc_to_trade, &0);
-    assert_eq!(long_out, expected_out);
+        .buy_long(&user, &setup.pair.address, &1_0000000, &10_0000000);
+}
 
-    // Assertions
-    assert_eq!(setup.token_usdc.balance(&user1), 0);
+#[test]
+#[should_panic]
+fn buy_long_hard_cap() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+    set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 1, 0);
+
+    mint_user_usdc(&setup, &user, 5_0000000);
+    setup
+        .treasury
+        .buy_long(&user, &setup.pair.address, &5_0000000, &0);
+}
+
+#[test]
+fn buy_long_happy_path() {
+    let setup = Setup::default();
+    let admin = setup.admin.clone();
+    let user = setup.users[1].clone();
+
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    mint_user_usdc(&setup, &user, 1_0000000);
+
+    let (out, fee) = setup
+        .treasury
+        .buy_long(&user, &setup.pair.address, &1_0000000, &0);
+    assert!(out > 0);
+
+    assert_eq!(setup.token_usdc.balance(&user), 0);
+    assert_eq!(setup.token_long.balance(&user), out as i128);
+    assert_eq!(setup.token_short.balance(&user), 0);
+
     assert_eq!(
         setup.token_usdc.balance(&setup.treasury.address),
-        (usdc_to_deposit + usdc_to_trade) as i128
+        1001_0000000
     );
-
-    assert_eq!(setup.token_long.balance(&user1), expected_out as i128);
     assert_eq!(
         setup.token_long.balance(&setup.treasury.address),
-        (pair_tokens_to_deposit - expected_out) as i128
+        (10_0000000 - out) as i128
     );
-
-    assert_eq!(
-        setup.treasury.get_balances(&setup.pair.address),
-        PairAmountsWithUSDC {
-            usdc: usdc_to_deposit + usdc_to_trade - usdc_fee,
-            long: pair_tokens_to_deposit - expected_out,
-            short: pair_tokens_to_deposit,
-        }
-    );
-
-    assert_eq!(
-        setup.treasury.get_protocol_fees(&setup.pair.address),
-        usdc_fee
-    );
-}
-
-// -------------------------------------------------------------------------------------------------
-// Buy Short
-// -------------------------------------------------------------------------------------------------
-
-#[test]
-#[should_panic(expected = "Error(Contract, #204)")]
-fn test_buy_short_invalid_amount() {
-    let setup = Setup::default();
-    let user1 = setup.users[1].clone();
-    setup
-        .treasury
-        .buy_short(&user1, &setup.pair.address, &0, &0);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #213)")]
-fn test_buy_short_trading_kills() {
-    let setup = Setup::default();
-    let admin = setup.admin.clone();
-    let user1 = setup.users[1].clone();
-
-    setup.treasury.kill_trade(&admin);
-
-    setup
-        .treasury
-        .buy_short(&user1, &setup.pair.address, &1_0000000_u128, &0);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #501)")]
-fn test_buy_short_invalid_pair() {
-    let setup = Setup::default();
-    let user1 = setup.users[1].clone();
-    let pair = Address::generate(&setup.env);
-
-    setup.treasury.buy_short(&user1, &pair, &1_0000000_u128, &0);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #216)")]
-fn test_buy_short_enforces_slippage() {
-    let setup = Setup::default();
-    let user1 = setup.users[1].clone();
-
-    setup.treasury.buy_short(
-        &user1,
-        &setup.pair.address,
-        &1_0000000_u128,
-        &100_0000000_u128,
-    );
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #215)")]
-fn test_buy_short_enforces_sufficient_inventory() {
-    let setup = Setup::default();
-    let user1 = setup.users[1].clone();
-
-    setup
-        .treasury
-        .buy_short(&user1, &setup.pair.address, &1_0000000_u128, &0);
-}
-
-#[test]
-fn test_buy_short() {
-    let setup = Setup::default();
-
-    let admin = setup.admin.clone();
-    let user1 = setup.users[1].clone();
-
-    let init_admin_usdc = 2000_0000000_u128;
-    let init_user_usdc = 1_0000000_u128;
-
-    let pair_tokens_to_mint = 10_0000000_u128;
-    let pair_tokens_to_deposit = 10_0000000_u128;
-    let usdc_to_deposit = 1000_0000000_u128;
-    let usdc_to_trade = 1_0000000_u128;
-
-    // Setup
-    mint_user_usdc(&setup, &admin, init_admin_usdc);
-    mint_user_usdc(&setup, &user1, init_user_usdc);
-
-    setup.pair.mint(&admin, &pair_tokens_to_mint);
-    let collateral_info = setup.pair.get_collateral_info();
-    let collateral_used =
-        (pair_tokens_to_mint * collateral_info.collateral_per_pair) / PRICE_PRECISION;
-
-    assert_eq!(
-        setup.token_usdc.balance(&admin),
-        (init_admin_usdc - collateral_used) as i128
-    );
-    assert_eq!(
-        setup.token_long.balance(&admin),
-        pair_tokens_to_mint as i128
-    );
-    assert_eq!(
-        setup.token_short.balance(&admin),
-        pair_tokens_to_mint as i128
-    );
-
-    setup
-        .treasury
-        .deposit(&admin, &setup.pair.address, &pair_tokens_to_deposit);
-    assert_eq!(setup.token_usdc.balance(&admin), 0);
-    assert_eq!(setup.token_long.balance(&admin), 0);
-    assert_eq!(setup.token_short.balance(&admin), 0);
-
-    // Test
-    let fee_config = setup.treasury.get_fee_config(&setup.pair.address);
-    let (usdc_less_fee, usdc_fee) = apply_fee_on_input(usdc_to_trade, fee_config.taker_base_fee);
-
-    let expected_out = (usdc_less_fee * PRICE_PRECISION) / DEFAULT_TOKEN_PRICE;
-    let short_out = setup
-        .treasury
-        .buy_short(&user1, &setup.pair.address, &usdc_to_trade, &0);
-    assert_eq!(short_out, expected_out);
-
-    // Assertions
-    assert_eq!(setup.token_usdc.balance(&user1), 0);
-    assert_eq!(
-        setup.token_usdc.balance(&setup.treasury.address),
-        (usdc_to_deposit + usdc_to_trade) as i128
-    );
-
-    assert_eq!(setup.token_short.balance(&user1), expected_out as i128);
     assert_eq!(
         setup.token_short.balance(&setup.treasury.address),
-        (pair_tokens_to_deposit - expected_out) as i128
+        10_0000000
     );
 
     assert_eq!(
         setup.treasury.get_balances(&setup.pair.address),
         PairAmountsWithUSDC {
-            usdc: usdc_to_deposit + usdc_to_trade - usdc_fee,
-            long: pair_tokens_to_deposit,
-            short: pair_tokens_to_deposit - expected_out,
+            long: 10_0000000 - out,
+            short: 10_0000000,
+            usdc: 1001_0000000 - fee,
         }
     );
 
-    assert_eq!(
-        setup.treasury.get_protocol_fees(&setup.pair.address),
-        usdc_fee
-    );
+    assert_eq!(setup.treasury.get_protocol_fees(&setup.pair.address), fee);
 }
 
-// -------------------------------------------------------------------------------------------------
-// Sell Long
-// -------------------------------------------------------------------------------------------------
-
-#[test]
-#[should_panic(expected = "Error(Contract, #501)")]
-fn test_sell_long_invalid_pair() {
-    let setup = Setup::default();
-    let user1 = setup.users[1].clone();
-    let pair = Address::generate(&setup.env);
-
-    setup.treasury.sell_long(&user1, &pair, &1_0000000_u128, &0);
-}
+// --------------------------------------
+// BUY SHORT
+// --------------------------------------
 
 #[test]
 #[should_panic(expected = "Error(Contract, #204)")]
-fn test_sell_long_invalid_amount() {
+fn buy_short_invalid_amount() {
     let setup = Setup::default();
-    let user1 = setup.users[1].clone();
-    setup
-        .treasury
-        .sell_long(&user1, &setup.pair.address, &0, &0);
+    let user = setup.users[1].clone();
+
+    setup.treasury.buy_short(&user, &setup.pair.address, &0, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #501)")]
+fn buy_short_invalid_pair() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+    let bad_pair = Address::generate(&setup.env);
+
+    setup.treasury.buy_short(&user, &bad_pair, &1_0000000, &0);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #213)")]
-fn test_sell_long_trading_kills() {
+fn buy_short_trading_paused() {
     let setup = Setup::default();
     let admin = setup.admin.clone();
-    let user1 = setup.users[1].clone();
+    let user = setup.users[1].clone();
 
     setup.treasury.kill_trade(&admin);
 
     setup
         .treasury
-        .sell_long(&user1, &setup.pair.address, &1_0000000_u128, &0);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #216)")]
-fn test_sell_long_enforces_slippage() {
-    let setup = Setup::default();
-
-    let admin = setup.admin.clone();
-    let user1 = setup.users[1].clone();
-
-    // Bootstrap: mint USDC, mint pair, deposit
-    setup
-        .token_usdc_admin_client
-        .mint(&admin, &(2_000_0000000_i128));
-    setup.pair.mint(&admin, &10_0000000_u128);
-    setup
-        .treasury
-        .deposit(&admin, &setup.pair.address, &10_0000000_u128);
-
-    // User buys long to get inventory to sell
-    setup
-        .token_usdc_admin_client
-        .mint(&user1, &(1_0000000_i128));
-    let long_out = setup
-        .treasury
-        .buy_long(&user1, &setup.pair.address, &1_0000000_u128, &0);
-    assert!(long_out > 0);
-
-    // Now sell but demand too much USDC out => Slippage (216)
-    setup.treasury.sell_long(
-        &user1,
-        &setup.pair.address,
-        &long_out,
-        &10_0000000_u128, // too high min
-    );
+        .buy_short(&user, &setup.pair.address, &1_0000000, &0);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #215)")]
-fn test_sell_long_enforces_sufficient_usdc_inventory() {
+fn buy_short_min_long_out_insufficient_inventory() {
     let setup = Setup::default();
+    let user = setup.users[1].clone();
 
+    setup
+        .treasury
+        .buy_short(&user, &setup.pair.address, &1_0000000, &1_0000000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #215)")]
+fn buy_short_insufficient_inventory() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+
+    setup
+        .treasury
+        .buy_short(&user, &setup.pair.address, &1_0000000, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #216)")]
+fn buy_short_slippage() {
+    let setup = Setup::default();
     let admin = setup.admin.clone();
-    let user1 = setup.users[1].clone();
+    let user = setup.users[1].clone();
 
-    // Bootstrap with SMALL liquidity so treasury USDC inventory is tight
-    setup
-        .token_usdc_admin_client
-        .mint(&admin, &(100_0000000_i128));
-    setup.pair.mint(&admin, &1_0000000_u128);
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    mint_user_usdc(&setup, &user, 1_0000000);
+
     setup
         .treasury
-        .deposit(&admin, &setup.pair.address, &1_0000000_u128);
-
-    // Give user USDC, buy long, then sell it back.
-    setup
-        .token_usdc_admin_client
-        .mint(&user1, &(1_0000000_i128));
-    let long_out = setup
-        .treasury
-        .buy_long(&user1, &setup.pair.address, &1_0000000_u128, &0);
-
-    // Depending on your deposit mechanics, this often trips insufficient treasury USDC.
-    setup
-        .treasury
-        .sell_long(&user1, &setup.pair.address, &long_out, &0);
+        .buy_short(&user, &setup.pair.address, &1_0000000, &10_0000000);
 }
 
 #[test]
-fn test_sell_long_happy_path_updates_balances_and_fees() {
+#[should_panic]
+fn buy_short_hard_cap() {
     let setup = Setup::default();
-    let user1 = setup.users[1].clone();
+    let user = setup.users[1].clone();
 
-    let init_admin_usdc = 2000_0000000_u128;
-    let init_user_usdc = 2_0000000_u128;
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+    set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 1, 0);
 
-    let pair_tokens_to_mint = 10_0000000_u128;
-    let pair_tokens_to_deposit = 10_0000000_u128;
-    let usdc_to_trade_buy = 1_0000000_u128;
-
-    // Bootstrap inventory
-    bootstrap_with_liquidity(
-        &setup,
-        pair_tokens_to_mint,
-        pair_tokens_to_deposit,
-        init_admin_usdc,
-    );
-
-    // Give user USDC and buy long
-    mint_user_usdc(&setup, &user1, init_user_usdc);
-    let fee_config = setup.treasury.get_fee_config(&setup.pair.address);
-
-    let (usdc_less_fee_buy, usdc_fee_buy) =
-        apply_fee_on_input(usdc_to_trade_buy, fee_config.taker_base_fee);
-    let expected_long_out = (usdc_less_fee_buy * PRICE_PRECISION) / DEFAULT_TOKEN_PRICE;
-
-    let long_out = setup
-        .treasury
-        .buy_long(&user1, &setup.pair.address, &usdc_to_trade_buy, &0);
-    assert_eq!(long_out, expected_long_out);
-
-    // Sell half of the long back
-    let long_in = long_out / 2;
-
-    // expected sell math (gross then fee on output)
-    let gross_usdc_out = (long_in * DEFAULT_TOKEN_PRICE) / PRICE_PRECISION;
-    let (expected_usdc_out, usdc_fee_sell) =
-        apply_fee_on_output(gross_usdc_out, fee_config.taker_base_fee);
-
-    let usdc_out = setup
-        .treasury
-        .sell_long(&user1, &setup.pair.address, &long_in, &0);
-    assert_eq!(usdc_out, expected_usdc_out);
-
-    // User balances: spent 1 USDC, got some back from sell, and retains remaining long
-    assert_eq!(
-        setup.token_usdc.balance(&user1),
-        (init_user_usdc - usdc_to_trade_buy + usdc_out) as i128
-    );
-    assert_eq!(
-        setup.token_long.balance(&user1),
-        (long_out - long_in) as i128
-    );
-
-    // Treasury balances: long increased by long_in, usdc decreased by usdc_out
-    let bal = setup.treasury.get_balances(&setup.pair.address);
-    assert_eq!(bal.long, pair_tokens_to_deposit - long_out + long_in);
-
-    // Fees accumulate from both trades
-    assert_eq!(
-        setup.treasury.get_protocol_fees(&setup.pair.address),
-        usdc_fee_buy + usdc_fee_sell
-    );
-}
-
-// -------------------------------------------------------------------------------------------------
-// Sell Short
-// -------------------------------------------------------------------------------------------------
-
-#[test]
-#[should_panic(expected = "Error(Contract, #501)")]
-fn test_sell_short_invalid_pair() {
-    let setup = Setup::default();
-    let user1 = setup.users[1].clone();
-    let pair = Address::generate(&setup.env);
-
+    mint_user_usdc(&setup, &user, 5_0000000);
     setup
         .treasury
-        .sell_short(&user1, &pair, &1_0000000_u128, &0);
+        .buy_short(&user, &setup.pair.address, &5_0000000, &0);
 }
+
+#[test]
+fn buy_short_happy_path() {
+    let setup = Setup::default();
+    let admin = setup.admin.clone();
+    let user = setup.users[1].clone();
+
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    mint_user_usdc(&setup, &user, 1_0000000);
+
+    let (out, fee) = setup
+        .treasury
+        .buy_short(&user, &setup.pair.address, &1_0000000, &0);
+    assert!(out > 0);
+
+    assert_eq!(setup.token_usdc.balance(&user), 0);
+    assert_eq!(setup.token_long.balance(&user), 0);
+    assert_eq!(setup.token_short.balance(&user), out as i128);
+
+    assert_eq!(
+        setup.token_usdc.balance(&setup.treasury.address),
+        1001_0000000
+    );
+    assert_eq!(
+        setup.token_long.balance(&setup.treasury.address),
+        10_0000000
+    );
+    assert_eq!(
+        setup.token_short.balance(&setup.treasury.address),
+        (10_0000000 - out) as i128
+    );
+
+    assert_eq!(
+        setup.treasury.get_balances(&setup.pair.address),
+        PairAmountsWithUSDC {
+            long: 10_0000000,
+            short: 10_0000000 - out,
+            usdc: 1001_0000000 - fee,
+        }
+    );
+
+    assert_eq!(setup.treasury.get_protocol_fees(&setup.pair.address), fee);
+}
+
+// --------------------------------------
+// SELL LONG
+// --------------------------------------
 
 #[test]
 #[should_panic(expected = "Error(Contract, #204)")]
-fn test_sell_short_invalid_amount() {
+fn sell_long_invalid_amount() {
     let setup = Setup::default();
-    let user1 = setup.users[1].clone();
-    setup
-        .treasury
-        .sell_short(&user1, &setup.pair.address, &0, &0);
+    let user = setup.users[1].clone();
+
+    setup.treasury.sell_long(&user, &setup.pair.address, &0, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #501)")]
+fn sell_long_invalid_pair() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+    let bad_pair = Address::generate(&setup.env);
+
+    setup.treasury.sell_long(&user, &bad_pair, &1_0000000, &0);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #213)")]
-fn test_sell_short_trading_kills() {
+fn sell_long_trading_paused() {
     let setup = Setup::default();
     let admin = setup.admin.clone();
-    let user1 = setup.users[1].clone();
+    let user = setup.users[1].clone();
 
     setup.treasury.kill_trade(&admin);
 
     setup
         .treasury
-        .sell_short(&user1, &setup.pair.address, &1_0000000_u128, &0);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #216)")]
-fn test_sell_short_enforces_slippage() {
-    let setup = Setup::default();
-
-    let admin = setup.admin.clone();
-    let user1 = setup.users[1].clone();
-
-    setup
-        .token_usdc_admin_client
-        .mint(&admin, &(2_000_0000000_i128));
-    setup.pair.mint(&admin, &10_0000000_u128);
-    setup
-        .treasury
-        .deposit(&admin, &setup.pair.address, &10_0000000_u128);
-
-    setup
-        .token_usdc_admin_client
-        .mint(&user1, &(1_0000000_i128));
-    let short_out = setup
-        .treasury
-        .buy_short(&user1, &setup.pair.address, &1_0000000_u128, &0);
-    assert!(short_out > 0);
-
-    setup
-        .treasury
-        .sell_short(&user1, &setup.pair.address, &short_out, &10_0000000_u128);
+        .sell_long(&user, &setup.pair.address, &1_0000000, &0);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #215)")]
-fn test_sell_short_enforces_sufficient_usdc_inventory() {
+fn sell_long_min_usdc_out_insufficient_inventory() {
     let setup = Setup::default();
-
-    let admin = setup.admin.clone();
-    let user1 = setup.users[1].clone();
-
-    setup
-        .token_usdc_admin_client
-        .mint(&admin, &(100_0000000_i128));
-    setup.pair.mint(&admin, &1_0000000_u128);
-    setup
-        .treasury
-        .deposit(&admin, &setup.pair.address, &1_0000000_u128);
-
-    setup
-        .token_usdc_admin_client
-        .mint(&user1, &(1_0000000_i128));
-    let short_out = setup
-        .treasury
-        .buy_short(&user1, &setup.pair.address, &1_0000000_u128, &0);
+    let user = setup.users[1].clone();
 
     setup
         .treasury
-        .sell_short(&user1, &setup.pair.address, &short_out, &0);
+        .sell_long(&user, &setup.pair.address, &1_0000000, &1_0000000);
 }
 
 #[test]
-fn test_sell_short_happy_path_updates_balances_and_fees() {
+#[should_panic(expected = "Error(Contract, #215)")]
+fn sell_long_insufficient_inventory() {
     let setup = Setup::default();
-    let user1 = setup.users[1].clone();
+    let user = setup.users[1].clone();
 
-    let init_admin_usdc = 2000_0000000_u128;
-    let init_user_usdc = 2_0000000_u128;
+    set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
 
-    let pair_tokens_to_mint = 10_0000000_u128;
-    let pair_tokens_to_deposit = 10_0000000_u128;
-    let usdc_to_trade_buy = 1_0000000_u128;
-
-    bootstrap_with_liquidity(
-        &setup,
-        pair_tokens_to_mint,
-        pair_tokens_to_deposit,
-        init_admin_usdc,
-    );
-
-    mint_user_usdc(&setup, &user1, init_user_usdc);
-    let fee_config = setup.treasury.get_fee_config(&setup.pair.address);
-
-    let (usdc_less_fee_buy, usdc_fee_buy) =
-        apply_fee_on_input(usdc_to_trade_buy, fee_config.taker_base_fee);
-    let expected_short_out = (usdc_less_fee_buy * PRICE_PRECISION) / DEFAULT_TOKEN_PRICE;
-
-    let short_out = setup
+    setup
         .treasury
-        .buy_short(&user1, &setup.pair.address, &usdc_to_trade_buy, &0);
-    assert_eq!(short_out, expected_short_out);
+        .sell_long(&user, &setup.pair.address, &1_0000000, &0);
+}
 
-    // Sell half back
-    let short_in = short_out / 2;
-    let gross_usdc_out = (short_in * DEFAULT_TOKEN_PRICE) / PRICE_PRECISION;
-    let (expected_usdc_out, usdc_fee_sell) =
-        apply_fee_on_output(gross_usdc_out, fee_config.taker_base_fee);
+#[test]
+#[should_panic(expected = "Error(Contract, #216)")]
+fn sell_long_slippage() {
+    let setup = Setup::default();
+    let admin = setup.admin.clone();
+    let user = setup.users[1].clone();
 
-    let usdc_out = setup
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    mint_user_usdc(&setup, &user, 100_0000000);
+
+    set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
+
+    // Mint the user some pair tokens
+    setup.pair.mint(&user, &1_0000000);
+
+    setup
         .treasury
-        .sell_short(&user1, &setup.pair.address, &short_in, &0);
-    assert_eq!(usdc_out, expected_usdc_out);
+        .sell_long(&user, &setup.pair.address, &1_0000000, &50_0000000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #222)")]
+fn sell_long_toxic() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
+
+    // Mint the user some pair tokens
+    mint_user_usdc(&setup, &user, 100_0000000);
+    setup.pair.mint(&user, &1_0000000);
+
+    jump(&setup.env, ONE_HOUR);
+    set_pair_price(&setup, 9_00000000000000, setup.env.ledger().timestamp());
+
+    setup
+        .treasury
+        .sell_long(&user, &setup.pair.address, &1_0000000, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #221)")]
+fn sell_long_usdc_floor() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
+
+    set_usdc_floor_fraction(&setup, PRICE_PRECISION / 10);
+
+    // Mint the user some pair tokens
+    mint_user_usdc(&setup, &user, 2000_0000000);
+    setup.pair.mint(&user, &20_0000000);
+
+    setup
+        .treasury
+        .sell_long(&user, &setup.pair.address, &20_0000000, &0);
+}
+
+// #[test]
+// #[should_panic]
+// fn sell_long_hard_cap() {
+//     let setup = Setup::default();
+//     let user = setup.users[1].clone();
+
+//     bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+//     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 1, 0);
+
+//     mint_user_usdc(&setup, &user, 5_0000000);
+//     setup.treasury.sell_long(&user, &setup.pair.address, &5_0000000, &0);
+// }
+
+#[test]
+fn sell_long_happy_path() {
+    let setup = Setup::default();
+    let admin = setup.admin.clone();
+    let user = setup.users[1].clone();
+
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
+
+    // Mint the user some pair tokens
+    mint_user_usdc(&setup, &user, 100_0000000);
+    setup.pair.mint(&user, &1_0000000);
+
+    let (out, fee) = setup
+        .treasury
+        .sell_long(&user, &setup.pair.address, &1_0000000, &0);
+    assert!(out > 0);
+
+    assert_eq!(setup.token_usdc.balance(&user), out as i128);
+    assert_eq!(setup.token_long.balance(&user), 0);
+    assert_eq!(setup.token_short.balance(&user), 1_0000000);
 
     assert_eq!(
-        setup.token_usdc.balance(&user1),
-        (init_user_usdc - usdc_to_trade_buy + usdc_out) as i128
+        setup.token_usdc.balance(&setup.treasury.address),
+        (1000_0000000 - out) as i128
     );
     assert_eq!(
-        setup.token_short.balance(&user1),
-        (short_out - short_in) as i128
+        setup.token_long.balance(&setup.treasury.address),
+        11_0000000
+    );
+    assert_eq!(
+        setup.token_short.balance(&setup.treasury.address),
+        10_0000000
     );
 
-    let bal = setup.treasury.get_balances(&setup.pair.address);
-    assert_eq!(bal.short, pair_tokens_to_deposit - short_out + short_in);
+    assert_eq!(
+        setup.treasury.get_balances(&setup.pair.address),
+        PairAmountsWithUSDC {
+            long: 11_0000000,
+            short: 10_0000000,
+            usdc: 1000_0000000 - out - fee,
+        }
+    );
+
+    assert_eq!(setup.treasury.get_protocol_fees(&setup.pair.address), fee);
+}
+
+// --------------------------------------
+// SELL SHORT
+// --------------------------------------
+
+#[test]
+#[should_panic(expected = "Error(Contract, #204)")]
+fn sell_short_invalid_amount() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+
+    setup
+        .treasury
+        .sell_short(&user, &setup.pair.address, &0, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #501)")]
+fn sell_short_invalid_pair() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+    let bad_pair = Address::generate(&setup.env);
+
+    setup.treasury.sell_short(&user, &bad_pair, &1_0000000, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #213)")]
+fn sell_short_trading_paused() {
+    let setup = Setup::default();
+    let admin = setup.admin.clone();
+    let user = setup.users[1].clone();
+
+    setup.treasury.kill_trade(&admin);
+
+    setup
+        .treasury
+        .sell_short(&user, &setup.pair.address, &1_0000000, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #215)")]
+fn sell_short_min_usdc_out_insufficient_inventory() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+
+    setup
+        .treasury
+        .sell_short(&user, &setup.pair.address, &1_0000000, &1_0000000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #215)")]
+fn sell_short_insufficient_inventory() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+
+    set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
+
+    setup
+        .treasury
+        .sell_short(&user, &setup.pair.address, &1_0000000, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #216)")]
+fn sell_short_slippage() {
+    let setup = Setup::default();
+    let admin = setup.admin.clone();
+    let user = setup.users[1].clone();
+
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    mint_user_usdc(&setup, &user, 100_0000000);
+
+    set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
+
+    // Mint the user some pair tokens
+    setup.pair.mint(&user, &1_0000000);
+
+    setup
+        .treasury
+        .sell_short(&user, &setup.pair.address, &1_0000000, &50_0000000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #222)")]
+fn sell_short_toxic() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
+
+    // Mint the user some pair tokens
+    mint_user_usdc(&setup, &user, 100_0000000);
+    setup.pair.mint(&user, &1_0000000);
+
+    jump(&setup.env, ONE_HOUR);
+    set_pair_price(&setup, 191_00000000000000, setup.env.ledger().timestamp());
+
+    mint_user_usdc(&setup, &user, 1_0000000);
+    setup
+        .treasury
+        .sell_short(&user, &setup.pair.address, &1_0000000, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #221)")]
+fn sell_short_usdc_floor() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
+
+    set_usdc_floor_fraction(&setup, PRICE_PRECISION / 10);
+
+    // Mint the user some pair tokens
+    mint_user_usdc(&setup, &user, 2000_0000000);
+    setup.pair.mint(&user, &20_0000000);
+
+    setup
+        .treasury
+        .sell_short(&user, &setup.pair.address, &20_0000000, &0);
+}
+
+// #[test]
+// #[should_panic]
+// fn sell_short_hard_cap() {
+//     let setup = Setup::default();
+//     let user = setup.users[1].clone();
+
+//     bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+//     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 1, 0);
+
+//     mint_user_usdc(&setup, &user, 5_0000000);
+//     setup.treasury.sell_short(&user, &setup.pair.address, &5_0000000, &0);
+// }
+
+#[test]
+fn sell_short_happy_path() {
+    let setup = Setup::default();
+    let admin = setup.admin.clone();
+    let user = setup.users[1].clone();
+
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
+
+    // Mint the user some pair tokens
+    mint_user_usdc(&setup, &user, 100_0000000);
+    setup.pair.mint(&user, &1_0000000);
+
+    let (out, fee) = setup
+        .treasury
+        .sell_short(&user, &setup.pair.address, &1_0000000, &0);
+    assert!(out > 0);
+
+    assert_eq!(setup.token_usdc.balance(&user), out as i128);
+    assert_eq!(setup.token_long.balance(&user), 1_0000000);
+    assert_eq!(setup.token_short.balance(&user), 0);
 
     assert_eq!(
-        setup.treasury.get_protocol_fees(&setup.pair.address),
-        usdc_fee_buy + usdc_fee_sell
+        setup.token_usdc.balance(&setup.treasury.address),
+        (1000_0000000 - out) as i128
+    );
+    assert_eq!(
+        setup.token_long.balance(&setup.treasury.address),
+        10_0000000
+    );
+    assert_eq!(
+        setup.token_short.balance(&setup.treasury.address),
+        11_0000000
+    );
+
+    assert_eq!(
+        setup.treasury.get_balances(&setup.pair.address),
+        PairAmountsWithUSDC {
+            long: 10_0000000,
+            short: 11_0000000,
+            usdc: 1000_0000000 - out - fee,
+        }
+    );
+
+    assert_eq!(setup.treasury.get_protocol_fees(&setup.pair.address), fee);
+}
+
+// --------------------------------------
+// CLAIM FEES
+// --------------------------------------
+
+#[test]
+fn claim_protocol_fees_on_zero_returns_zero() {
+    let setup = Setup::default();
+    let admin = setup.admin.clone();
+
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    assert_eq!(setup.treasury.get_protocol_fees(&setup.pair.address), 0);
+
+    let fee_collected = setup
+        .treasury
+        .claim_protocol_fees(&admin, &setup.pair.address, &admin);
+    assert_eq!(fee_collected, 0);
+
+    assert_eq!(setup.treasury.get_protocol_fees(&setup.pair.address), 0);
+
+    assert_eq!(setup.token_usdc.balance(&admin), 0);
+    assert_eq!(
+        setup.token_usdc.balance(&setup.treasury.address),
+        1000_0000000
+    );
+}
+
+#[test]
+fn claim_protocol_fees() {
+    let setup = Setup::default();
+    let admin = setup.admin.clone();
+    let user = setup.users[1].clone();
+
+    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, 2_000_0000000);
+
+    mint_user_usdc(&setup, &user, 1_0000000);
+
+    let (out, fee) = setup
+        .treasury
+        .buy_long(&user, &setup.pair.address, &1_0000000, &0);
+
+    assert_eq!(
+        setup.treasury.get_balances(&setup.pair.address),
+        PairAmountsWithUSDC {
+            long: 10_0000000 - out,
+            short: 10_0000000,
+            usdc: 1001_0000000 - fee,
+        }
+    );
+
+    assert_eq!(setup.treasury.get_protocol_fees(&setup.pair.address), fee);
+
+    let fee_collected = setup
+        .treasury
+        .claim_protocol_fees(&admin, &setup.pair.address, &admin);
+
+    assert_eq!(setup.treasury.get_protocol_fees(&setup.pair.address), 0);
+
+    assert_eq!(setup.token_usdc.balance(&admin), fee_collected as i128);
+    assert_eq!(
+        setup.token_usdc.balance(&setup.treasury.address),
+        (1001_0000000 - fee_collected) as i128
     );
 }

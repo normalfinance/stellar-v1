@@ -1,5 +1,5 @@
 use soroban_sdk::{panic_with_error, Address, Env};
-use types::pair::PairAmountsWithUSDC;
+use types::pair::{CollateralInfo, PairAmountsWithUSDC};
 use utils::constant::PRICE_PRECISION;
 use utils::math::safe_math::SafeMath;
 
@@ -28,12 +28,25 @@ use crate::errors::TreasuryError;
 ///   the returned LONG/SHORT percentages may be stale until the Pair updates them.
 pub fn get_prices(e: &Env, pair: &Address) -> PairAmountsWithUSDC {
     let collateral_info = crate::pair::get_pair_collateral_info(e, pair);
+    get_prices_with_params(e, &collateral_info)
+}
+
+pub fn get_prices_with_params(e: &Env, collateral_info: &CollateralInfo) -> PairAmountsWithUSDC {
+    let long_price = collateral_info
+        .collateral_percent_long
+        .safe_mul(e, collateral_info.collateral_per_pair)
+        .safe_div(e, PRICE_PRECISION);
+
+    let short_price = PRICE_PRECISION
+        .safe_sub(e, collateral_info.collateral_percent_long)
+        .safe_mul(e, collateral_info.collateral_per_pair)
+        .safe_div(e, PRICE_PRECISION);
 
     let usdc_price = crate::oracle::get_oracle_price(e, &crate::storage::get_oracle(e));
 
     PairAmountsWithUSDC {
-        long: collateral_info.collateral_percent_long,
-        short: PRICE_PRECISION.safe_sub(e, collateral_info.collateral_percent_long),
+        long: long_price,
+        short: short_price,
         usdc: usdc_price.last_price_twap,
     }
 }

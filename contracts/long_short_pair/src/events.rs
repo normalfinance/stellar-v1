@@ -43,6 +43,8 @@ pub(crate) trait LongShortPairEvents {
     fn kill_redeem(&self);
 
     fn unkill_redeem(&self);
+
+    fn admin_failsafe(&self);
 }
 
 impl LongShortPairEvents for Events {
@@ -89,5 +91,11 @@ impl LongShortPairEvents for Events {
         self.env()
             .events()
             .publish((Symbol::new(self.env(), "unkill_redeem"),), ())
+    }
+
+    fn admin_failsafe(&self) {
+        self.env()
+            .events()
+            .publish((Symbol::new(self.env(), "admin_failsafe"),), ())
     }
 }

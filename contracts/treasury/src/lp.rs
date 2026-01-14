@@ -32,9 +32,9 @@ pub fn values(
         .safe_fixed_mul_floor(e, prices.usdc, PRICE_PRECISION);
 
     PairAmountsWithUSDC {
-        usdc: usdc_value,
         long: long_value,
         short: short_value,
+        usdc: usdc_value,
     }
 }
 
@@ -349,7 +349,7 @@ mod tests {
 
     fn setup_test_contract(e: &Env) -> (Address, Address) {
         let admin = Address::generate(e);
-        let treasury_contract = e.register(Treasury, (&admin,));
+        let treasury_contract = e.register(Treasury, (&admin, &admin));
 
         (treasury_contract, admin)
     }
@@ -363,9 +363,6 @@ mod tests {
     }
 
     fn set_floor_fraction(e: &Env, treasury: &Address, frac: u128) {
-        // Prefer a real setter if you have it:
-        // crate::storage::set_usdc_floor_fraction(e, frac);
-
         e.as_contract(treasury, || {
             crate::storage::set_usdc_floor_fraction(&e, &frac);
         });
@@ -515,8 +512,10 @@ mod tests {
         let total_shares = 1_000_0000u128 * 1000;
         let shares_in = 1_000_0000u128 * 100;
 
-        let out = validate_lp_withdrawal(&e, &bals, &prices, total_shares, shares_in);
-        assert!(out.long > 0 || out.short > 0 || out.usdc > 0);
+        e.as_contract(&treasury, || {
+            let out = validate_lp_withdrawal(&e, &bals, &prices, total_shares, shares_in);
+            assert!(out.long > 0 || out.short > 0 || out.usdc > 0);
+        });
     }
 
     #[test]
@@ -534,8 +533,10 @@ mod tests {
         // Burn 50% shares => tries to withdraw 500 USDC, leaving 500 which equals the floor.
         let shares_in = 1_000_0000u128 * 50;
 
-        let out = validate_lp_withdrawal(&e, &bals, &prices, total_shares, shares_in);
-        assert_eq!(out.usdc, 1_000_0000u128 * 500);
+        e.as_contract(&treasury, || {
+            let out = validate_lp_withdrawal(&e, &bals, &prices, total_shares, shares_in);
+            assert_eq!(out.usdc, 1_000_0000u128 * 500);
+        });
     }
 
     #[test]
