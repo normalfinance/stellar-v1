@@ -104,7 +104,7 @@ generate_instance_storage_getter_and_setter_with_default!(
     lower_bound,
     KEY_LOWER_BOUND,
     u128,
-    1 // effectively near-zero to maximize short value
+    0 // effectively near-zero to maximize short value
 );
 
 // Upper bound used by the calculator for price → collateral split.

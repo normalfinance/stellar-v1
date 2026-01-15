@@ -975,6 +975,26 @@ export interface Client {
   }) => Promise<AssembledTransaction<null>>
 
   /**
+   * Construct and simulate a kill_withdraw_floor transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  kill_withdraw_floor: ({admin}: {admin: string}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<null>>
+
+  /**
    * Construct and simulate a unkill_deposit transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   unkill_deposit: ({admin}: {admin: string}, options?: {
@@ -1035,6 +1055,26 @@ export interface Client {
   }) => Promise<AssembledTransaction<null>>
 
   /**
+   * Construct and simulate a unkill_withdraw_floor transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  unkill_withdraw_floor: ({admin}: {admin: string}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<null>>
+
+  /**
    * Construct and simulate a get_is_killed_deposit transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   get_is_killed_deposit: (options?: {
@@ -1078,6 +1118,26 @@ export interface Client {
    * Construct and simulate a get_is_killed_trade transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   get_is_killed_trade: (options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<boolean>>
+
+  /**
+   * Construct and simulate a get_is_killed_withdraw_floor transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_is_killed_withdraw_floor: (options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -1358,12 +1418,15 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAAMa2lsbF9kZXBvc2l0AAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
         "AAAAAAAAAAAAAAANa2lsbF93aXRoZHJhdwAAAAAAAAEAAAAAAAAABWFkbWluAAAAAAAAEwAAAAA=",
         "AAAAAAAAAAAAAAAKa2lsbF90cmFkZQAAAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
+        "AAAAAAAAAAAAAAATa2lsbF93aXRoZHJhd19mbG9vcgAAAAABAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAA",
         "AAAAAAAAAAAAAAAOdW5raWxsX2RlcG9zaXQAAAAAAAEAAAAAAAAABWFkbWluAAAAAAAAEwAAAAA=",
         "AAAAAAAAAAAAAAAPdW5raWxsX3dpdGhkcmF3AAAAAAEAAAAAAAAABWFkbWluAAAAAAAAEwAAAAA=",
         "AAAAAAAAAAAAAAAMdW5raWxsX3RyYWRlAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
+        "AAAAAAAAAAAAAAAVdW5raWxsX3dpdGhkcmF3X2Zsb29yAAAAAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
         "AAAAAAAAAAAAAAAVZ2V0X2lzX2tpbGxlZF9kZXBvc2l0AAAAAAAAAAAAAAEAAAAB",
         "AAAAAAAAAAAAAAAWZ2V0X2lzX2tpbGxlZF93aXRoZHJhdwAAAAAAAAAAAAEAAAAB",
         "AAAAAAAAAAAAAAATZ2V0X2lzX2tpbGxlZF90cmFkZQAAAAAAAAAAAQAAAAE=",
+        "AAAAAAAAAAAAAAAcZ2V0X2lzX2tpbGxlZF93aXRoZHJhd19mbG9vcgAAAAAAAAABAAAAAQ==",
         "AAAAAAAAAAAAAAAHdmVyc2lvbgAAAAAAAAAAAQAAAAQ=",
         "AAAAAAAAAAAAAAANY29udHJhY3RfbmFtZQAAAAAAAAAAAAABAAAAEQ==",
         "AAAAAAAAAAAAAAAOY29tbWl0X3VwZ3JhZGUAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAANbmV3X3dhc21faGFzaAAAAAAAA+4AAAAgAAAAAA==",
@@ -1431,12 +1494,15 @@ export class Client extends ContractClient {
         kill_deposit: this.txFromJSON<null>,
         kill_withdraw: this.txFromJSON<null>,
         kill_trade: this.txFromJSON<null>,
+        kill_withdraw_floor: this.txFromJSON<null>,
         unkill_deposit: this.txFromJSON<null>,
         unkill_withdraw: this.txFromJSON<null>,
         unkill_trade: this.txFromJSON<null>,
+        unkill_withdraw_floor: this.txFromJSON<null>,
         get_is_killed_deposit: this.txFromJSON<boolean>,
         get_is_killed_withdraw: this.txFromJSON<boolean>,
         get_is_killed_trade: this.txFromJSON<boolean>,
+        get_is_killed_withdraw_floor: this.txFromJSON<boolean>,
         version: this.txFromJSON<u32>,
         contract_name: this.txFromJSON<string>,
         commit_upgrade: this.txFromJSON<null>,

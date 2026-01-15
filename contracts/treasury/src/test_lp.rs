@@ -292,7 +292,7 @@ fn test_withdraw_happy_path_returns_pro_rata_tokens_and_updates_shares_and_balan
     // Token balances reflect payout
     assert_eq!(setup.token_long.balance(&admin) as u128, tokens_out.long);
     assert_eq!(setup.token_short.balance(&admin) as u128, tokens_out.short);
-    assert_eq!(setup.token_usdc.balance(&admin) as u128, tokens_out.usdc);
+    assert_eq!(setup.token_usdc.balance(&admin) as u128, 48_250_0000000); // initial mint - used
 
     // Treasury balances decreased
     let after = setup.treasury.get_balances(&setup.pair.address);

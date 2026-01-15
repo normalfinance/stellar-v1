@@ -75,7 +75,9 @@ pub(crate) trait TreasuryEvents {
 
     fn unkill_trade(&self);
 
-    fn admin_failsafe(&self);
+    fn kill_withdraw_floor(&self);
+
+    fn unkill_withdraw_floor(&self);
 }
 
 impl TreasuryEvents for Events {
@@ -206,9 +208,15 @@ impl TreasuryEvents for Events {
             .publish((Symbol::new(self.env(), "unkill_trade"),), ())
     }
 
-    fn admin_failsafe(&self) {
+    fn kill_withdraw_floor(&self) {
         self.env()
             .events()
-            .publish((Symbol::new(self.env(), "admin_failsafe"),), ())
+            .publish((Symbol::new(self.env(), "kill_withdraw_floor"),), ())
+    }
+
+    fn unkill_withdraw_floor(&self) {
+        self.env()
+            .events()
+            .publish((Symbol::new(self.env(), "unkill_withdraw_floor"),), ())
     }
 }

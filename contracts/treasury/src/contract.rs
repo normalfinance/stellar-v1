@@ -6,10 +6,10 @@ use crate::storage::{
 };
 use soroban_sdk::token::TokenClient as SorobanTokenClient;
 use soroban_sdk::{
-    contract, contractimpl, contractmeta, log, panic_with_error, Address, BytesN, Env, Symbol, Vec,
+    contract, contractimpl, contractmeta, panic_with_error, Address, BytesN, Env, Symbol, Vec,
 };
 use types::pair::{Direction, PairAmountsWithUSDC, Side};
-use utils::constant::{MAX_BASE_FEE, MAX_BOUND_POWER, PRICE_PRECISION};
+use utils::constant::{MAX_BASE_FEE, PRICE_PRECISION};
 use utils::math::safe_math::{PrecisionMath, SafeConversion, SafeMath};
 
 // Access control
@@ -1047,7 +1047,7 @@ impl AdminInterfaceTrait for Treasury {
             &pair,
             &(TreasuryRiskParameters {
                 toxic_threshold: PRICE_PRECISION / 10, // 10%
-                max_net_imbalance_tokens: 1_000_000_000_000,
+                max_net_imbalance_tokens: 100_000_0000000, // 100k
                 imbalance_fee_max: 25_000, // 0.25%
             }),
         );
@@ -1081,7 +1081,7 @@ impl AdminInterfaceTrait for Treasury {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        if 0 == floor_fraction || floor_fraction < PRICE_PRECISION / 10 {
+        if floor_fraction > PRICE_PRECISION {
             panic_with_error!(&e, TreasuryError::InvalidInput);
         }
 
@@ -1157,6 +1157,14 @@ impl AdminInterfaceTrait for Treasury {
         Events::new(&e).kill_trade();
     }
 
+    fn kill_withdraw_floor(e: Env, admin: Address) {
+        admin.require_auth();
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+
+        crate::storage::set_is_killed_withdraw_floor(&e, &true);
+        Events::new(&e).kill_withdraw_floor();
+    }
+
     // Resumes the pair deposits.
     //
     // # Arguments
@@ -1191,6 +1199,14 @@ impl AdminInterfaceTrait for Treasury {
         Events::new(&e).unkill_trade();
     }
 
+    fn unkill_withdraw_floor(e: Env, admin: Address) {
+        admin.require_auth();
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+
+        crate::storage::set_is_killed_withdraw_floor(&e, &false);
+        Events::new(&e).unkill_withdraw_floor();
+    }
+
     // Get create killswitch status.
     fn get_is_killed_deposit(e: Env) -> bool {
         crate::storage::get_is_killed_deposit(&e)
@@ -1206,51 +1222,10 @@ impl AdminInterfaceTrait for Treasury {
         crate::storage::get_is_killed_trade(&e)
     }
 
-    //
-    // fn admin_failsafe(
-    //     e: Env,
-    //     emergency_admin: Address,
-    //     pair: Address,
-    //     amounts: PairAmountsWithUSDC
-    // ) {
-    //     emergency_admin.require_auth();
-    //     AccessControl::new(&e).assert_address_has_role(&emergency_admin, &Role::EmergencyAdmin);
-
-    //     crate::storage::set_is_killed_trade(&e, &true);
-    //     crate::storage::set_is_killed_deposit(&e, &true);
-    //     crate::storage::set_is_killed_withdraw(&e, &true);
-
-    //     // Update shares
-    //     // ...
-
-    //     let config = crate::storage::get_config(&e, &pair);
-
-    //     if amounts.long > 0 {
-    //         SorobanTokenClient::new(&e, &config.long).transfer(
-    //             &e.current_contract_address(),
-    //             &emergency_admin,
-    //             &amounts.long.safe_to_i128(&e)
-    //         );
-    //     }
-
-    //     if amounts.short > 0 {
-    //         SorobanTokenClient::new(&e, &config.short).transfer(
-    //             &e.current_contract_address(),
-    //             &emergency_admin,
-    //             &amounts.short.safe_to_i128(&e)
-    //         );
-    //     }
-
-    //     if amounts.usdc > 0 {
-    //         SorobanTokenClient::new(&e, &config.usdc).transfer(
-    //             &e.current_contract_address(),
-    //             &emergency_admin,
-    //             &amounts.usdc.safe_to_i128(&e)
-    //         );
-    //     }
-
-    //     Events::new(&e).admin_failsafe();
-    // }
+    // Get withdraw_floor killswitch status.
+    fn get_is_killed_withdraw_floor(e: Env) -> bool {
+        crate::storage::get_is_killed_withdraw_floor(&e)
+    }
 }
 
 #[contractimpl]

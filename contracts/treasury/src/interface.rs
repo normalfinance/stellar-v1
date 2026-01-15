@@ -79,24 +79,19 @@ pub trait AdminInterfaceTrait {
     fn kill_deposit(e: Env, admin: Address);
     fn kill_withdraw(e: Env, admin: Address);
     fn kill_trade(e: Env, admin: Address);
+    fn kill_withdraw_floor(e: Env, admin: Address);
 
     // Resume pair
     fn unkill_deposit(e: Env, admin: Address);
     fn unkill_withdraw(e: Env, admin: Address);
     fn unkill_trade(e: Env, admin: Address);
+    fn unkill_withdraw_floor(e: Env, admin: Address);
 
     // Get killswitch status
     fn get_is_killed_deposit(e: Env) -> bool;
     fn get_is_killed_withdraw(e: Env) -> bool;
     fn get_is_killed_trade(e: Env) -> bool;
-
-    //
-    // fn admin_failsafe(
-    //     e: Env,
-    //     emergency_admin: Address,
-    //     pair: Address,
-    //     amounts: PairAmountsWithUSDC
-    // );
+    fn get_is_killed_withdraw_floor(e: Env) -> bool;
 }
 
 pub trait UpgradeableContract {

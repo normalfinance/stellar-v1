@@ -48,4 +48,3 @@ pub const ONE_YEAR: u128 = 31536000;
 
 // Risk Parameters
 pub const MAX_BASE_FEE: u128 = 1_000_000; // 10%
-pub const MAX_BOUND_POWER: u32 = 10;

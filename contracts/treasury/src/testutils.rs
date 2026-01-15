@@ -6,6 +6,7 @@ use crate::testutils::long_short_pair::PairParams;
 use crate::testutils::normal_oracle::OracleSource;
 use crate::TreasuryClient;
 
+use access_control::constants::ADMIN_ACTIONS_DELAY;
 use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPriceOracleWASM};
 use soroban_sdk::token::{
     StellarAssetClient as SorobanTokenAdminClient, TokenClient as SorobanTokenClient,
@@ -93,10 +94,12 @@ pub(crate) struct Setup<'a> {
     // Addresses
     pub(crate) users: vec::Vec<Address>,
     pub(crate) admin: Address,
+    pub(crate) emergency_admin: Address,
 
     // Other
     pub(crate) solana: Symbol,
     pub(crate) start_time: u64,
+    pub(crate) collateral_per_pair: u128
 }
 
 impl Default for Setup<'_> {
@@ -181,6 +184,7 @@ impl Setup<'_> {
         let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
         let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
 
+        let collateral_per_pair = 100_0000000_u128;
         let pair = create_long_short_pair_contract(
             &e,
             &(PairParams {
@@ -189,7 +193,7 @@ impl Setup<'_> {
                 collateral_token: token_usdc.address.clone(),
                 oracle: oracle.address.clone(),
                 calculator: pair_calculator.address.clone(),
-                collateral_per_pair: 100_0000000,
+                collateral_per_pair,
                 long_token: token_long.address.clone(),
                 short_token: token_short.address.clone(),
                 lower_bound: 0_0000000,
@@ -202,6 +206,8 @@ impl Setup<'_> {
 
         // Setup Treasury
         let treasury = create_treasury_contract(&e, &admin, &usdc_oracle.address);
+
+        let emergency_admin = admin.clone();
 
         treasury.add_pair(
             &admin,
@@ -232,11 +238,13 @@ impl Setup<'_> {
 
             // Addresses
             admin,
+            emergency_admin,
             users,
 
             // Other
             solana: sol_symbol,
             start_time,
+            collateral_per_pair,
         }
     }
 

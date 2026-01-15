@@ -311,25 +311,27 @@ pub fn validate_lp_withdrawal(
     // USDC floor check (if configured).
     // Expects storage value in [0, 1e7]. If you don't want a floor for LP withdrawals,
     // set floor_fraction = 0.
-    let floor_fraction = crate::storage::get_usdc_floor_fraction(e);
-    if floor_fraction > PRICE_PRECISION {
-        panic_with_error!(e, TreasuryError::InvalidInput);
-    }
-
-    if floor_fraction > 0 {
-        let usdc_price = prices.usdc;
-        if usdc_price == 0 {
+    if !crate::storage::get_is_killed_withdraw_floor(e) {
+        let floor_fraction = crate::storage::get_usdc_floor_fraction(e);
+        if floor_fraction > PRICE_PRECISION {
             panic_with_error!(e, TreasuryError::InvalidInput);
         }
 
-        // floor_nav = floor_fraction * nav_total
-        let floor_nav = nav_total.safe_fixed_mul_floor(e, floor_fraction, PRICE_PRECISION);
-        // usdc_floor_amount = floor_nav / usdc_price
-        let usdc_floor_amount = floor_nav.safe_fixed_div_floor(e, usdc_price, PRICE_PRECISION);
+        if floor_fraction > 0 {
+            let usdc_price = prices.usdc;
+            if usdc_price == 0 {
+                panic_with_error!(e, TreasuryError::InvalidInput);
+            }
 
-        let remaining_usdc = balances.usdc.safe_sub(e, out.usdc);
-        if remaining_usdc < usdc_floor_amount {
-            panic_with_error!(e, TreasuryError::CannotPassFloor);
+            // floor_nav = floor_fraction * nav_total
+            let floor_nav = nav_total.safe_fixed_mul_floor(e, floor_fraction, PRICE_PRECISION);
+            // usdc_floor_amount = floor_nav / usdc_price
+            let usdc_floor_amount = floor_nav.safe_fixed_div_floor(e, usdc_price, PRICE_PRECISION);
+
+            let remaining_usdc = balances.usdc.safe_sub(e, out.usdc);
+            if remaining_usdc < usdc_floor_amount {
+                panic_with_error!(e, TreasuryError::CannotPassFloor);
+            }
         }
     }
 

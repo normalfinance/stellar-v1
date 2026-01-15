@@ -93,6 +93,7 @@ const KEY_ORACLE: &str = "Oracle";
 const KEY_IS_KILLED_DEPOSIT: &str = "IsKilledDeposit";
 const KEY_IS_KILLED_WITHDRAW: &str = "IsKilledWithdraw";
 const KEY_IS_KILLED_TRADE: &str = "IsKilledTrade";
+const KEY_IS_KILLED_WITHDRAW_FLOOR: &str = "IsKilledWithdrawFloor";
 
 /// Composite key for `(pair, user)` LP share balances.
 ///
@@ -153,6 +154,12 @@ generate_instance_storage_getter_and_setter_with_default!(
     KEY_IS_KILLED_TRADE,
     bool,
     false
+);
+generate_instance_storage_getter_and_setter_with_default!(
+    is_killed_withdraw_floor,
+    KEY_IS_KILLED_WITHDRAW_FLOOR,
+    bool,
+    true
 );
 
 // Pair details
