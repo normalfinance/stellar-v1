@@ -2,12 +2,12 @@
 #![cfg(test)]
 extern crate std;
 
-use crate::NormalOracleClient;
+use crate::{storage::OracleGuardRails, NormalOracleClient};
 use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPriceOracleWASM};
 use soroban_sdk::{testutils::Address as _, Address, Env, Symbol, Vec};
 use std::vec;
 use types::oracle::OracleSource;
-use utils::test_utils::jump;
+use utils::{constant::PRICE_PRECISION_U64, test_utils::jump};
 
 pub(crate) struct TestConfig {
     pub(crate) users_count: u32,
@@ -27,6 +27,7 @@ pub(crate) struct Setup<'a> {
     pub(crate) reflector_client: MockPriceOracleClient<'a>,
     pub(crate) admin: Address,
     pub(crate) initial_asset_price: i128,
+    pub(crate) default_guard_rails: OracleGuardRails,
 }
 
 impl Default for Setup<'_> {
@@ -68,7 +69,7 @@ impl Setup<'_> {
             300,
         );
 
-        let initial_asset_price = 230_00000000000000;
+        let initial_asset_price = 200_00000000000000;
         let prices: Vec<i128> = Vec::from_array(&e, [initial_asset_price, 1_00000000000000]);
         reflector_client.set_price(&prices, &start_time);
 
@@ -76,13 +77,14 @@ impl Setup<'_> {
         let result_1 = reflector_client.lastprice(&asset.clone()).unwrap();
         assert_eq!(result_1.price, initial_asset_price);
 
-        let normal_oracle = create_normal_oracle_contract(
-            &e,
-            &admin,
-            &asset_symbol,
-            &OracleSource::Reflector,
-            &reflector_addr,
-        );
+        let normal_oracle = create_normal_oracle_contract(&e, &admin);
+
+        // Guard rails
+        let default_guard_rails = OracleGuardRails {
+            seconds_before_stale: 600,
+            too_volatile_ratio: PRICE_PRECISION_U64 / 10,
+            sanitize_clamp_denominator: 1,
+        };
 
         Self {
             env: e,
@@ -92,6 +94,7 @@ impl Setup<'_> {
             reflector_client,
             admin,
             initial_asset_price,
+            default_guard_rails,
         }
     }
 
@@ -104,20 +107,8 @@ impl Setup<'_> {
     }
 }
 
-pub fn create_normal_oracle_contract<'a>(
-    e: &Env,
-    admin: &Address,
-    asset: &Symbol,
-    oracle_source: &OracleSource,
-    oracle_addr: &Address,
-) -> NormalOracleClient<'a> {
-    let normal_oracle = NormalOracleClient::new(
-        e,
-        &e.register(
-            crate::NormalOracle {},
-            (admin, asset, oracle_source.clone(), oracle_addr),
-        ),
-    );
+pub fn create_normal_oracle_contract<'a>(e: &Env, admin: &Address) -> NormalOracleClient<'a> {
+    let normal_oracle = NormalOracleClient::new(e, &e.register(crate::NormalOracle {}, (admin,)));
     normal_oracle
 }
 

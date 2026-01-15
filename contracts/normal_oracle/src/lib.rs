@@ -8,5 +8,6 @@ mod storage;
 mod test;
 mod test_permissions;
 mod testutils;
+mod validate;
 
 pub use crate::contract::{NormalOracle, NormalOracleClient};

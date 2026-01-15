@@ -1,16 +1,25 @@
 use oracle::state::HistoricalOracleData;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, Env, Symbol};
+use types::oracle::OraclePriceData;
 
-use crate::storage::GuardRails;
+use crate::storage::{OracleConfig, OracleGuardRails};
 
 pub trait NormalOracleTrait {
-    fn get_price(e: Env) -> HistoricalOracleData;
+    fn get_oracle_price(e: Env, asset: Symbol) -> OraclePriceData;
 
-    fn get_guard_rails(e: Env) -> GuardRails;
+    fn get_price(e: Env, asset: Symbol) -> HistoricalOracleData;
 
-    fn set_seconds_before_stale(e: Env, admin: Address, stale_limit: u64);
+    fn get_price_and_update(e: Env, asset: Symbol) -> HistoricalOracleData;
 
-    fn set_too_volatile_ratio(e: Env, admin: Address, too_volatile_ratio: u64);
+    fn get_config(e: Env, asset: Symbol) -> OracleConfig;
 
-    fn set_sanitize_clamp_denominator(e: Env, admin: Address, sanitize_clamp_denominator: u128);
+    fn get_guard_rails(e: Env, asset: Symbol) -> OracleGuardRails;
+}
+
+pub trait AdminInterfaceTrait {
+    fn add_asset(e: Env, admin: Address, config: OracleConfig, guard_rails: OracleGuardRails);
+
+    fn remove_asset(e: Env, admin: Address, asset: Symbol);
+
+    fn set_guard_rails(e: Env, admin: Address, asset: Symbol, guard_rails: OracleGuardRails);
 }

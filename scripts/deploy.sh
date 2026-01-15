@@ -55,17 +55,7 @@ ORACLE_ADDR=$(soroban contract deploy \
     --rpc-url $STELLAR_RPC_URL \
     --network-passphrase "$STELLAR_NETWORK_PASSPHRASE" \
     --fee $STELLAR_BASE_FEE \
-    -- --admin $ADMIN_ADDRESS --asset BTC --oracle_source Reflector --oracle_addr $REFLECTOR_ORACLE
-)
-
-USDC_ORACLE_ADDR=$(soroban contract deploy \
-    --wasm normal_oracle.optimized.wasm \
-    --source $IDENTITY_STRING \
-    --network $NETWORK \
-    --rpc-url $STELLAR_RPC_URL \
-    --network-passphrase "$STELLAR_NETWORK_PASSPHRASE" \
-    --fee $STELLAR_BASE_FEE \
-    -- --admin $ADMIN_ADDRESS --asset USDC --oracle_source Reflector --oracle_addr $REFLECTOR_ORACLE
+    -- --admin $ADMIN_ADDRESS
 )
 
 # Treasury

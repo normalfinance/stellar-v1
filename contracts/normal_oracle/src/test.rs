@@ -1,10 +1,33 @@
 #![cfg(test)]
 extern crate std;
 
-use crate::testutils::Setup;
+use crate::{storage::OracleConfig, testutils::Setup};
+use soroban_sdk::Symbol;
 use utils::constant::{FIVE_MINUTE, PERCENTAGE_PRECISION_U64, PRICE_PRECISION_I128};
 
-// TODO: test double init
+// --------------------------------------
+// Add Asset
+// --------------------------------------
+
+#[test]
+fn test_add_asset() {
+    let setup = Setup::default();
+
+    let config = OracleConfig {
+        asset: Symbol::new(&setup.env, "SOL"),
+        source: types::oracle::OracleSource::Reflector,
+        oracle: setup.reflector_addr,
+    };
+
+    setup
+        .normal_oracle
+        .add_asset(&setup.admin, &config, &setup.default_guard_rails);
+
+    assert_eq!(
+        price_data.last_price as i128,
+        setup.initial_asset_price / PRICE_PRECISION_I128
+    );
+}
 
 #[test]
 fn test_get_price() {

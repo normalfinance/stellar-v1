@@ -4,7 +4,7 @@ use oracle::{
     state::{HistoricalOracleData, OracleValidity},
 };
 use sep_40_oracle::{Asset, PriceFeedClient};
-use soroban_sdk::{panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{panic_with_error, Env, Symbol};
 use types::oracle::OraclePriceData;
 use utils::{
     constant::{FIVE_MINUTE, PERCENTAGE_PRECISION, PERCENTAGE_PRECISION_U64, PRICE_PRECISION},
@@ -14,17 +14,16 @@ use utils::{
 
 use crate::{
     errors::NormalOracleError,
-    storage::{get_seconds_before_stale, get_too_volatile_ratio, put_historical_data},
+    storage::{put_historical_data, OracleConfig, OracleGuardRails},
 };
 
 pub fn get_reflector_oracle_price(
     e: &Env,
-    oracle_addr: &Address,
-    asset: &Symbol,
+    oracle_config: &OracleConfig,
     now: u64,
 ) -> OraclePriceData {
-    let oracle_client = PriceFeedClient::new(e, oracle_addr);
-    let oracle_asset = Asset::Other(asset.clone());
+    let oracle_client = PriceFeedClient::new(e, &oracle_config.oracle);
+    let oracle_asset = Asset::Other(oracle_config.asset.clone());
 
     let oracle_price: u128;
     let published_ts: u64;
@@ -70,16 +69,17 @@ pub fn get_reflector_oracle_price(
 // * `now` - Current timestamp.
 pub fn update_twap(
     e: &Env,
+    asset: &Symbol,
     historical_oracle_data: &HistoricalOracleData,
     oracle_price_data: &OraclePriceData,
-    sanitize_clamp_denominator: u128,
+    oracle_guard_rails: &OracleGuardRails,
     now: u64,
 ) -> HistoricalOracleData {
     let capped_oracle_update_price = sanitize_new_price(
         e,
         oracle_price_data.price,
         historical_oracle_data.last_price_twap,
-        sanitize_clamp_denominator,
+        oracle_guard_rails.sanitize_clamp_denominator,
     );
 
     let oracle_price_twap = calculate_new_twap(
@@ -97,7 +97,7 @@ pub fn update_twap(
         last_update_ts: now,
         last_delay_ts: oracle_price_data.delay.as_seconds(),
     };
-    put_historical_data(e, &new_historical_oracle_data);
+    put_historical_data(e, asset, &new_historical_oracle_data);
 
     new_historical_oracle_data
 }
@@ -120,23 +120,22 @@ pub fn oracle_validity(
     e: &Env,
     oracle_price_data: &OraclePriceData,
     last_oracle_twap: u128,
+    oracle_guard_rails: &OracleGuardRails,
 ) -> OracleValidity {
     let OraclePriceData {
         price: oracle_price,
         delay: oracle_delay,
     } = *oracle_price_data;
 
-    // Guard rails
-    let too_volatile_ratio = get_too_volatile_ratio(e);
-    let seconds_before_stale = get_seconds_before_stale(e);
-
     // NonPositive
     let is_oracle_price_nonpositive = oracle_price <= 0;
 
     // Volatility
     // if Δprice <= 0.80 or 1.20 <= Δprice → too volatile
-    let lower_bound = PERCENTAGE_PRECISION_U64.safe_sub(e, too_volatile_ratio);
-    let upper_bound = too_volatile_ratio.safe_add(e, PERCENTAGE_PRECISION_U64);
+    let lower_bound = PERCENTAGE_PRECISION_U64.safe_sub(e, oracle_guard_rails.too_volatile_ratio);
+    let upper_bound = oracle_guard_rails
+        .too_volatile_ratio
+        .safe_add(e, PERCENTAGE_PRECISION_U64);
 
     // Use round-to-nearest for volatility calculation (fair assessment)
     let price_delta = oracle_price
@@ -146,7 +145,9 @@ pub fn oracle_validity(
     let is_price_too_volatile = price_delta <= lower_bound || upper_bound <= price_delta;
 
     // StaleForPair
-    let is_stale = oracle_delay.as_seconds().ge(&seconds_before_stale);
+    let is_stale = oracle_delay
+        .as_seconds()
+        .ge(&oracle_guard_rails.seconds_before_stale);
 
     let oracle_validity = if is_oracle_price_nonpositive {
         OracleValidity::NonPositive

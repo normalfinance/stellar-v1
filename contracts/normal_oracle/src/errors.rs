@@ -5,8 +5,9 @@ use soroban_sdk::contracterror;
 #[repr(u32)]
 pub enum NormalOracleError {
     AlreadyInitialized = 201,
-    InvalidToken = 202,
-    InsufficientBalance = 203,
+    AssetSupported = 202,
+    AssetNotSupported = 203,
     FailedToGetOraclePrice = 204,
     InvalidInput = 205,
+    InvalidOracleSource = 206,
 }

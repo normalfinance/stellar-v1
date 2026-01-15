@@ -1,12 +1,12 @@
 use crate::errors::NormalOracleError;
-use crate::interface::NormalOracleTrait;
-use crate::storage::GuardRails;
+use crate::interface::{AdminInterfaceTrait, NormalOracleTrait};
+use crate::storage::{OracleConfig, OracleGuardRails};
 use oracle::errors::OracleError;
 use oracle::state::{HistoricalOracleData, OracleValidity};
 use soroban_sdk::{
     contract, contractimpl, contractmeta, log, panic_with_error, Address, BytesN, Env, Symbol, Vec,
 };
-use types::oracle::OracleSource;
+use types::oracle::{OraclePriceData, OracleSource};
 
 // Access control
 use access_control::access::{AccessControl, AccessControlTrait};
@@ -22,7 +22,6 @@ use access_control::transfer::TransferOwnershipTrait;
 use upgrade::events::Events as UpgradeEvents;
 use upgrade::interface::UpgradeableContract;
 use upgrade::{apply_upgrade, commit_upgrade, revert_upgrade};
-use utils::constant::{PERCENTAGE_PRECISION_U64, TWENTY_FOUR_HOUR};
 
 contractmeta!(
     key = "Description",
@@ -40,54 +39,67 @@ impl NormalOracle {
     // Arguments:
     //   - e: The Soroban environment.
     //   - admin: The address to be assigned the Admin role.
-    //   - asset: The symbol of the asset this oracle should track.
-    //   - oracle_source: The supported type of the oracle provider.
-    //   - oracle_addr: The address of the oracle provider.
-    pub fn __constructor(
-        e: Env,
-        admin: Address,
-        asset: Symbol,
-        oracle_source: OracleSource,
-        oracle_addr: Address,
-    ) {
+    pub fn __constructor(e: Env, admin: Address) {
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
             panic_with_error!(&e, NormalOracleError::AlreadyInitialized);
         }
+
         access_control.set_role_address(&Role::Admin, &admin);
         access_control.set_role_address(&Role::PauseAdmin, &admin);
         access_control.set_role_address(&Role::EmergencyAdmin, &admin);
-
-        crate::storage::set_asset(&e, &asset);
-        crate::storage::set_oracle_source(&e, &oracle_source);
-        crate::storage::set_oracle(&e, &oracle_addr);
     }
 }
 
 #[contractimpl]
 impl NormalOracleTrait for NormalOracle {
-    fn get_price(e: Env) -> HistoricalOracleData {
+    fn get_oracle_price(e: Env, asset: Symbol) -> OraclePriceData {
         let current_time = e.ledger().timestamp();
-        let asset = crate::storage::get_asset(&e);
-        let oracle_addr = crate::storage::get_oracle(&e);
-        let oracle_source = crate::storage::get_oracle_source(&e);
+        let config = crate::storage::get_config(&e, &asset);
 
-        let oracle_price_data = match oracle_source {
+        match config.source {
             OracleSource::Reflector => {
-                crate::oracle::get_reflector_oracle_price(&e, &oracle_addr, &asset, current_time)
+                return crate::oracle::get_reflector_oracle_price(&e, &config, current_time);
+            }
+        }
+    }
+
+    fn get_price(e: Env, asset: Symbol) -> HistoricalOracleData {
+        let current_time = e.ledger().timestamp();
+        let config = crate::storage::get_config(&e, &asset);
+
+        let oracle_price_data = match config.source {
+            OracleSource::Reflector => {
+                crate::oracle::get_reflector_oracle_price(&e, &config, current_time)
+            }
+        };
+
+        crate::storage::get_historical_data(&e, &asset, &oracle_price_data, current_time)
+    }
+
+    fn get_price_and_update(e: Env, asset: Symbol) -> HistoricalOracleData {
+        let current_time = e.ledger().timestamp();
+        let config = crate::storage::get_config(&e, &asset);
+
+        let oracle_price_data = match config.source {
+            OracleSource::Reflector => {
+                crate::oracle::get_reflector_oracle_price(&e, &config, current_time)
             }
         };
 
         let historical_oracle_data = crate::storage::get_historical_data(
             &e,
+            &asset,
             &oracle_price_data, // fallback
             current_time,
         );
 
+        let guard_rails = crate::storage::get_guard_rails(&e, &asset);
         let oracle_validity = crate::oracle::oracle_validity(
             &e,
             &oracle_price_data,
             historical_oracle_data.last_price_twap,
+            &guard_rails,
         );
 
         if oracle_validity != OracleValidity::Valid {
@@ -97,52 +109,60 @@ impl NormalOracleTrait for NormalOracle {
 
         crate::oracle::update_twap(
             &e,
+            &asset,
             &historical_oracle_data,
             &oracle_price_data,
-            crate::storage::get_sanitize_clamp_denominator(&e),
+            &guard_rails,
             current_time,
         )
     }
 
-    fn set_seconds_before_stale(e: Env, admin: Address, stale_limit: u64) {
+    fn get_config(e: Env, asset: Symbol) -> OracleConfig {
+        crate::storage::get_config(&e, &asset)
+    }
+
+    fn get_guard_rails(e: Env, asset: Symbol) -> OracleGuardRails {
+        crate::storage::get_guard_rails(&e, &asset)
+    }
+}
+
+#[contractimpl]
+impl AdminInterfaceTrait for NormalOracle {
+    fn add_asset(e: Env, admin: Address, config: OracleConfig, guard_rails: OracleGuardRails) {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        if stale_limit == 0 || stale_limit > TWENTY_FOUR_HOUR {
-            panic_with_error!(&e, NormalOracleError::InvalidInput);
+        crate::validate::validate_guard_rails(&e, &guard_rails);
+
+        if crate::storage::has_config(&e, &config.asset) {
+            panic_with_error!(&e, NormalOracleError::AssetSupported);
         }
 
-        crate::storage::set_seconds_before_stale(&e, &stale_limit);
+        crate::validate::validate_oracle(&e, &config);
+
+        crate::storage::put_config(&e, &config);
+        crate::storage::put_guard_rails(&e, &config.asset, &guard_rails);
     }
 
-    fn set_too_volatile_ratio(e: Env, admin: Address, too_volatile_ratio: u64) {
+    fn remove_asset(e: Env, admin: Address, asset: Symbol) {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        if too_volatile_ratio > PERCENTAGE_PRECISION_U64 {
-            panic_with_error!(&e, NormalOracleError::InvalidInput);
+        if !crate::storage::has_config(&e, &asset) {
+            panic_with_error!(&e, NormalOracleError::AssetNotSupported);
         }
 
-        crate::storage::set_too_volatile_ratio(&e, &too_volatile_ratio);
+        crate::storage::remove_config(&e, &asset);
+        crate::storage::remove_historical_data(&e, &asset);
+        crate::storage::remove_guard_rails(&e, &asset);
     }
 
-    fn set_sanitize_clamp_denominator(e: Env, admin: Address, sanitize_clamp_denominator: u128) {
+    fn set_guard_rails(e: Env, admin: Address, asset: Symbol, guard_rails: OracleGuardRails) {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
 
-        if sanitize_clamp_denominator > 10_000 {
-            panic_with_error!(&e, NormalOracleError::InvalidInput);
-        }
-
-        crate::storage::set_sanitize_clamp_denominator(&e, &sanitize_clamp_denominator);
-    }
-
-    fn get_guard_rails(e: Env) -> GuardRails {
-        GuardRails {
-            seconds_before_stale: crate::storage::get_seconds_before_stale(&e),
-            too_volatile_ratio: crate::storage::get_too_volatile_ratio(&e),
-            sanitize_clamp_denominator: crate::storage::get_sanitize_clamp_denominator(&e),
-        }
+        crate::validate::validate_guard_rails(&e, &guard_rails);
+        crate::storage::put_guard_rails(&e, &asset, &guard_rails);
     }
 }
 
