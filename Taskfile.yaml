@@ -18,7 +18,6 @@ tasks:
 
   build:
     cmds:
-      # LSP
       - task -d contracts/token build || exit 1
       - task -d contracts/normal_oracle build || exit 1
       - task -d contracts/long_short_pair_factory build || exit 1
@@ -48,7 +47,7 @@ tasks:
   _check_bindings_tranfer_ownership:
     vars:
       WASMS:
-        sh: find ./target/wasm32v1-none/release/ -maxdepth 1 -type f \( -name '*.wasm' -and -not -name 'pool_swap_fee.wasm' \)
+        sh: find ./target/wasm32v1-none/release/ -maxdepth 1 -type f \( -name '*.wasm' \)
     cmds:
       - for: { var: WASMS }
         cmd: echo "Checking bindings for {{ .ITEM }}" &&
