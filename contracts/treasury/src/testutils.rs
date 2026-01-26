@@ -99,7 +99,7 @@ pub(crate) struct Setup<'a> {
     // Other
     pub(crate) solana: Symbol,
     pub(crate) start_time: u64,
-    pub(crate) collateral_per_pair: u128
+    pub(crate) collateral_per_pair: u128,
 }
 
 impl Default for Setup<'_> {

@@ -1009,13 +1009,9 @@ impl AdminInterfaceTrait for Treasury {
     ///
     /// ### Reverts
     /// - [`TreasuryError::InvalidInput`] if fee fields are out of range.
-    fn add_pair(e: Env, admin: Address, pair: Address, fee_config: TreasuryFeeConfig) {
+    fn add_pair(e: Env, admin: Address, pair: Address) {
         admin.require_auth();
         AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
-
-        if fee_config.base_fee > MAX_BASE_FEE {
-            panic_with_error!(&e, TreasuryError::InvalidInput);
-        }
 
         let tokens = crate::pair::get_pair_tokens(&e, &pair);
 
@@ -1046,13 +1042,13 @@ impl AdminInterfaceTrait for Treasury {
             &e,
             &pair,
             &(TreasuryRiskParameters {
-                toxic_threshold: PRICE_PRECISION / 10, // 10%
-                max_net_imbalance_tokens: 100_000_0000000, // 100k
-                imbalance_fee_max: 25_000, // 0.25%
+                toxic_threshold: 9_000_000,              // 90%
+                max_net_imbalance_tokens: 1_000_0000000, // 1k
+                imbalance_fee_max: 25_000,               // 0.25%
             }),
         );
 
-        crate::storage::set_fee_config(&e, &pair, &fee_config);
+        crate::storage::set_fee_config(&e, &pair, &(TreasuryFeeConfig { base_fee: 30_000 })); // 0.30%
         crate::storage::set_protocol_fees(&e, &pair, &0);
     }
 
@@ -1069,6 +1065,28 @@ impl AdminInterfaceTrait for Treasury {
         }
 
         crate::storage::set_fee_config(&e, &pair, &config);
+    }
+
+    /// Updates the risk parameters for an existing Pair.
+    ///
+    /// ### Reverts
+    /// - [`TreasuryError::InvalidInput`] if any parameter exceeds its maximum bound.
+    fn set_risk_parameters(
+        e: Env,
+        admin: Address,
+        pair: Address,
+        parameters: TreasuryRiskParameters,
+    ) {
+        admin.require_auth();
+        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+
+        if parameters.toxic_threshold > PRICE_PRECISION
+            || parameters.imbalance_fee_max > PRICE_PRECISION
+        {
+            panic_with_error!(&e, TreasuryError::InvalidInput);
+        }
+
+        crate::storage::set_risk_parameters(&e, &pair, &parameters);
     }
 
     /// Sets the global USDC floor fraction used by risk checks.
