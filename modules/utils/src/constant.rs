@@ -1,0 +1,50 @@
+pub const DAY_IN_LEDGERS: u32 = 17280;
+pub const WEEK_IN_LEDGERS: u32 = DAY_IN_LEDGERS * 7;
+pub const MONTH_IN_LEDGERS: u32 = DAY_IN_LEDGERS * 30;
+
+// Instance TTL
+pub const MAX_INSTANCE_TTL: u32 = MONTH_IN_LEDGERS * 6;
+pub const INSTANCE_TTL_THRESHOLD: u32 = MAX_INSTANCE_TTL - MONTH_IN_LEDGERS;
+
+// Persistent TTL
+pub const MAX_PERSISTENT_TTL: u32 = MONTH_IN_LEDGERS * 6;
+pub const PERSISTENT_TTL_THRESHOLD: u32 = MAX_PERSISTENT_TTL - MONTH_IN_LEDGERS;
+
+// Temporary TTL
+pub const MAX_TEMPORARY_TTL: u32 = WEEK_IN_LEDGERS;
+pub const TEMPORARY_TTL_THRESHOLD: u32 = MAX_TEMPORARY_TTL - DAY_IN_LEDGERS;
+
+// PRECISIONS
+pub const PRICE_PRECISION: u128 = 10_000_000; //expo = -7;
+pub const PRICE_PRECISION_I128: i128 = PRICE_PRECISION as i128;
+pub const PRICE_PRECISION_U64: u64 = 10_000_000; //expo = -7;
+pub const PRICE_PRECISION_I64: i64 = 10_000_000; //expo = -7;
+
+pub const PRICE_PRECISION_U32: u32 = 10_000_000; //expo = -7;
+pub const PRICE_PRECISION_I32: i32 = 10_000_000; //expo = -7;
+
+pub const PERCENTAGE_PRECISION: u128 = 10_000_000; // expo -7 (represents 100%)
+pub const PERCENTAGE_PRECISION_I128: i128 = PERCENTAGE_PRECISION as i128;
+pub const PERCENTAGE_PRECISION_U64: u64 = PERCENTAGE_PRECISION as u64;
+pub const PERCENTAGE_PRECISION_I64: i64 = PERCENTAGE_PRECISION as i64;
+pub const PERCENTAGE_PRECISION_U32: u32 = PERCENTAGE_PRECISION as u32;
+pub const PERCENTAGE_PRECISION_I32: i32 = PERCENTAGE_PRECISION as i32;
+
+pub const DEFAULT_MAX_TWAP_UPDATE_PRICE_BAND_DENOMINATOR: u128 = 3; // '3' here means clamp new data point to 33% (1/3) divergence from current twap (if twap > 0)
+
+// NUMBERS
+pub const ONE_U128: u128 = 10_000_000;
+pub const ONE: u128 = 1_u128;
+
+// TIME PERIODS
+pub const FIVE_SECONDS: u64 = 5;
+pub const ONE_MINUTE: i128 = 60_i128;
+pub const FIVE_MINUTE: i128 = (60 * 5) as i128;
+pub const ONE_HOUR: u64 = 3600;
+pub const ONE_HOUR_I128: i128 = ONE_HOUR as i128;
+pub const ONE_HOUR_I64: i64 = ONE_HOUR as i64;
+pub const TWENTY_FOUR_HOUR: u64 = 3600 * 24;
+pub const ONE_YEAR: u128 = 31536000;
+
+// Risk Parameters
+pub const MAX_BASE_FEE: u128 = 1_000_000; // 10%

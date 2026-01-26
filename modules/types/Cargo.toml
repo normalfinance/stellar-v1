@@ -1,0 +1,20 @@
+[package]
+name = "types"
+version.workspace = true
+edition = "2021"
+publish = false
+rust-version.workspace = true
+
+
+[lib]
+crate-type = ["rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+soroban-fixed-point-math = { workspace = true }
+utils = { workspace = true }
+
+[features]
+default = []
+testutils = []

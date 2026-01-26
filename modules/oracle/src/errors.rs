@@ -1,0 +1,14 @@
+use soroban_sdk::contracterror;
+
+#[contracterror]
+#[derive(Copy, Clone)]
+#[repr(u32)]
+pub enum OracleError {
+    #[doc = "OracleError: OracleNonPositive"]
+    OracleNonPositive = 601,
+    OracleTooVolatile = 602,
+    OracleStaleForPair = 603,
+    OracleInvalid = 604,
+    FailedToGetOraclePrice = 605,
+    InvalidInput = 606,
+}
