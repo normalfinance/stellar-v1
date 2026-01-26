@@ -51,6 +51,9 @@ impl LongShortPairFactory {
     //   - pair_contract_wasm: The WASM hash (BytesN<32>) for the long short pair contract.
     pub fn __constructor(e: Env, admin: Address, pair_contract_wasm: BytesN<32>) {
         let access_control = AccessControl::new(&e);
+        if access_control.get_role_safe(&Role::Admin).is_some() {
+            panic_with_error!(&e, LongShortPairFactoryError::AlreadyInitialized);
+        }
         access_control.set_role_address(&Role::Admin, &admin);
 
         crate::storage::set_pair_contract_wasm(&e, &pair_contract_wasm);

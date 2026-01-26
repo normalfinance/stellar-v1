@@ -48,6 +48,26 @@ PAIR_WASM_HASH=$(soroban contract upload \
     --fee $STELLAR_BASE_FEE
 )
 
+ORACLE_ADDR=$(soroban contract deploy \
+    --wasm normal_oracle.optimized.wasm \
+    --source $IDENTITY_STRING \
+    --network $NETWORK \
+    --rpc-url $STELLAR_RPC_URL \
+    --network-passphrase "$STELLAR_NETWORK_PASSPHRASE" \
+    --fee $STELLAR_BASE_FEE \
+    -- --admin $ADMIN_ADDRESS --asset BTC --oracle_source Reflector --oracle_addr $REFLECTOR_ORACLE
+)
+
+USDC_ORACLE_ADDR=$(soroban contract deploy \
+    --wasm normal_oracle.optimized.wasm \
+    --source $IDENTITY_STRING \
+    --network $NETWORK \
+    --rpc-url $STELLAR_RPC_URL \
+    --network-passphrase "$STELLAR_NETWORK_PASSPHRASE" \
+    --fee $STELLAR_BASE_FEE \
+    -- --admin $ADMIN_ADDRESS --asset USDC --oracle_source Reflector --oracle_addr $REFLECTOR_ORACLE
+)
+
 # Treasury
 TREASURY_ADDR=$(soroban contract deploy \
     --wasm treasury.optimized.wasm \
@@ -56,7 +76,7 @@ TREASURY_ADDR=$(soroban contract deploy \
     --rpc-url $STELLAR_RPC_URL \
     --network-passphrase "$STELLAR_NETWORK_PASSPHRASE" \
     --fee $STELLAR_BASE_FEE \
-    -- --admin $ADMIN_ADDRESS
+    -- --admin $ADMIN_ADDRESS --oracle $USDC_ORACLE_ADDR
 )
 
 CALCULATOR_ADDR=$(soroban contract deploy \
@@ -68,15 +88,6 @@ CALCULATOR_ADDR=$(soroban contract deploy \
     --fee $STELLAR_BASE_FEE
 )
 
-ORACLE_ADDR=$(soroban contract deploy \
-    --wasm normal_oracle.optimized.wasm \
-    --source $IDENTITY_STRING \
-    --network $NETWORK \
-    --rpc-url $STELLAR_RPC_URL \
-    --network-passphrase "$STELLAR_NETWORK_PASSPHRASE" \
-    --fee $STELLAR_BASE_FEE \
-    -- --admin $ADMIN_ADDRESS --asset ETH --oracle_source Reflector --oracle_addr $REFLECTOR_ORACLE
-)
 
 FACTORY_ADDR=$(soroban contract deploy \
     --wasm long_short_pair_factory.optimized.wasm \
@@ -97,6 +108,7 @@ echo "Initialization complete!"
 echo "Treasury Contract address: $TREASURY_ADDR"
 echo "Calculator Contract address: $CALCULATOR_ADDR"
 echo "Pair Factory Contract address: $FACTORY_ADDR"
-echo "Normal Oracle Contract address: $ORACLE_ADDR"
+echo "ETH Oracle Contract address: $ORACLE_ADDR"
+echo "USDC Oracle Contract address: $USDC_ORACLE_ADDR"
 
 echo "Pair wasm hash: $PAIR_WASM_HASH"

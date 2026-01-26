@@ -281,6 +281,10 @@ impl SafeConversion for u128 {
 impl PrecisionMath for u128 {
     #[track_caller]
     fn safe_fixed_mul_ceil(self, e: &Env, other: u128, precision: u128) -> u128 {
+        if precision == 0 {
+            panic_with_error!(e, MathError::DivisionByZero);
+        }
+
         // Calculate (self * other + precision - 1) / precision
         let product = self.checked_mul(other).unwrap_or_else(|| {
             log!(
@@ -312,6 +316,10 @@ impl PrecisionMath for u128 {
 
     #[track_caller]
     fn safe_fixed_mul_floor(self, e: &Env, other: u128, precision: u128) -> u128 {
+        if precision == 0 {
+            panic_with_error!(e, MathError::DivisionByZero);
+        }
+
         // Calculate (self * other) / precision
         let product = self.checked_mul(other).unwrap_or_else(|| {
             log!(
@@ -333,6 +341,10 @@ impl PrecisionMath for u128 {
 
     #[track_caller]
     fn safe_fixed_mul_round(self, e: &Env, other: u128, precision: u128) -> u128 {
+        if precision == 0 {
+            panic_with_error!(e, MathError::DivisionByZero);
+        }
+
         // Calculate (self * other + precision / 2) / precision for round-to-nearest
         let product = self.checked_mul(other).unwrap_or_else(|| {
             log!(
@@ -365,6 +377,10 @@ impl PrecisionMath for u128 {
 
     #[track_caller]
     fn safe_fixed_div_ceil(self, e: &Env, other: u128, precision: u128) -> u128 {
+        if precision == 0 || other == 0 {
+            panic_with_error!(e, MathError::DivisionByZero);
+        }
+
         // Calculate (self * precision + other - 1) / other
         let numerator = self.checked_mul(precision).unwrap_or_else(|| {
             log!(
@@ -396,6 +412,10 @@ impl PrecisionMath for u128 {
 
     #[track_caller]
     fn safe_fixed_div_floor(self, e: &Env, other: u128, precision: u128) -> u128 {
+        if precision == 0 || other == 0 {
+            panic_with_error!(e, MathError::DivisionByZero);
+        }
+
         // Calculate (self * precision) / other
         let numerator = self.checked_mul(precision).unwrap_or_else(|| {
             log!(
@@ -417,6 +437,10 @@ impl PrecisionMath for u128 {
 
     #[track_caller]
     fn safe_fixed_div_round(self, e: &Env, other: u128, precision: u128) -> u128 {
+        if precision == 0 || other == 0 {
+            panic_with_error!(e, MathError::DivisionByZero);
+        }
+
         // Calculate (self * precision + other / 2) / other for round-to-nearest
         let numerator = self.checked_mul(precision).unwrap_or_else(|| {
             log!(

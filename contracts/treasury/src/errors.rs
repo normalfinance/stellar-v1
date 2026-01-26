@@ -6,6 +6,7 @@ use soroban_sdk::contracterror;
 pub enum TreasuryError {
     AlreadyInitialized = 201,
     InvalidInput = 204,
+    InvalidPair = 205,
     FailedToCallPairContract = 209,
     ActionPaused = 213,
     InsufficientInventory = 215,
@@ -14,4 +15,8 @@ pub enum TreasuryError {
     DepositTooSmall = 218,
     WithdrawTooSmall = 219,
     InvalidBalance = 220,
+    CannotPassFloor = 221,
+    ToxicSideNotAccepted = 222,
+    FailedToGetOraclePrice = 223,
+    InvalidFee = 224,
 }

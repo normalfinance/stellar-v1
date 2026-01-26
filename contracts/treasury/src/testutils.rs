@@ -1,10 +1,12 @@
 #![allow(dead_code)]
 #![cfg(test)]
 extern crate std;
+use crate::storage::TreasuryFeeConfig;
 use crate::testutils::long_short_pair::PairParams;
 use crate::testutils::normal_oracle::OracleSource;
 use crate::TreasuryClient;
 
+use access_control::constants::ADMIN_ACTIONS_DELAY;
 use sep_40_oracle::testutils::{Asset as MockAsset, MockPriceOracleClient, MockPriceOracleWASM};
 use soroban_sdk::token::{
     StellarAssetClient as SorobanTokenAdminClient, TokenClient as SorobanTokenClient,
@@ -49,8 +51,12 @@ pub fn create_long_short_pair_contract<'a>(
 ) -> long_short_pair::Client<'a> {
     long_short_pair::Client::new(e, &e.register(long_short_pair::WASM, (params.clone(),)))
 }
-pub fn create_treasury_contract<'a>(e: &Env, admin: &Address) -> TreasuryClient<'a> {
-    TreasuryClient::new(e, &e.register(crate::Treasury {}, (admin,)))
+pub fn create_treasury_contract<'a>(
+    e: &Env,
+    admin: &Address,
+    oracle: &Address,
+) -> TreasuryClient<'a> {
+    TreasuryClient::new(e, &e.register(crate::Treasury {}, (admin, oracle)))
 }
 
 // Setup
@@ -88,9 +94,12 @@ pub(crate) struct Setup<'a> {
     // Addresses
     pub(crate) users: vec::Vec<Address>,
     pub(crate) admin: Address,
+    pub(crate) emergency_admin: Address,
 
     // Other
     pub(crate) solana: Symbol,
+    pub(crate) start_time: u64,
+    pub(crate) collateral_per_pair: u128
 }
 
 impl Default for Setup<'_> {
@@ -114,7 +123,7 @@ impl Setup<'_> {
         e.mock_all_auths();
         e.cost_estimate().budget().reset_unlimited();
 
-        let start_time = 1767285451; // e.ledger().timestamp();
+        let start_time = 1768369144; // e.ledger().timestamp();
         jump(&e, start_time);
 
         // Addresses
@@ -126,6 +135,7 @@ impl Setup<'_> {
         let token_usdc_admin_client = get_token_admin_client(&e, &token_usdc.address.clone());
 
         // Setup Oracle
+        let usdc_symbol = Symbol::new(&e, "USDC");
         let sol_symbol = Symbol::new(&e, "SOL");
         let solana = MockAsset::Other(sol_symbol.clone());
 
@@ -133,10 +143,7 @@ impl Setup<'_> {
             &e,
             &admin,
             &MockAsset::Other(Symbol::new(&e, "USD")),
-            &Vec::from_array(
-                &e,
-                [solana.clone(), MockAsset::Other(Symbol::new(&e, "USDC"))],
-            ),
+            &Vec::from_array(&e, [solana.clone(), MockAsset::Other(usdc_symbol.clone())]),
             14,
             300,
         );
@@ -159,6 +166,14 @@ impl Setup<'_> {
             &reflector_addr,
         );
 
+        let usdc_oracle = create_normal_oracle_contract(
+            &e,
+            &admin,
+            &usdc_symbol.clone(),
+            &OracleSource::Reflector,
+            &reflector_addr,
+        );
+
         // Setup Calculator
         let pair_calculator = create_pair_calculator_contract(&e);
 
@@ -169,6 +184,7 @@ impl Setup<'_> {
         let token_long_admin_client = get_token_admin_client(&e, &token_long.address.clone());
         let token_short_admin_client = get_token_admin_client(&e, &token_short.address.clone());
 
+        let collateral_per_pair = 100_0000000_u128;
         let pair = create_long_short_pair_contract(
             &e,
             &(PairParams {
@@ -177,7 +193,7 @@ impl Setup<'_> {
                 collateral_token: token_usdc.address.clone(),
                 oracle: oracle.address.clone(),
                 calculator: pair_calculator.address.clone(),
-                collateral_per_pair: 100_0000000,
+                collateral_per_pair,
                 long_token: token_long.address.clone(),
                 short_token: token_short.address.clone(),
                 lower_bound: 0_0000000,
@@ -189,16 +205,14 @@ impl Setup<'_> {
         token_short_admin_client.set_admin(&pair.address);
 
         // Setup Treasury
-        let treasury = create_treasury_contract(&e, &admin);
+        let treasury = create_treasury_contract(&e, &admin, &usdc_oracle.address);
+
+        let emergency_admin = admin.clone();
 
         treasury.add_pair(
             &admin,
             &pair.address,
-            &token_usdc.address,
-            &token_long.address,
-            &token_short.address,
-            &30, // 0.30%
-            &40, // 0.40%
+            &(TreasuryFeeConfig { base_fee: 30_000 }),
         );
 
         Self {
@@ -224,10 +238,13 @@ impl Setup<'_> {
 
             // Addresses
             admin,
+            emergency_admin,
             users,
 
             // Other
             solana: sol_symbol,
+            start_time,
+            collateral_per_pair,
         }
     }
 

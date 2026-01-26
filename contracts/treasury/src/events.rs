@@ -1,6 +1,5 @@
 use soroban_sdk::{Address, Env, Symbol};
 use types::pair::{Direction, Side};
-use utils::math::safe_math::SafeConversion;
 
 #[derive(Clone)]
 pub(crate) struct Events(Env);
@@ -75,6 +74,10 @@ pub(crate) trait TreasuryEvents {
     fn kill_trade(&self);
 
     fn unkill_trade(&self);
+
+    fn kill_withdraw_floor(&self);
+
+    fn unkill_withdraw_floor(&self);
 }
 
 impl TreasuryEvents for Events {
@@ -203,5 +206,17 @@ impl TreasuryEvents for Events {
         self.env()
             .events()
             .publish((Symbol::new(self.env(), "unkill_trade"),), ())
+    }
+
+    fn kill_withdraw_floor(&self) {
+        self.env()
+            .events()
+            .publish((Symbol::new(self.env(), "kill_withdraw_floor"),), ())
+    }
+
+    fn unkill_withdraw_floor(&self) {
+        self.env()
+            .events()
+            .publish((Symbol::new(self.env(), "unkill_withdraw_floor"),), ())
     }
 }

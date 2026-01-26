@@ -36,6 +36,36 @@ pub enum Direction {
     Sell,
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PairPriceBounds {
+    pub lower: u128,
+    pub upper: u128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PairAmounts {
+    pub long: u128,
+    pub short: u128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PairAmountsWithUSDC {
+    pub long: u128,
+    pub short: u128,
+    pub usdc: u128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PairTokens {
+    pub long: Address,
+    pub short: Address,
+    pub collateral: Address,
+}
+
 // NOTE: Only update by appending value, DO NOT reorder them
 // (https://app.almanax.ai/scan/13ca3512-fbc7-4909-929a-53855e07d7af/findings/907bf2df-518b-484d-a1fd-86bd91eb19d9)
 #[contracttype]
@@ -62,9 +92,8 @@ pub struct CollateralInfo {
 pub struct PairSummary {
     pub asset: Symbol,
     pub status: PairStatus,
-    pub long_token: Address,
-    pub short_token: Address,
-    pub price_bounds: (u128, u128),
+    pub tokens: PairTokens,
+    pub price_bounds: PairPriceBounds,
     pub collateral: CollateralInfo,
     pub calculator: Address,
     pub oracle: Address,

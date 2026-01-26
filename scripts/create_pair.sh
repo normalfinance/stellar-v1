@@ -49,10 +49,16 @@ stellar contract invoke \
     add_pair \
     --admin $ADMIN_ADDRESS \
     --pair $PAIR_ADDR \
-    --quote_token $USDC_ADDRESS \
-    --long_token $PAIR_LONG_ADDR \
-    --short_token $PAIR_SHORT_ADDR
-
+    --fee_config '{
+        "maker_base_fee":        "100000", 
+        "taker_base_fee":        "200000",
+        "implied_volatility":    "3000000",
+        "reaction_time_secs":   "600",
+        "coefficient_a":         "10000",
+        "coefficient_c":         "5000",
+        "coefficient_d":         "20000",
+        "bound_power":           2
+    }'
 
 echo "#############################"
 
