@@ -508,12 +508,6 @@ fn test_add_pair() {
         // (setup.emergency_admin, false),
         // (setup.pause_admin, false),
     ] {
-        assert_eq!(
-            setup
-                .treasury
-                .try_add_pair(&addr, &pair, &(TreasuryFeeConfig { base_fee: 30_000 }))
-                .is_ok(),
-            is_ok
-        );
+        assert_eq!(setup.treasury.try_add_pair(&addr, &pair).is_ok(), is_ok);
     }
 }

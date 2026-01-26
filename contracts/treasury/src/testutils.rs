@@ -209,11 +209,7 @@ impl Setup<'_> {
 
         let emergency_admin = admin.clone();
 
-        treasury.add_pair(
-            &admin,
-            &pair.address,
-            &(TreasuryFeeConfig { base_fee: 30_000 }),
-        );
+        treasury.add_pair(&admin, &pair.address);
 
         Self {
             env: e,
