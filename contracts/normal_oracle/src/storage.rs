@@ -152,6 +152,17 @@ pub(crate) fn get_historical_data(
     }
 }
 
+pub(crate) fn get_historical_data_raw(e: &Env) -> HistoricalOracleData {
+    let key = DataKey::HistoricalData;
+    match e.storage().persistent().get(&key) {
+        Some(data) => {
+            bump_persistent(e, &key);
+            data
+        }
+        None => panic_with_error!(e, StorageError::ValueNotInitialized),
+    }
+}
+
 /// Persists updated [`HistoricalOracleData`] after a successful oracle update.
 ///
 /// Callers are responsible for ensuring:
