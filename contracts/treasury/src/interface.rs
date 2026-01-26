@@ -1,7 +1,9 @@
 use soroban_sdk::{Address, BytesN, Env, Symbol};
 use types::pair::{Direction, PairAmountsWithUSDC, Side};
 
-use crate::storage::{PairConfig, TreasuryFeeConfig, TreasurySummary, TreasuryUserSummary};
+use crate::storage::{
+    PairConfig, TreasuryFeeConfig, TreasuryRiskParameters, TreasurySummary, TreasuryUserSummary,
+};
 
 pub trait TreasuryTrait {
     fn deposit(e: Env, user: Address, pair: Address, pairs_to_deposit: u128) -> u128;
@@ -65,9 +67,16 @@ pub trait TradingTrait {
 }
 
 pub trait AdminInterfaceTrait {
-    fn add_pair(e: Env, admin: Address, pair: Address, fee_config: TreasuryFeeConfig);
+    fn add_pair(e: Env, admin: Address, pair: Address);
 
     fn set_fee_config(e: Env, admin: Address, pair: Address, config: TreasuryFeeConfig);
+
+    fn set_risk_parameters(
+        e: Env,
+        admin: Address,
+        pair: Address,
+        parameters: TreasuryRiskParameters,
+    );
 
     fn set_usdc_floor(e: Env, admin: Address, floor_fraction: u128);
 

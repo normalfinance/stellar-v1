@@ -99,7 +99,7 @@ pub(crate) struct Setup<'a> {
     // Other
     pub(crate) solana: Symbol,
     pub(crate) start_time: u64,
-    pub(crate) collateral_per_pair: u128
+    pub(crate) collateral_per_pair: u128,
 }
 
 impl Default for Setup<'_> {
@@ -209,11 +209,7 @@ impl Setup<'_> {
 
         let emergency_admin = admin.clone();
 
-        treasury.add_pair(
-            &admin,
-            &pair.address,
-            &(TreasuryFeeConfig { base_fee: 30_000 }),
-        );
+        treasury.add_pair(&admin, &pair.address);
 
         Self {
             env: e,
