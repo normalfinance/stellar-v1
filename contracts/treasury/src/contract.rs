@@ -1254,7 +1254,7 @@ impl UpgradeableContract for Treasury {
     // Returns:
     //   - A u32 representing the version.
     fn version() -> u32 {
-        100
+        101
     }
 
     // Get contract type symbolic name
