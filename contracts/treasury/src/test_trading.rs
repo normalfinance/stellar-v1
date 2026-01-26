@@ -173,7 +173,12 @@ fn buy_long_slippage() {
     let admin = setup.admin.clone();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     mint_user_usdc(&setup, &user, 1_0000000);
 
@@ -188,7 +193,12 @@ fn buy_long_hard_cap() {
     let setup = Setup::default();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 1, 0);
 
     mint_user_usdc(&setup, &user, 5_0000000);
@@ -203,7 +213,12 @@ fn buy_long_happy_path() {
     let admin = setup.admin.clone();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     mint_user_usdc(&setup, &user, 1_0000000);
 
@@ -307,7 +322,12 @@ fn buy_short_slippage() {
     let admin = setup.admin.clone();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     mint_user_usdc(&setup, &user, 1_0000000);
 
@@ -322,7 +342,12 @@ fn buy_short_hard_cap() {
     let setup = Setup::default();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 1, 0);
 
     mint_user_usdc(&setup, &user, 5_0000000);
@@ -337,7 +362,12 @@ fn buy_short_happy_path() {
     let admin = setup.admin.clone();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     mint_user_usdc(&setup, &user, 1_0000000);
 
@@ -443,7 +473,12 @@ fn sell_long_slippage() {
     let admin = setup.admin.clone();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     mint_user_usdc(&setup, &user, 100_0000000);
 
@@ -463,7 +498,12 @@ fn sell_long_toxic() {
     let setup = Setup::default();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
 
@@ -485,7 +525,12 @@ fn sell_long_usdc_floor() {
     let setup = Setup::default();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
 
@@ -505,7 +550,12 @@ fn sell_long_usdc_floor_zero_works() {
     let setup = Setup::default();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
 
@@ -539,7 +589,12 @@ fn sell_long_happy_path() {
     let admin = setup.admin.clone();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
 
@@ -651,7 +706,12 @@ fn sell_short_slippage() {
     let admin = setup.admin.clone();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     mint_user_usdc(&setup, &user, 100_0000000);
 
@@ -671,7 +731,12 @@ fn sell_short_toxic() {
     let setup = Setup::default();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
 
@@ -694,7 +759,12 @@ fn sell_short_usdc_floor() {
     let setup = Setup::default();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
 
@@ -714,7 +784,12 @@ fn sell_short_usdc_floor_zero_works() {
     let setup = Setup::default();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
 
@@ -748,7 +823,12 @@ fn sell_short_happy_path() {
     let admin = setup.admin.clone();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
 
@@ -799,7 +879,12 @@ fn claim_protocol_fees_on_zero_returns_zero() {
     let setup = Setup::default();
     let admin = setup.admin.clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     assert_eq!(setup.treasury.get_protocol_fees(&setup.pair.address), 0);
 
@@ -823,7 +908,12 @@ fn claim_protocol_fees() {
     let admin = setup.admin.clone();
     let user = setup.users[1].clone();
 
-    bootstrap_with_liquidity(&setup, 10_0000000, 10_0000000, setup.collateral_per_pair * 20);
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
 
     mint_user_usdc(&setup, &user, 1_0000000);
 
