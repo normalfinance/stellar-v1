@@ -510,10 +510,12 @@ impl TradingTrait for Treasury {
             panic_with_error!(&e, TreasuryError::InsufficientInventory);
         }
 
-        let fee_config = crate::storage::get_fee_config(&e, &pair);
+        // Update and get the latest price from the pair
+        crate::pair::sync_pair_collateral_with_price(&e, &pair);
         let prices = crate::price::get_prices(&e, &pair);
 
         // Provisional quote to estimate how many LONG tokens this buy removes from inventory.
+        let fee_config = crate::storage::get_fee_config(&e, &pair);
         let (long_out_est, _) =
             crate::price::quote_buy_token(&e, usdc_in, prices.long, fee_config.base_fee);
 
@@ -647,17 +649,17 @@ impl TradingTrait for Treasury {
             panic_with_error!(&e, TreasuryError::InsufficientInventory);
         }
 
-        // Pull oracle prices for toxicity checks.
+        // Update and get the latest price from the pair
+        crate::pair::sync_pair_collateral_with_price(&e, &pair);
         let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
-        let prices = crate::price::get_prices_with_params(&e, &collateral_info);
 
         // Block the trade if LONG is currently considered toxic.
         crate::risk::block_toxic_trades(
             &e,
             &pair,
             Side::Long,
-            collateral_info.collateral_percent_long,
-        ); // the unscaled long price
+            collateral_info.collateral_percent_long, // the unscaled long price
+        );
 
         // For sells, token-in is known, so imbalance impact is exact.
         let mut after = balances.clone();
@@ -671,6 +673,7 @@ impl TradingTrait for Treasury {
         let fee_config = crate::storage::get_fee_config(&e, &pair);
         let fee = crate::fees::calculate_fee(&e, &fee_config, abs_delta, increases, &risk_params);
 
+        let prices = crate::price::get_prices_with_params(&e, &collateral_info);
         let (usdc_out, usdc_fee) = crate::price::quote_sell_token(&e, long_in, prices.long, fee);
 
         // Ensure the Treasury has enough USDC to pay out.
@@ -780,10 +783,12 @@ impl TradingTrait for Treasury {
             panic_with_error!(&e, TreasuryError::InsufficientInventory);
         }
 
-        let fee_config = crate::storage::get_fee_config(&e, &pair);
+        // Update and get the latest price from the pair
+        crate::pair::sync_pair_collateral_with_price(&e, &pair);
         let prices = crate::price::get_prices(&e, &pair);
 
         // Provisional quote to estimate how many SHORT tokens this buy removes from inventory.
+        let fee_config = crate::storage::get_fee_config(&e, &pair);
         let (short_out_est, _) =
             crate::price::quote_buy_token(&e, usdc_in, prices.short, fee_config.base_fee);
 
@@ -915,17 +920,17 @@ impl TradingTrait for Treasury {
             panic_with_error!(&e, TreasuryError::InsufficientInventory);
         }
 
-        // Pull oracle prices for toxicity checks.
+        // Update and get the latest price from the pair
+        crate::pair::sync_pair_collateral_with_price(&e, &pair);
         let collateral_info = crate::pair::get_pair_collateral_info(&e, &pair);
-        let prices = crate::price::get_prices_with_params(&e, &collateral_info);
 
         // Block the trade if SHORT is currently considered toxic.
         crate::risk::block_toxic_trades(
             &e,
             &pair,
             Side::Short,
-            collateral_info.collateral_percent_long,
-        ); // the unscaled long price
+            collateral_info.collateral_percent_long, // the unscaled long price
+        );
 
         // For sells, token-in is known, so imbalance impact is exact.
         let mut after = balances.clone();
@@ -939,6 +944,7 @@ impl TradingTrait for Treasury {
         let fee_config = crate::storage::get_fee_config(&e, &pair);
         let fee = crate::fees::calculate_fee(&e, &fee_config, abs_delta, increases, &risk_params);
 
+        let prices = crate::price::get_prices_with_params(&e, &collateral_info);
         let (usdc_out, usdc_fee) = crate::price::quote_sell_token(&e, short_in, prices.short, fee);
 
         // Ensure the Treasury has enough USDC to pay out.

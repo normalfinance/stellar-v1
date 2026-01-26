@@ -2,6 +2,7 @@ use crate::errors::LongShortPairError;
 use oracle::state::HistoricalOracleData;
 use soroban_sdk::{panic_with_error, Address, Env, IntoVal, Symbol, Vec};
 use types::pair::PairStatus;
+use utils::constant::PRICE_PRECISION;
 
 /// Fetches the latest oracle price bundle from the configured oracle contract.
 ///
@@ -29,6 +30,19 @@ pub fn get_oracle_price(e: &Env, oracle_addr: &Address) -> HistoricalOracleData 
     match e.try_invoke_contract::<HistoricalOracleData, soroban_sdk::Error>(
         oracle_addr,
         &Symbol::new(e, "get_price"),
+        Vec::from_array(e, []),
+    ) {
+        Ok(Err(_)) | Err(_) => panic_with_error!(e, LongShortPairError::FailedToGetOraclePrice),
+        Ok(Ok(historical_oracle_data)) => {
+            return historical_oracle_data;
+        }
+    }
+}
+
+pub fn update_oracle_price(e: &Env, oracle_addr: &Address) -> HistoricalOracleData {
+    match e.try_invoke_contract::<HistoricalOracleData, soroban_sdk::Error>(
+        oracle_addr,
+        &Symbol::new(e, "update_price"),
         Vec::from_array(e, []),
     ) {
         Ok(Err(_)) | Err(_) => panic_with_error!(e, LongShortPairError::FailedToGetOraclePrice),
@@ -76,16 +90,16 @@ pub fn get_oracle_price(e: &Env, oracle_addr: &Address) -> HistoricalOracleData 
 /// - This function is typically called inside `redeem` / `redeem_one` flows to ensure
 ///   the most recent settlement allocation is used.
 /// - Expiration is triggered solely by the TWAP crossing the bounds, not by time.
-pub fn sync_collateral(e: &Env) {
+pub fn sync_collateral(e: &Env) -> u128 {
     let status = crate::storage::get_status(e);
 
     // Once expired, settlement is fixed and should not be updated further.
     if status == PairStatus::Expired {
-        return;
+        panic_with_error!(e, LongShortPairError::PairExpired);
     }
 
     // Pull oracle data (TWAP) and compute a fresh settlement allocation from the calculator.
-    let historical_oracle_data = crate::utils::get_oracle_price(e, &crate::storage::get_oracle(e));
+    let oracle_data = crate::utils::update_oracle_price(e, &crate::storage::get_oracle(e));
 
     let lower_bound = crate::storage::get_lower_bound(e);
     let upper_bound = crate::storage::get_upper_bound(e);
@@ -96,7 +110,7 @@ pub fn sync_collateral(e: &Env) {
         Vec::from_array(
             e,
             [
-                historical_oracle_data.last_price_twap.into_val(e),
+                oracle_data.last_price_twap.into_val(e),
                 lower_bound.into_val(e),
                 upper_bound.into_val(e),
             ],
@@ -107,7 +121,7 @@ pub fn sync_collateral(e: &Env) {
         }
         Ok(Ok(new_collateral_percent_long)) => {
             // Calculator should always output a value in PRICE_PRECISION units (0..=1e7).
-            if new_collateral_percent_long > 10_000_000 {
+            if new_collateral_percent_long > PRICE_PRECISION {
                 panic_with_error!(e, LongShortPairError::InvalidCalculatorValue);
             }
 
@@ -118,12 +132,14 @@ pub fn sync_collateral(e: &Env) {
             crate::storage::set_collateral_percent_long(e, &new_collateral_percent_long);
 
             // Expire the pair if the TWAP has reached or crossed either boundary.
-            if historical_oracle_data.last_price_twap <= lower_bound
-                || historical_oracle_data.last_price_twap >= upper_bound
+            if oracle_data.last_price_twap <= lower_bound
+                || oracle_data.last_price_twap >= upper_bound
             {
                 crate::storage::set_status(e, &PairStatus::Expired);
                 crate::storage::set_expiration_ts(e, &current_time);
             }
+
+            return new_collateral_percent_long;
         }
     }
 }

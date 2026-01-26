@@ -104,7 +104,7 @@ fn set_pair_price(setup: &Setup, new_price: i128, timestamp: u64) {
     let new_prices: Vec<i128> = Vec::from_array(&setup.env, [new_price, 1_00000000000000]);
     setup.reflector_client.set_price(&new_prices, &timestamp);
 
-    setup.pair.sync_collateral();
+    setup.pair.sync_collateral_with_price();
 }
 
 // --------------------------------------

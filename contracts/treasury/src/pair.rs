@@ -41,6 +41,21 @@ pub fn get_pair_collateral_info(e: &Env, pair: &Address) -> CollateralInfo {
     }
 }
 
+pub fn sync_pair_collateral_with_price(e: &Env, pair: &Address) -> u128 {
+    validate_pair(e, pair);
+
+    match e.try_invoke_contract::<u128, soroban_sdk::Error>(
+        pair,
+        &Symbol::new(e, "sync_collateral_with_price"),
+        Vec::from_array(e, []),
+    ) {
+        Ok(Err(_)) | Err(_) => panic_with_error!(e, TreasuryError::FailedToCallPairContract),
+        Ok(Ok(collateral_percent_long)) => {
+            return collateral_percent_long;
+        }
+    }
+}
+
 pub fn mint_pair_as_treasury(e: &Env, pair: &Address, tokens_to_mint: u128) -> u128 {
     validate_pair(e, pair);
 
