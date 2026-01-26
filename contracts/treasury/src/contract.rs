@@ -49,8 +49,8 @@ impl Treasury {
     /// ### Arguments
     /// - `e`: Soroban environment.
     /// - `admin`: Address to assign administrative roles to.
-    /// - `oracle`: Address of the Normal Oracle contract used for USDC pricing.
-    pub fn __constructor(e: Env, admin: Address, oracle: Address) {
+    /// - `usdc_oracle`: Address of the Normal Oracle contract used for USDC pricing.
+    pub fn __constructor(e: Env, admin: Address, usdc_oracle: Address) {
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
             panic_with_error!(&e, TreasuryError::AlreadyInitialized);
@@ -60,7 +60,7 @@ impl Treasury {
         access_control.set_role_address(&Role::PauseAdmin, &admin);
         access_control.set_role_address(&Role::EmergencyAdmin, &admin);
 
-        crate::storage::set_oracle(&e, &oracle);
+        crate::storage::set_usdc_oracle(&e, &usdc_oracle);
     }
 }
 

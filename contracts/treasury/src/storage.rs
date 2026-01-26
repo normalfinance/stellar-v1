@@ -130,7 +130,7 @@ pub enum TreasuryDataKey {
 
 /********** Storage **********/
 
-generate_instance_storage_getter_and_setter!(oracle, KEY_ORACLE, Address);
+generate_instance_storage_getter_and_setter!(usdc_oracle, KEY_ORACLE, Address);
 generate_instance_storage_getter_and_setter_with_default!(
     usdc_floor_fraction,
     KEY_USDC_FLOOR_FRACTION,

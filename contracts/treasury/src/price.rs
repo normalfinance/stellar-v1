@@ -42,12 +42,13 @@ pub fn get_prices_with_params(e: &Env, collateral_info: &CollateralInfo) -> Pair
         .safe_mul(e, collateral_info.collateral_per_pair)
         .safe_div(e, PRICE_PRECISION);
 
-    let usdc_price = crate::oracle::get_oracle_price(e, &crate::storage::get_oracle(e));
+    let usdc_oracle_data =
+        crate::oracle::update_oracle_price(e, &crate::storage::get_usdc_oracle(e));
 
     PairAmountsWithUSDC {
         long: long_price,
         short: short_price,
-        usdc: usdc_price.last_price_twap,
+        usdc: usdc_oracle_data.last_price_twap,
     }
 }
 
