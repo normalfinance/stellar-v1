@@ -123,7 +123,7 @@ impl Setup<'_> {
         e.mock_all_auths();
         e.cost_estimate().budget().reset_unlimited();
 
-        let start_time = 1768369144; // e.ledger().timestamp();
+        let start_time = 1769615813; // e.ledger().timestamp();
         jump(&e, start_time);
 
         // Addresses

@@ -76,7 +76,7 @@ TREASURY_ADDR=$(soroban contract deploy \
     --rpc-url $STELLAR_RPC_URL \
     --network-passphrase "$STELLAR_NETWORK_PASSPHRASE" \
     --fee $STELLAR_BASE_FEE \
-    -- --admin $ADMIN_ADDRESS --oracle $USDC_ORACLE_ADDR
+    -- --admin $ADMIN_ADDRESS --usdc_oracle $USDC_ORACLE_ADDR
 )
 
 CALCULATOR_ADDR=$(soroban contract deploy \

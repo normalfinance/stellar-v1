@@ -1,6 +1,6 @@
+use crate::errors::NormalOracleError;
 use oracle::{
     errors::OracleError,
-    math::{calculate_new_twap, sanitize_new_price},
     state::{HistoricalOracleData, OracleValidity},
 };
 use sep_40_oracle::{Asset, PriceFeedClient};
@@ -10,11 +10,6 @@ use utils::{
     constant::{FIVE_MINUTE, PERCENTAGE_PRECISION, PERCENTAGE_PRECISION_U64, PRICE_PRECISION},
     math::safe_math::{PrecisionMath, SafeConversion, SafeMath},
     temporal::Delay,
-};
-
-use crate::{
-    errors::NormalOracleError,
-    storage::{get_seconds_before_stale, get_too_volatile_ratio, put_historical_data},
 };
 
 pub fn get_reflector_oracle_price(
@@ -75,14 +70,14 @@ pub fn update_twap(
     sanitize_clamp_denominator: u128,
     now: u64,
 ) -> HistoricalOracleData {
-    let capped_oracle_update_price = sanitize_new_price(
+    let capped_oracle_update_price = oracle::math::sanitize_new_price(
         e,
         oracle_price_data.price,
         historical_oracle_data.last_price_twap,
         sanitize_clamp_denominator,
     );
 
-    let oracle_price_twap = calculate_new_twap(
+    let oracle_price_twap = oracle::math::calculate_new_twap(
         e,
         capped_oracle_update_price,
         now,
@@ -97,7 +92,7 @@ pub fn update_twap(
         last_update_ts: now,
         last_delay_ts: oracle_price_data.delay.as_seconds(),
     };
-    put_historical_data(e, &new_historical_oracle_data);
+    crate::storage::put_historical_data(e, &new_historical_oracle_data);
 
     new_historical_oracle_data
 }
@@ -127,8 +122,8 @@ pub fn oracle_validity(
     } = *oracle_price_data;
 
     // Guard rails
-    let too_volatile_ratio = get_too_volatile_ratio(e);
-    let seconds_before_stale = get_seconds_before_stale(e);
+    let too_volatile_ratio = crate::storage::get_too_volatile_ratio(e);
+    let seconds_before_stale = crate::storage::get_seconds_before_stale(e);
 
     // NonPositive
     let is_oracle_price_nonpositive = oracle_price <= 0;

@@ -37,3 +37,16 @@ pub fn get_oracle_price(e: &Env, oracle_addr: &Address) -> HistoricalOracleData 
         }
     }
 }
+
+pub fn update_oracle_price(e: &Env, oracle_addr: &Address) -> HistoricalOracleData {
+    match e.try_invoke_contract::<HistoricalOracleData, soroban_sdk::Error>(
+        oracle_addr,
+        &Symbol::new(e, "update_price"),
+        Vec::from_array(e, []),
+    ) {
+        Ok(Err(_)) | Err(_) => panic_with_error!(e, TreasuryError::FailedToGetOraclePrice),
+        Ok(Ok(historical_oracle_data)) => {
+            return historical_oracle_data;
+        }
+    }
+}

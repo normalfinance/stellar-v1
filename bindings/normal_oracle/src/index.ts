@@ -274,9 +274,69 @@ export type Delay = readonly [u64];
 
 export interface Client {
   /**
+   * Construct and simulate a get_oracle_price transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_oracle_price: (options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<OraclePriceData>>
+
+  /**
    * Construct and simulate a get_price transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   get_price: (options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<HistoricalOracleData>>
+
+  /**
+   * Construct and simulate a get_guard_rails transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_guard_rails: (options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<GuardRails>>
+
+  /**
+   * Construct and simulate a update_price transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  update_price: (options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -352,26 +412,6 @@ export interface Client {
      */
     simulate?: boolean;
   }) => Promise<AssembledTransaction<null>>
-
-  /**
-   * Construct and simulate a get_guard_rails transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  get_guard_rails: (options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<GuardRails>>
 
   /**
    * Construct and simulate a version transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -614,11 +654,13 @@ export class Client extends ContractClient {
   constructor(public readonly options: ContractClientOptions) {
     super(
       new ContractSpec([ "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAQAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAAA1vcmFjbGVfc291cmNlAAAAAAAH0AAAAAxPcmFjbGVTb3VyY2UAAAAAAAAAC29yYWNsZV9hZGRyAAAAABMAAAAA",
+        "AAAAAAAAAAAAAAAQZ2V0X29yYWNsZV9wcmljZQAAAAAAAAABAAAH0AAAAA9PcmFjbGVQcmljZURhdGEA",
         "AAAAAAAAAAAAAAAJZ2V0X3ByaWNlAAAAAAAAAAAAAAEAAAfQAAAAFEhpc3RvcmljYWxPcmFjbGVEYXRh",
+        "AAAAAAAAAAAAAAAPZ2V0X2d1YXJkX3JhaWxzAAAAAAAAAAABAAAH0AAAAApHdWFyZFJhaWxzAAA=",
+        "AAAAAAAAAAAAAAAMdXBkYXRlX3ByaWNlAAAAAAAAAAEAAAfQAAAAFEhpc3RvcmljYWxPcmFjbGVEYXRh",
         "AAAAAAAAAAAAAAAYc2V0X3NlY29uZHNfYmVmb3JlX3N0YWxlAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAtzdGFsZV9saW1pdAAAAAAGAAAAAA==",
         "AAAAAAAAAAAAAAAWc2V0X3Rvb192b2xhdGlsZV9yYXRpbwAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAABJ0b29fdm9sYXRpbGVfcmF0aW8AAAAAAAYAAAAA",
         "AAAAAAAAAAAAAAAec2V0X3Nhbml0aXplX2NsYW1wX2Rlbm9taW5hdG9yAAAAAAACAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAAGnNhbml0aXplX2NsYW1wX2Rlbm9taW5hdG9yAAAAAAAKAAAAAA==",
-        "AAAAAAAAAAAAAAAPZ2V0X2d1YXJkX3JhaWxzAAAAAAAAAAABAAAH0AAAAApHdWFyZFJhaWxzAAA=",
         "AAAAAAAAAAAAAAAHdmVyc2lvbgAAAAAAAAAAAQAAAAQ=",
         "AAAAAAAAAAAAAAANY29udHJhY3RfbmFtZQAAAAAAAAAAAAABAAAAEQ==",
         "AAAAAAAAAAAAAAAOY29tbWl0X3VwZ3JhZGUAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAANbmV3X3dhc21faGFzaAAAAAAAA+4AAAAgAAAAAA==",
@@ -660,11 +702,13 @@ export class Client extends ContractClient {
     )
   }
   public readonly fromJSON = {
-    get_price: this.txFromJSON<HistoricalOracleData>,
+    get_oracle_price: this.txFromJSON<OraclePriceData>,
+        get_price: this.txFromJSON<HistoricalOracleData>,
+        get_guard_rails: this.txFromJSON<GuardRails>,
+        update_price: this.txFromJSON<HistoricalOracleData>,
         set_seconds_before_stale: this.txFromJSON<null>,
         set_too_volatile_ratio: this.txFromJSON<null>,
         set_sanitize_clamp_denominator: this.txFromJSON<null>,
-        get_guard_rails: this.txFromJSON<GuardRails>,
         version: this.txFromJSON<u32>,
         contract_name: this.txFromJSON<string>,
         commit_upgrade: this.txFromJSON<null>,

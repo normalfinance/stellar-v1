@@ -20,7 +20,7 @@ pub trait LongShortPairTrait {
 
     fn redeem_one(e: Env, user: Address, side: Side, tokens_to_redeem: u128) -> u128;
 
-    fn sync_collateral(e: Env);
+    fn sync_collateral_with_price(e: Env) -> u128;
 
     fn get_tokens(e: Env) -> PairTokens;
 
