@@ -553,7 +553,7 @@ impl UpgradeableContract for LongShortPair {
     // Returns:
     //   - A u32 representing the version.
     fn version() -> u32 {
-        100
+        110
     }
 
     // Get contract type symbolic name
