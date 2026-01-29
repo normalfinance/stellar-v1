@@ -6,7 +6,7 @@ use oracle::state::{HistoricalOracleData, OracleValidity};
 use soroban_sdk::{
     contract, contractimpl, contractmeta, log, panic_with_error, Address, BytesN, Env, Symbol, Vec,
 };
-use types::oracle::OracleSource;
+use types::oracle::{OraclePriceData, OracleSource};
 
 // Access control
 use access_control::access::{AccessControl, AccessControlTrait};
@@ -66,7 +66,34 @@ impl NormalOracle {
 
 #[contractimpl]
 impl NormalOracleTrait for NormalOracle {
+    fn get_oracle_price(e: Env) -> OraclePriceData {
+        let current_time = e.ledger().timestamp();
+
+        let oracle_price_data = match crate::storage::get_oracle_source(&e) {
+            OracleSource::Reflector => crate::oracle::get_reflector_oracle_price(
+                &e,
+                &crate::storage::get_oracle(&e),
+                &crate::storage::get_asset(&e),
+                current_time,
+            ),
+        };
+
+        oracle_price_data
+    }
+
     fn get_price(e: Env) -> HistoricalOracleData {
+        crate::storage::get_historical_data_raw(&e)
+    }
+
+    fn get_guard_rails(e: Env) -> GuardRails {
+        GuardRails {
+            seconds_before_stale: crate::storage::get_seconds_before_stale(&e),
+            too_volatile_ratio: crate::storage::get_too_volatile_ratio(&e),
+            sanitize_clamp_denominator: crate::storage::get_sanitize_clamp_denominator(&e),
+        }
+    }
+
+    fn update_price(e: Env) -> HistoricalOracleData {
         let current_time = e.ledger().timestamp();
         let asset = crate::storage::get_asset(&e);
         let oracle_addr = crate::storage::get_oracle(&e);
@@ -136,14 +163,6 @@ impl NormalOracleTrait for NormalOracle {
 
         crate::storage::set_sanitize_clamp_denominator(&e, &sanitize_clamp_denominator);
     }
-
-    fn get_guard_rails(e: Env) -> GuardRails {
-        GuardRails {
-            seconds_before_stale: crate::storage::get_seconds_before_stale(&e),
-            too_volatile_ratio: crate::storage::get_too_volatile_ratio(&e),
-            sanitize_clamp_denominator: crate::storage::get_sanitize_clamp_denominator(&e),
-        }
-    }
 }
 
 #[contractimpl]
@@ -154,7 +173,7 @@ impl UpgradeableContract for NormalOracle {
     // Returns:
     //   - A u32 representing the version.
     fn version() -> u32 {
-        100
+        110
     }
 
     // Get contract type symbolic name

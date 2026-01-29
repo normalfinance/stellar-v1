@@ -10,6 +10,8 @@ use utils::constant::{FIVE_MINUTE, PERCENTAGE_PRECISION_U64, PRICE_PRECISION_I12
 fn test_get_price() {
     let setup = Setup::default();
 
+    setup.normal_oracle.update_price();
+
     let price_data = setup.normal_oracle.get_price();
     assert_eq!(
         price_data.last_price as i128,

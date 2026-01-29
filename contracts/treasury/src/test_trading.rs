@@ -104,7 +104,7 @@ fn set_pair_price(setup: &Setup, new_price: i128, timestamp: u64) {
     let new_prices: Vec<i128> = Vec::from_array(&setup.env, [new_price, 1_00000000000000]);
     setup.reflector_client.set_price(&new_prices, &timestamp);
 
-    setup.pair.sync_collateral();
+    setup.pair.sync_collateral_with_price();
 }
 
 // --------------------------------------
@@ -254,6 +254,32 @@ fn buy_long_happy_path() {
     );
 
     assert_eq!(setup.treasury.get_protocol_fees(&setup.pair.address), fee);
+}
+
+#[test]
+fn buy_long_works_and_price_updates_after_oracle_change() {
+    let setup = Setup::default();
+    let user = setup.users[1].clone();
+
+    bootstrap_with_liquidity(
+        &setup,
+        10_0000000,
+        10_0000000,
+        setup.collateral_per_pair * 20,
+    );
+
+    mint_user_usdc(&setup, &user, 2_0000000);
+
+    setup
+        .treasury
+        .buy_long(&user, &setup.pair.address, &1_0000000, &0);
+
+    jump(&setup.env, ONE_HOUR);
+    set_pair_price(&setup, 103_00000000000000, setup.env.ledger().timestamp());
+
+    setup
+        .treasury
+        .buy_long(&user, &setup.pair.address, &1_0000000, &0);
 }
 
 // --------------------------------------

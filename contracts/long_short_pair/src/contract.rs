@@ -342,7 +342,7 @@ impl LongShortPairTrait for LongShortPair {
     ///
     /// This function is useful for keepers/frontends that want to “poke” the Pair so that
     /// settlement state is fresh before mint/redeem flows or UI display.
-    fn sync_collateral(e: Env) {
+    fn sync_collateral_with_price(e: Env) -> u128 {
         crate::utils::sync_collateral(&e)
     }
 
@@ -553,7 +553,7 @@ impl UpgradeableContract for LongShortPair {
     // Returns:
     //   - A u32 representing the version.
     fn version() -> u32 {
-        100
+        110
     }
 
     // Get contract type symbolic name
