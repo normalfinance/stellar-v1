@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, BytesN, Env, Symbol, Vec};
+use soroban_sdk::{Address, BytesN, Env, Map, Symbol, Vec};
 use types::pair::PairParams;
 
 use crate::contract::FactoryConfig;
@@ -8,6 +8,19 @@ pub trait LongShortPairFactoryTrait {
 }
 
 pub trait AdminInterface {
+    // Set privileged addresses
+    fn set_privileged_addrs(
+        e: Env,
+        admin: Address,
+        rewards_admin: Address,
+        operations_admin: Address,
+        pause_admin: Address,
+        emergency_pause_admins: Vec<Address>,
+    );
+
+    // Get map of privileged roles
+    fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>>;
+
     fn get_factory_config(e: Env) -> FactoryConfig;
 
     fn get_pair_contract_wasm(e: Env) -> BytesN<32>;

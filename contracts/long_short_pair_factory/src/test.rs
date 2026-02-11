@@ -5,7 +5,7 @@ use crate::testutils;
 use crate::testutils::long_short_pair::PairTokens;
 use crate::testutils::Setup;
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Symbol};
+use soroban_sdk::{Address, Symbol, Vec};
 use types::pair::PairParams;
 
 #[test]
@@ -23,6 +23,12 @@ fn test_deploy_contract() {
     // Deploy pair
     let params = PairParams {
         admin: admin.clone(),
+        emergency_admin: setup.emergency_admin.clone(),
+        pause_admin: setup.pause_admin.clone(),
+        emergency_pause_admins: Vec::from_array(&setup.env, [setup.emergency_pause_admin.clone()]),
+        operations_admin: setup.operations_admin.clone(),
+        rewards_admin: setup.rewards_admin.clone(),
+
         asset: Symbol::new(&setup.env, "Solana"),
 
         collateral_token: collateral_token.clone(),

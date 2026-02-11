@@ -3,9 +3,12 @@ use crate::events::{Events, FactoryConfigEvents, FactoryEvents};
 use crate::factory_interface::{AdminInterface, LongShortPairFactoryTrait};
 use crate::pair_interface::PairInterfaceTrait;
 use crate::storage::get_is_killed_create;
+use access_control::utils::{
+    require_operations_admin_or_owner, require_pause_or_emergency_pause_admin_or_owner,
+};
 use soroban_sdk::{
     contract, contractimpl, contractmeta, contracttype, panic_with_error, Address, BytesN, Env,
-    Symbol, Vec,
+    Map, Symbol, Vec,
 };
 use soroban_sdk::{symbol_short, IntoVal};
 use types::pair::PairParams;
@@ -16,7 +19,7 @@ use access_control::emergency::{get_emergency_mode, set_emergency_mode};
 use access_control::errors::AccessControlError;
 use access_control::events::Events as AccessControlEvents;
 use access_control::interface::TransferableContract;
-use access_control::management::SingleAddressManagementTrait;
+use access_control::management::{MultipleAddressesManagementTrait, SingleAddressManagementTrait};
 use access_control::role::{Role, SymbolRepresentation};
 use access_control::transfer::TransferOwnershipTrait;
 
@@ -43,18 +46,37 @@ pub struct FactoryConfig {
 #[contractimpl]
 impl LongShortPairFactory {
     // __constructor
-    // Initializes the factory by setting the admin roles and storing critical parameters.
+    // Initializes the factory by setting the access roles and storing critical parameters.
     //
     // Arguments:
     //   - e: The Soroban environment.
     //   - admin: The address to be assigned the Admin role.
+    //   - rewards_admin - The address of the rewards admin.
+    //   - operations_admin - The address of the operations admin.
+    //   - pause_admin - The address of the pause admin.
+    //   - emergency_pause_admin - The addresses of the emergency pause admins.
     //   - pair_contract_wasm: The WASM hash (BytesN<32>) for the long short pair contract.
-    pub fn __constructor(e: Env, admin: Address, pair_contract_wasm: BytesN<32>) {
+    pub fn __constructor(
+        e: Env,
+        admin: Address,
+        emergency_admin: Address,
+        rewards_admin: Address,
+        operations_admin: Address,
+        pause_admin: Address,
+        emergency_pause_admins: Vec<Address>,
+        pair_contract_wasm: BytesN<32>,
+    ) {
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
             panic_with_error!(&e, LongShortPairFactoryError::AlreadyInitialized);
         }
+
         access_control.set_role_address(&Role::Admin, &admin);
+        access_control.set_role_address(&Role::EmergencyAdmin, &emergency_admin);
+        access_control.set_role_address(&Role::PauseAdmin, &pause_admin);
+        access_control.set_role_addresses(&Role::EmergencyPauseAdmin, &emergency_pause_admins);
+        access_control.set_role_address(&Role::OperationsAdmin, &operations_admin);
+        access_control.set_role_address(&Role::RewardsAdmin, &rewards_admin);
 
         crate::storage::set_pair_contract_wasm(&e, &pair_contract_wasm);
     }
@@ -189,6 +211,72 @@ impl PairInterfaceTrait for LongShortPairFactory {
 
 #[contractimpl]
 impl AdminInterface for LongShortPairFactory {
+    // Sets the privileged addresses.
+    //
+    // # Arguments
+    //
+    // * `admin` - The address of the admin.
+    // * `rewards_admin` - The address of the rewards admin.
+    // * `operations_admin` - The address of the operations admin.
+    // * `pause_admin` - The address of the pause admin.
+    // * `emergency_pause_admin` - The addresses of the emergency pause admins.
+    fn set_privileged_addrs(
+        e: Env,
+        admin: Address,
+        rewards_admin: Address,
+        operations_admin: Address,
+        pause_admin: Address,
+        emergency_pause_admins: Vec<Address>,
+    ) {
+        admin.require_auth();
+        let access_control = AccessControl::new(&e);
+        access_control.assert_address_has_role(&admin, &Role::Admin);
+
+        access_control.set_role_address(&Role::RewardsAdmin, &rewards_admin);
+        access_control.set_role_address(&Role::OperationsAdmin, &operations_admin);
+        access_control.set_role_address(&Role::PauseAdmin, &pause_admin);
+        access_control.set_role_addresses(&Role::EmergencyPauseAdmin, &emergency_pause_admins);
+        AccessControlEvents::new(&e).set_privileged_addrs(
+            rewards_admin,
+            operations_admin,
+            pause_admin,
+            emergency_pause_admins,
+            admin,
+        );
+    }
+
+    // Returns a map of privileged roles.
+    //
+    // # Returns
+    //
+    // A map of privileged roles to their respective addresses.
+    fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>> {
+        let access_control = AccessControl::new(&e);
+        let mut result: Map<Symbol, Vec<Address>> = Map::new(&e);
+        for role in [
+            Role::Admin,
+            Role::EmergencyAdmin,
+            Role::RewardsAdmin,
+            Role::OperationsAdmin,
+            Role::PauseAdmin,
+        ] {
+            result.set(
+                role.as_symbol(&e),
+                match access_control.get_role_safe(&role) {
+                    Some(v) => Vec::from_array(&e, [v]),
+                    None => Vec::new(&e),
+                },
+            );
+        }
+
+        result.set(
+            Role::EmergencyPauseAdmin.as_symbol(&e),
+            access_control.get_role_addresses(&Role::EmergencyPauseAdmin),
+        );
+
+        result
+    }
+
     fn get_factory_config(e: Env) -> FactoryConfig {
         FactoryConfig {
             pair_contract_wasm: crate::storage::get_pair_contract_wasm(&e),
@@ -222,7 +310,7 @@ impl AdminInterface for LongShortPairFactory {
     //   - pair_contract_wasm: The new WASM hash (BytesN<32>) for the swap fee contract.
     fn set_pair_contract_wasm(e: Env, admin: Address, pair_contract_wasm: BytesN<32>) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_operations_admin_or_owner(&e, &admin);
 
         let old_wasm = crate::storage::get_pair_contract_wasm(&e);
         crate::storage::set_pair_contract_wasm(&e, &pair_contract_wasm);
@@ -239,7 +327,7 @@ impl AdminInterface for LongShortPairFactory {
 
     fn kill_create(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_create(&e, &true);
         Events::new(&e).factory_paused(e.ledger().timestamp(), admin);
@@ -247,7 +335,7 @@ impl AdminInterface for LongShortPairFactory {
 
     fn unkill_create(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_create(&e, &false);
         Events::new(&e).factory_unpaused(e.ledger().timestamp(), admin);

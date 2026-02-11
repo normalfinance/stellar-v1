@@ -3,7 +3,7 @@
 extern crate std;
 
 use crate::LongShortPairFactoryClient;
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Vec};
 use std::vec;
 
 pub mod long_short_pair {
@@ -31,6 +31,11 @@ pub(crate) struct Setup<'a> {
     pub(crate) factory: LongShortPairFactoryClient<'a>,
 
     pub(crate) admin: Address,
+    pub(crate) emergency_admin: Address,
+    pub(crate) rewards_admin: Address,
+    pub(crate) operations_admin: Address,
+    pub(crate) pause_admin: Address,
+    pub(crate) emergency_pause_admin: Address,
 }
 
 impl Default for Setup<'_> {
@@ -55,16 +60,35 @@ impl Setup<'_> {
 
         let users = Self::generate_random_users(&e, config.users_count);
         let admin = users[0].clone();
+        let emergency_admin = Address::generate(&e);
+        let rewards_admin = Address::generate(&e);
+        let operations_admin = Address::generate(&e);
+        let pause_admin = Address::generate(&e);
+        let emergency_pause_admin = Address::generate(&e);
 
         let pair_hash = install_pair_hash(&e);
 
-        let factory = create_factory_contract(&e, &admin, &pair_hash);
+        let factory = create_factory_contract(
+            &e,
+            &admin,
+            &emergency_admin,
+            &rewards_admin,
+            &operations_admin,
+            &pause_admin,
+            &Vec::from_array(&e, [emergency_pause_admin.clone()]),
+            &pair_hash,
+        );
 
         Self {
             env: e,
             users,
             factory,
             admin,
+            emergency_admin,
+            rewards_admin,
+            operations_admin,
+            pause_admin,
+            emergency_pause_admin,
         }
     }
 
@@ -80,11 +104,27 @@ impl Setup<'_> {
 pub fn create_factory_contract<'a>(
     e: &Env,
     admin: &Address,
+    emergency_admin: &Address,
+    rewards_admin: &Address,
+    operations_admin: &Address,
+    pause_admin: &Address,
+    emergency_pause_admins: &Vec<Address>,
     pair_contract_wasm: &BytesN<32>,
 ) -> LongShortPairFactoryClient<'a> {
     let factory = LongShortPairFactoryClient::new(
         e,
-        &e.register(crate::LongShortPairFactory {}, (admin, pair_contract_wasm)),
+        &e.register(
+            crate::LongShortPairFactory {},
+            (
+                admin,
+                emergency_admin,
+                rewards_admin,
+                operations_admin,
+                pause_admin,
+                emergency_pause_admins,
+                pair_contract_wasm,
+            ),
+        ),
     );
     factory
 }
