@@ -260,7 +260,7 @@ fn test_transfer_ownership_separate_deadlines() {
         .is_err());
 }
 
-// upgrade pair & token
+// upgrade pair
 #[test]
 fn test_commit_upgrade() {
     let setup = Setup::default();

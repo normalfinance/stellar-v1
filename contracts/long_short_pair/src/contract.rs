@@ -440,7 +440,6 @@ impl AdminInterfaceTrait for LongShortPair {
     // * `operations_admin` - The address of the operations admin.
     // * `pause_admin` - The address of the pause admin.
     // * `emergency_pause_admin` - The addresses of the emergency pause admins.
-    // * `system_fee_admin` - The address of the system fee admin.
     fn set_privileged_addrs(
         e: Env,
         admin: Address,
