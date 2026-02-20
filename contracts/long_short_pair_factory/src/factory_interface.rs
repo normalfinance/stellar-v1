@@ -8,7 +8,6 @@ pub trait LongShortPairFactoryTrait {
 }
 
 pub trait AdminInterface {
-    // Set privileged addresses
     fn set_privileged_addrs(
         e: Env,
         admin: Address,
@@ -17,7 +16,6 @@ pub trait AdminInterface {
         system_fee_admin: Address,
     );
 
-    // Get map of privileged roles
     fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>>;
 
     fn get_factory_config(e: Env) -> FactoryConfig;

@@ -267,27 +267,41 @@ fn test_transfer_ownership_separate_deadlines() {
         .is_err());
 }
 
-// #[test]
-// #[should_panic(expected = "Error(Contract, #2907)")]
-// fn test_get_future_address_empty() {
-//     let env = Env::default();
-//     env.mock_all_auths();
-//     env.cost_estimate().budget().reset_unlimited();
+#[test]
+#[should_panic(expected = "Error(Contract, #2907)")]
+fn test_get_future_address_empty() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
 
-//     let admin = Address::generate(&env);
-//     let emergency_admin = Address::generate(&env);
-//     let treasury = create_treasury_contract(&env, &admin, &admin);
+    let admin = Address::generate(&env);
+    let emergency_admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let treasury = create_treasury_contract(
+        &env,
+        &admin,
+        &admin,
+        &admin,
+        &admin,
+        &admin,
+        &Vec::from_array(&env, [admin.clone()]),
+        &admin,
+        &oracle,
+    );
 
-//     // treasury.init_admin(&admin);
-//     treasury.commit_transfer_ownership(
-//         &admin,
-//         &Symbol::new(&env, "EmergencyAdmin"),
-//         &emergency_admin
-//     );
-//     treasury.apply_transfer_ownership(&admin, &Symbol::new(&env, "EmergencyAdmin"));
-//     assert_eq!(treasury.get_future_address(&Symbol::new(&env, "EmergencyAdmin")), emergency_admin);
-//     treasury.apply_transfer_ownership(&admin, &Symbol::new(&env, "EmergencyAdmin"));
-// }
+    // treasury.init_admin(&admin);
+    treasury.commit_transfer_ownership(
+        &admin,
+        &Symbol::new(&env, "EmergencyAdmin"),
+        &emergency_admin,
+    );
+    treasury.apply_transfer_ownership(&admin, &Symbol::new(&env, "EmergencyAdmin"));
+    assert_eq!(
+        treasury.get_future_address(&Symbol::new(&env, "EmergencyAdmin")),
+        emergency_admin
+    );
+    treasury.apply_transfer_ownership(&admin, &Symbol::new(&env, "EmergencyAdmin"));
+}
 
 // upgrade
 #[test]
@@ -541,7 +555,7 @@ fn test_set_privileged_addresses() {
                     &setup.operations_admin,
                     &setup.pause_admin,
                     &Vec::from_array(&setup.env, [setup.emergency_pause_admin.clone()]),
-                    &setup.system_fee_admin,
+                    &setup.system_fee_admin
                 )
                 .is_ok(),
             is_ok

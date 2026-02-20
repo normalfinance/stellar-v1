@@ -208,6 +208,7 @@ impl AdminInterface for LongShortPairFactory {
     // * `admin` - The address of the admin.
     // * `rewards_admin` - The address of the rewards admin.
     // * `operations_admin` - The address of the operations admin.
+    // * `system_fee_admin` - The address of the system fee admin.
     fn set_privileged_addrs(
         e: Env,
         admin: Address,
