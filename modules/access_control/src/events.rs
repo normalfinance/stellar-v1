@@ -77,6 +77,18 @@ impl Events {
         )
     }
 
+    pub fn set_oracle_privileged_addrs(
+        &self,
+        operations_admin: Address,
+        pause_admin: Address,
+        emergency_pause_admins: Vec<Address>,
+    ) {
+        self.env().events().publish(
+            (Symbol::new(self.env(), "set_oracle_privileged_addrs"),),
+            (operations_admin, pause_admin, emergency_pause_admins),
+        )
+    }
+
     pub fn set_emergency_mode(&self, emergency_mode: bool) {
         self.env().events().publish(
             match emergency_mode {

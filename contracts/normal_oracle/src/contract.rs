@@ -1,10 +1,12 @@
 use crate::errors::NormalOracleError;
-use crate::interface::NormalOracleTrait;
+use crate::interface::{AdminInterface, NormalOracleTrait};
 use crate::storage::GuardRails;
+use access_control::utils::require_operations_admin_or_owner;
 use oracle::errors::OracleError;
 use oracle::state::{HistoricalOracleData, OracleValidity};
 use soroban_sdk::{
-    contract, contractimpl, contractmeta, log, panic_with_error, Address, BytesN, Env, Symbol, Vec,
+    contract, contractimpl, contractmeta, log, panic_with_error, Address, BytesN, Env, Map, Symbol,
+    Vec,
 };
 use types::oracle::{OraclePriceData, OracleSource};
 
@@ -14,7 +16,7 @@ use access_control::emergency::{get_emergency_mode, set_emergency_mode};
 use access_control::errors::AccessControlError;
 use access_control::events::Events as AccessControlEvents;
 use access_control::interface::TransferableContract;
-use access_control::management::SingleAddressManagementTrait;
+use access_control::management::{MultipleAddressesManagementTrait, SingleAddressManagementTrait};
 use access_control::role::{Role, SymbolRepresentation};
 use access_control::transfer::TransferOwnershipTrait;
 
@@ -40,12 +42,20 @@ impl NormalOracle {
     // Arguments:
     //   - e: The Soroban environment.
     //   - admin: The address to be assigned the Admin role.
+    //   - emergency_admin - The address of the emergency admin.
+    //   - operations_admin - The address of the operations admin.
+    //   - pause_admin - The address of the pause admin.
+    //   - emergency_pause_admin - The addresses of the emergency pause admins.
     //   - asset: The symbol of the asset this oracle should track.
     //   - oracle_source: The supported type of the oracle provider.
     //   - oracle_addr: The address of the oracle provider.
     pub fn __constructor(
         e: Env,
         admin: Address,
+        emergency_admin: Address,
+        operations_admin: Address,
+        pause_admin: Address,
+        emergency_pause_admins: Vec<Address>,
         asset: Symbol,
         oracle_source: OracleSource,
         oracle_addr: Address,
@@ -55,8 +65,10 @@ impl NormalOracle {
             panic_with_error!(&e, NormalOracleError::AlreadyInitialized);
         }
         access_control.set_role_address(&Role::Admin, &admin);
-        access_control.set_role_address(&Role::PauseAdmin, &admin);
-        access_control.set_role_address(&Role::EmergencyAdmin, &admin);
+        access_control.set_role_address(&Role::EmergencyAdmin, &emergency_admin);
+        access_control.set_role_address(&Role::PauseAdmin, &pause_admin);
+        access_control.set_role_addresses(&Role::EmergencyPauseAdmin, &emergency_pause_admins);
+        access_control.set_role_address(&Role::OperationsAdmin, &operations_admin);
 
         crate::storage::set_asset(&e, &asset);
         crate::storage::set_oracle_source(&e, &oracle_source);
@@ -91,6 +103,37 @@ impl NormalOracleTrait for NormalOracle {
             too_volatile_ratio: crate::storage::get_too_volatile_ratio(&e),
             sanitize_clamp_denominator: crate::storage::get_sanitize_clamp_denominator(&e),
         }
+    }
+
+    // Returns a map of privileged roles.
+    //
+    // # Returns
+    //
+    // A map of privileged roles to their respective addresses.
+    fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>> {
+        let access_control = AccessControl::new(&e);
+        let mut result: Map<Symbol, Vec<Address>> = Map::new(&e);
+        for role in [
+            Role::Admin,
+            Role::EmergencyAdmin,
+            Role::OperationsAdmin,
+            Role::PauseAdmin,
+        ] {
+            result.set(
+                role.as_symbol(&e),
+                match access_control.get_role_safe(&role) {
+                    Some(v) => Vec::from_array(&e, [v]),
+                    None => Vec::new(&e),
+                },
+            );
+        }
+
+        result.set(
+            Role::EmergencyPauseAdmin.as_symbol(&e),
+            access_control.get_role_addresses(&Role::EmergencyPauseAdmin),
+        );
+
+        result
     }
 
     fn update_price(e: Env) -> HistoricalOracleData {
@@ -130,10 +173,13 @@ impl NormalOracleTrait for NormalOracle {
             current_time,
         )
     }
+}
 
+#[contractimpl]
+impl AdminInterface for NormalOracle {
     fn set_seconds_before_stale(e: Env, admin: Address, stale_limit: u64) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_operations_admin_or_owner(&e, &admin);
 
         if stale_limit == 0 || stale_limit > TWENTY_FOUR_HOUR {
             panic_with_error!(&e, NormalOracleError::InvalidInput);
@@ -144,7 +190,7 @@ impl NormalOracleTrait for NormalOracle {
 
     fn set_too_volatile_ratio(e: Env, admin: Address, too_volatile_ratio: u64) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_operations_admin_or_owner(&e, &admin);
 
         if too_volatile_ratio > PERCENTAGE_PRECISION_U64 {
             panic_with_error!(&e, NormalOracleError::InvalidInput);
@@ -155,13 +201,42 @@ impl NormalOracleTrait for NormalOracle {
 
     fn set_sanitize_clamp_denominator(e: Env, admin: Address, sanitize_clamp_denominator: u128) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_operations_admin_or_owner(&e, &admin);
 
         if sanitize_clamp_denominator > 10_000 {
             panic_with_error!(&e, NormalOracleError::InvalidInput);
         }
 
         crate::storage::set_sanitize_clamp_denominator(&e, &sanitize_clamp_denominator);
+    }
+
+    // Sets the privileged addresses.
+    //
+    // # Arguments
+    //
+    // * `admin` - The address of the admin.
+    // * `operations_admin` - The address of the operations admin.
+    // * `pause_admin` - The address of the pause admin.
+    // * `emergency_pause_admin` - The addresses of the emergency pause admins.
+    fn set_privileged_addrs(
+        e: Env,
+        admin: Address,
+        operations_admin: Address,
+        pause_admin: Address,
+        emergency_pause_admins: Vec<Address>,
+    ) {
+        admin.require_auth();
+        let access_control = AccessControl::new(&e);
+        access_control.assert_address_has_role(&admin, &Role::Admin);
+
+        access_control.set_role_address(&Role::OperationsAdmin, &operations_admin);
+        access_control.set_role_address(&Role::PauseAdmin, &pause_admin);
+        access_control.set_role_addresses(&Role::EmergencyPauseAdmin, &emergency_pause_admins);
+        AccessControlEvents::new(&e).set_oracle_privileged_addrs(
+            operations_admin,
+            pause_admin,
+            emergency_pause_admins,
+        );
     }
 }
 

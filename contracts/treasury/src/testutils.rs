@@ -224,6 +224,7 @@ impl Setup<'_> {
                 emergency_pause_admins: Vec::from_array(&e, [emergency_pause_admin.clone()]),
                 operations_admin: operations_admin.clone(),
                 rewards_admin: rewards_admin.clone(),
+                system_fee_admin: system_fee_admin.clone(),
 
                 asset: sol_symbol.clone(),
                 collateral_token: token_usdc.address.clone(),

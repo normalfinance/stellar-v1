@@ -48,6 +48,7 @@ impl LongShortPairFactory {
     // Arguments:
     //   - e: The Soroban environment.
     //   - admin: The address to be assigned the Admin role.
+    //   - emergency_admin - The address of the emergency admin.
     //   - rewards_admin - The address of the rewards admin.
     //   - operations_admin - The address of the operations admin.
     //   - system_fee_admin - The address of the system fee admin.
