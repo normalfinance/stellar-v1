@@ -17,8 +17,8 @@ pub struct PairParams {
     pub oracle: Address,
 
     // Collateral
-    pub collateral_token: Address,
     pub collateral_per_pair: u128,
+    pub collateral_configs: Vec<CollateralConfig>,
     pub calculator: Address,
 
     // Pair tokens
@@ -71,7 +71,6 @@ pub struct PairAmountsWithUSDC {
 pub struct PairTokens {
     pub long: Address,
     pub short: Address,
-    pub collateral: Address,
 }
 
 // NOTE: Only update by appending value, DO NOT reorder them
@@ -88,11 +87,19 @@ pub enum PairStatus {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CollateralConfig {
+    pub token: Address,
+    pub oracle: Address,
+    pub mint_enabled: bool,
+    pub redeem_enabled: bool,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CollateralInfo {
-    pub collateral_token: Address,
-    pub total_collateral: u128,
     pub collateral_per_pair: u128,
     pub collateral_percent_long: u128,
+    pub collateral_configs: Vec<CollateralConfig>,
 }
 
 #[contracttype]

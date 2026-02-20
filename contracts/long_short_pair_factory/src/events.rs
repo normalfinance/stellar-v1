@@ -39,12 +39,21 @@ pub(crate) trait FactoryEvents {
         user: Address,
         asset: Symbol,
         pair: Address,
+        collateral_token: Address,
         collateral: u128,
         tokens_minted: u128,
         ts: u64,
     );
 
-    fn redeem(&self, user: Address, asset: Symbol, pair: Address, tokens_redeemed: u128, ts: u64);
+    fn redeem(
+        &self,
+        user: Address,
+        asset: Symbol,
+        pair: Address,
+        collateral_token: Address,
+        tokens_redeemed: u128,
+        ts: u64,
+    );
 
     fn redeem_one(
         &self,
@@ -112,20 +121,29 @@ impl FactoryEvents for Events {
         user: Address,
         asset: Symbol,
         pair: Address,
+        collateral_token: Address,
         collateral: u128,
         tokens_minted: u128,
         ts: u64,
     ) {
         self.env().events().publish(
             (Symbol::new(self.env(), "mint"), user, pair, asset),
-            (collateral, tokens_minted, ts),
+            (collateral_token, collateral, tokens_minted, ts),
         );
     }
 
-    fn redeem(&self, user: Address, asset: Symbol, pair: Address, tokens_redeemed: u128, ts: u64) {
+    fn redeem(
+        &self,
+        user: Address,
+        asset: Symbol,
+        pair: Address,
+        collateral_token: Address,
+        tokens_redeemed: u128,
+        ts: u64,
+    ) {
         self.env().events().publish(
             (Symbol::new(self.env(), "redeem"), user, pair, asset),
-            (tokens_redeemed, ts),
+            (collateral_token, tokens_redeemed, ts),
         );
     }
 

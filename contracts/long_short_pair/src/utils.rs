@@ -1,7 +1,7 @@
 use crate::errors::LongShortPairError;
 use oracle::state::HistoricalOracleData;
 use soroban_sdk::{panic_with_error, Address, Env, IntoVal, Symbol, Vec};
-use types::pair::PairStatus;
+use types::pair::{CollateralConfig, PairStatus};
 use utils::constant::PRICE_PRECISION;
 
 /// Fetches the latest oracle price bundle from the configured oracle contract.
@@ -142,4 +142,14 @@ pub fn sync_collateral(e: &Env) -> u128 {
             return new_collateral_percent_long;
         }
     }
+}
+
+pub fn get_collateral_price_twap(e: &Env, collateral_config: &CollateralConfig) -> u128 {
+    let oracle_data = update_oracle_price(e, &collateral_config.oracle);
+
+    if oracle_data.last_price_twap == 0 {
+        panic_with_error!(e, LongShortPairError::InvalidInput);
+    }
+
+    oracle_data.last_price_twap
 }

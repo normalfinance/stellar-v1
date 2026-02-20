@@ -1,13 +1,16 @@
 use paste::paste;
-use soroban_sdk::{panic_with_error, Address, Env, Symbol};
-use types::pair::PairStatus;
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
+use types::pair::{CollateralConfig, PairStatus};
 pub use utils::bump::bump_instance;
+use utils::bump::bump_persistent;
 use utils::errors::storage_errors::StorageError;
 use utils::{
     generate_instance_storage_getter, generate_instance_storage_getter_and_setter,
     generate_instance_storage_getter_and_setter_with_default,
     generate_instance_storage_getter_with_default, generate_instance_storage_setter,
 };
+
+/********** Storage Types **********/
 
 /********** Storage Key Types **********/
 
@@ -32,15 +35,6 @@ const KEY_LOWER_BOUND: &str = "LowerBound";
 /// When the oracle price crosses `upper_bound` (or `lower_bound`), the pair expires and fixes
 /// the final collateral split.
 const KEY_UPPER_BOUND: &str = "UpperBound";
-
-/// Collateral token contract address (e.g., USDC).
-const KEY_COLLATERAL_TOKEN: &str = "CollateralToken";
-
-/// Total collateral currently held/recognized by this pair contract.
-///
-/// This value should track the collateral backing outstanding synthetic supply. It is
-/// incremented on mint and decremented on redeem.
-const KEY_TOTAL_COLLATERAL: &str = "TotalCollateral";
 
 /// Collateral required to mint **one** long+short pair, scaled by `PRICE_PRECISION`.
 ///
@@ -77,6 +71,21 @@ const KEY_IS_KILLED_MINT: &str = "IsKilledMint";
 
 /// Emergency killswitch for redeem operations.
 const KEY_IS_KILLED_REDEEM: &str = "IsKilledRedeem";
+
+/// Persistent storage keys for all per-pair state.
+///
+/// Everything here is stored in **persistent** storage and must be TTL-bumped
+/// (`bump_persistent`) on read/write to avoid expiry.
+#[derive(Clone)]
+#[contracttype]
+pub enum LongShortPairDataKey {
+    /// Token -> config params.
+    CollateralConfig(Address),
+    /// Token -> balance.
+    CollateralBalance(Address),
+    /// List of supported collateral token addresses.
+    CollateralTokens,
+}
 
 /********** Storage **********/
 
@@ -116,19 +125,6 @@ generate_instance_storage_getter_and_setter_with_default!(upper_bound, KEY_UPPER
 // Collateral accounting
 // -------------------------------------------------------------------------------------
 
-// Collateral token address (e.g., USDC).
-generate_instance_storage_getter_and_setter!(collateral_token, KEY_COLLATERAL_TOKEN, Address);
-
-// Total collateral held by the pair contract to back outstanding supply.
-//
-// Updated on mint/redeem (and potentially reconciled by a sync routine, if you have one).
-generate_instance_storage_getter_and_setter_with_default!(
-    total_collateral,
-    KEY_TOTAL_COLLATERAL,
-    u128,
-    0
-);
-
 // Collateral required per 1 long+short pair, scaled by `PRICE_PRECISION`.
 generate_instance_storage_getter_and_setter_with_default!(
     collateral_per_pair,
@@ -136,6 +132,66 @@ generate_instance_storage_getter_and_setter_with_default!(
     u128,
     0
 );
+
+pub(crate) fn get_collateral_config(env: &Env, token: &Address) -> CollateralConfig {
+    let key = LongShortPairDataKey::CollateralConfig(token.clone());
+    match env.storage().persistent().get(&key) {
+        Some(config) => {
+            // Prevent TTL expiry of critical config.
+            bump_persistent(env, &key);
+            config
+        }
+        None => panic_with_error!(env, StorageError::ValueNotInitialized),
+    }
+}
+
+pub(crate) fn set_collateral_config(env: &Env, token: &Address, config: &CollateralConfig) {
+    let key = LongShortPairDataKey::CollateralConfig(token.clone());
+    env.storage().persistent().set(&key, config);
+    bump_persistent(env, &key);
+}
+
+pub(crate) fn get_collateral_balance(env: &Env, token: &Address) -> u128 {
+    let key = LongShortPairDataKey::CollateralBalance(token.clone());
+    match env.storage().persistent().get(&key) {
+        Some(balance) => {
+            bump_persistent(env, &key);
+            balance
+        }
+        None => 0,
+    }
+}
+
+pub(crate) fn set_collateral_balance(env: &Env, token: &Address, balance: &u128) {
+    let key = LongShortPairDataKey::CollateralBalance(token.clone());
+    env.storage().persistent().set(&key, balance);
+    bump_persistent(env, &key);
+}
+
+pub(crate) fn get_collateral_tokens(env: &Env) -> soroban_sdk::Vec<Address> {
+    let key = LongShortPairDataKey::CollateralTokens;
+    match env.storage().persistent().get(&key) {
+        Some(tokens) => {
+            bump_persistent(env, &key);
+            tokens
+        }
+        None => soroban_sdk::Vec::new(env),
+    }
+}
+
+pub(crate) fn set_collateral_tokens(env: &Env, tokens: &soroban_sdk::Vec<Address>) {
+    let key = LongShortPairDataKey::CollateralTokens;
+    env.storage().persistent().set(&key, tokens);
+    bump_persistent(env, &key);
+}
+
+pub(crate) fn add_collateral_token(env: &Env, token: &Address) {
+    let mut tokens = get_collateral_tokens(env);
+    if !tokens.contains(token) {
+        tokens.push_back(token.clone());
+        set_collateral_tokens(env, &tokens);
+    }
+}
 
 // Current allocation fraction assigned to LONG, scaled by `PRICE_PRECISION`.
 //

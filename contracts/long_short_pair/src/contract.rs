@@ -1,14 +1,13 @@
 use crate::errors::LongShortPairError;
 use crate::events::{Events, LongShortPairEvents};
 use crate::interface::{AdminInterfaceTrait, LongShortPairTrait, OracleInterfaceTrait};
-use crate::storage::{get_is_killed_mint, get_is_killed_redeem};
 use soroban_sdk::token::TokenClient as SorobanTokenClient;
 use soroban_sdk::{
     contract, contractimpl, contractmeta, panic_with_error, Address, BytesN, Env, Map, Symbol, Vec,
 };
 use types::pair::{
-    CollateralInfo, PairAmounts, PairParams, PairPriceBounds, PairStatus, PairSummary, PairTokens,
-    Side,
+    CollateralConfig, CollateralInfo, PairAmounts, PairParams, PairPriceBounds, PairStatus,
+    PairSummary, PairTokens, Side,
 };
 use utils::constant::PRICE_PRECISION;
 use utils::math::safe_math::{PrecisionMath, SafeConversion, SafeMath};
@@ -75,8 +74,16 @@ impl LongShortPair {
         crate::storage::set_status(&e, &PairStatus::Active);
 
         // Collateral configuration.
-        crate::storage::set_collateral_token(&e, &params.collateral_token);
         crate::storage::set_collateral_per_pair(&e, &params.collateral_per_pair);
+        if params.collateral_configs.is_empty() {
+            panic_with_error!(&e, LongShortPairError::InvalidInput);
+        }
+        for i in 0..params.collateral_configs.len() {
+            let config = params.collateral_configs.get_unchecked(i);
+            crate::storage::set_collateral_config(&e, &config.token, &config);
+            crate::storage::set_collateral_balance(&e, &config.token, &0);
+            crate::storage::add_collateral_token(&e, &config.token);
+        }
 
         // Token contract addresses for synthetic legs.
         token_pair::set_token_long(&e, &params.long_token);
@@ -97,7 +104,7 @@ impl LongShortPairTrait for LongShortPair {
     /// Mints equal amounts of LONG and SHORT tokens by depositing collateral.
     ///
     /// For `tokens_to_mint`, the contract:
-    /// 1. Calculates `collateral_used = tokens_to_mint * collateral_per_pair`
+    /// 1. Calculates `collateral_used = (tokens_to_mint * collateral_per_pair) / collateral_price`
     /// 2. Transfers `collateral_used` of collateral from `user` into the Pair contract
     /// 3. Mints `tokens_to_mint` LONG and `tokens_to_mint` SHORT to the user
     /// 4. Increments the tracked `total_collateral`
@@ -111,14 +118,14 @@ impl LongShortPairTrait for LongShortPair {
     ///
     /// ### Returns
     /// Returns the amount of collateral transferred in (`collateral_used`).
-    fn mint(e: Env, user: Address, tokens_to_mint: u128) -> u128 {
+    fn mint(e: Env, user: Address, collateral_token: Address, tokens_to_mint: u128) -> u128 {
         user.require_auth();
 
         if tokens_to_mint <= 0 {
             panic_with_error!(&e, LongShortPairError::InvalidInput);
         }
 
-        if get_is_killed_mint(&e) {
+        if crate::storage::get_is_killed_mint(&e) {
             panic_with_error!(&e, LongShortPairError::ActionPaused);
         }
 
@@ -127,14 +134,24 @@ impl LongShortPairTrait for LongShortPair {
             panic_with_error!(&e, LongShortPairError::MintingDisabled);
         }
 
-        let collateral_used = tokens_to_mint.safe_fixed_mul_floor(
+        let collateral_config = crate::storage::get_collateral_config(&e, &collateral_token);
+        if !collateral_config.mint_enabled {
+            panic_with_error!(&e, LongShortPairError::CollateralTypeDisabled);
+        }
+
+        let collateral_value_required = tokens_to_mint.safe_fixed_mul_floor(
             &e,
             crate::storage::get_collateral_per_pair(&e),
             PRICE_PRECISION,
         );
 
+        // Compute how many collateral tokens must be deposited
+        let collateral_price = crate::utils::get_collateral_price_twap(&e, &collateral_config);
+        let collateral_used =
+            collateral_value_required.safe_fixed_div_ceil(&e, collateral_price, PRICE_PRECISION);
+
         // Pull collateral into the Pair contract first. Storage updates happen after successful transfer.
-        SorobanTokenClient::new(&e, &crate::storage::get_collateral_token(&e)).transfer(
+        SorobanTokenClient::new(&e, &collateral_config.token).transfer(
             &user,
             &e.current_contract_address(),
             &collateral_used.safe_to_i128(&e),
@@ -145,13 +162,14 @@ impl LongShortPairTrait for LongShortPair {
         token_pair::mint_short_tokens(&e, &user, tokens_to_mint);
 
         // Increment total collateral accounting.
-        let total_collateral = crate::storage::get_total_collateral(&e);
+        let total_collateral = crate::storage::get_collateral_balance(&e, &collateral_token);
         let new_total_collateral = total_collateral.safe_add(&e, collateral_used);
-        crate::storage::set_total_collateral(&e, &new_total_collateral);
+        crate::storage::set_collateral_balance(&e, &collateral_token, &new_total_collateral);
 
         Events::new(&e).mint(
             user,
             e.current_contract_address(),
+            collateral_token,
             collateral_used,
             tokens_to_mint,
             e.ledger().timestamp(),
@@ -165,7 +183,7 @@ impl LongShortPairTrait for LongShortPair {
     /// For `tokens_to_redeem`, the contract:
     /// 1. Synchronizes internal collateral accounting (`sync_collateral`)
     /// 2. Burns `tokens_to_redeem` LONG and `tokens_to_redeem` SHORT from the user
-    /// 3. Calculates `collateral_returned = tokens_to_redeem * collateral_per_pair`
+    /// 3. Calculates `collateral_returned = (tokens_to_redeem * collateral_per_pair) / collateral_price`
     /// 4. Transfers `collateral_returned` of collateral back to the user
     /// 5. Decrements the tracked `total_collateral`
     ///
@@ -178,15 +196,20 @@ impl LongShortPairTrait for LongShortPair {
     ///
     /// ### Returns
     /// Returns the amount of collateral returned (`collateral_returned`).
-    fn redeem(e: Env, user: Address, tokens_to_redeem: u128) -> u128 {
+    fn redeem(e: Env, user: Address, collateral_token: Address, tokens_to_redeem: u128) -> u128 {
         user.require_auth();
 
         if tokens_to_redeem <= 0 {
             panic_with_error!(&e, LongShortPairError::InvalidInput);
         }
 
-        if get_is_killed_redeem(&e) {
+        if crate::storage::get_is_killed_redeem(&e) {
             panic_with_error!(&e, LongShortPairError::ActionPaused);
+        }
+
+        let collateral_config = crate::storage::get_collateral_config(&e, &collateral_token);
+        if !collateral_config.redeem_enabled {
+            panic_with_error!(&e, LongShortPairError::CollateralTypeDisabled);
         }
 
         // Keep `total_collateral` consistent with the actual collateral token balance (if applicable).
@@ -196,19 +219,25 @@ impl LongShortPairTrait for LongShortPair {
         token_pair::burn_long_tokens(&e, &user, tokens_to_redeem);
         token_pair::burn_short_tokens(&e, &user, tokens_to_redeem);
 
-        let collateral_returned = tokens_to_redeem.safe_fixed_mul_floor(
+        let collateral_value_to_return = tokens_to_redeem.safe_fixed_mul_floor(
             &e,
             crate::storage::get_collateral_per_pair(&e),
             PRICE_PRECISION,
         );
-        let total_collateral = crate::storage::get_total_collateral(&e);
+
+        // Compute how many collateral tokens must be returned
+        let collateral_price = crate::utils::get_collateral_price_twap(&e, &collateral_config);
+        let collateral_returned =
+            collateral_value_to_return.safe_fixed_div_floor(&e, collateral_price, PRICE_PRECISION);
+
+        let total_collateral = crate::storage::get_collateral_balance(&e, &collateral_token);
 
         if collateral_returned > total_collateral {
             panic_with_error!(&e, LongShortPairError::InsufficientInventory);
         }
 
         // Pay collateral out to the user.
-        SorobanTokenClient::new(&e, &crate::storage::get_collateral_token(&e)).transfer(
+        SorobanTokenClient::new(&e, &collateral_config.token).transfer(
             &e.current_contract_address(),
             &user,
             &collateral_returned.safe_to_i128(&e),
@@ -216,11 +245,12 @@ impl LongShortPairTrait for LongShortPair {
 
         // Decrement total collateral accounting.
         let new_total_collateral = total_collateral.safe_sub(&e, collateral_returned);
-        crate::storage::set_total_collateral(&e, &new_total_collateral);
+        crate::storage::set_collateral_balance(&e, &collateral_token, &new_total_collateral);
 
         Events::new(&e).redemption(
             user,
             e.current_contract_address(),
+            collateral_token,
             collateral_returned,
             tokens_to_redeem,
             e.ledger().timestamp(),
@@ -240,7 +270,7 @@ impl LongShortPairTrait for LongShortPair {
     /// 2. Requires the pair to be expired
     /// 3. Determines the payout percent for `side`
     /// 4. Burns `tokens_to_redeem` of the chosen `side`
-    /// 5. Pays out `tokens_to_redeem * collateral_per_pair * side_pct`
+    /// 5. Pays out `(tokens_to_redeem * collateral_per_pair * side_pct) / collateral_price`
     /// 6. Decrements tracked `total_collateral`
     ///
     /// ### Notes
@@ -255,15 +285,26 @@ impl LongShortPairTrait for LongShortPair {
     ///
     /// ### Returns
     /// Returns the amount of collateral returned (`collateral_to_return`).
-    fn redeem_one(e: Env, user: Address, side: Side, tokens_to_redeem: u128) -> u128 {
+    fn redeem_one(
+        e: Env,
+        user: Address,
+        collateral_token: Address,
+        side: Side,
+        tokens_to_redeem: u128,
+    ) -> u128 {
         user.require_auth();
 
         if tokens_to_redeem <= 0 {
             panic_with_error!(&e, LongShortPairError::InvalidInput);
         }
 
-        if get_is_killed_redeem(&e) {
+        if crate::storage::get_is_killed_redeem(&e) {
             panic_with_error!(&e, LongShortPairError::ActionPaused);
+        }
+
+        let collateral_config = crate::storage::get_collateral_config(&e, &collateral_token);
+        if !collateral_config.redeem_enabled {
+            panic_with_error!(&e, LongShortPairError::CollateralTypeDisabled);
         }
 
         crate::utils::sync_collateral(&e);
@@ -295,27 +336,33 @@ impl LongShortPairTrait for LongShortPair {
             token_pair::burn_short_tokens(&e, &user, tokens_to_redeem);
         }
 
-        // Base collateral per full pair, then apply settlement percent for the chosen side.
-        let base = tokens_to_redeem.safe_fixed_mul_floor(
+        // Base value per full pair, then apply settlement percent for the chosen side.
+        let base_value = tokens_to_redeem.safe_fixed_mul_floor(
             &e,
             crate::storage::get_collateral_per_pair(&e),
             PRICE_PRECISION,
         );
-        let collateral_to_return = base.safe_fixed_mul_floor(&e, side_pct, PRICE_PRECISION);
+        let collateral_value_to_return =
+            base_value.safe_fixed_mul_floor(&e, side_pct, PRICE_PRECISION);
+
+        // Compute how many collateral tokens must be returned
+        let collateral_price = crate::utils::get_collateral_price_twap(&e, &collateral_config);
+        let collateral_to_return =
+            collateral_value_to_return.safe_fixed_div_floor(&e, collateral_price, PRICE_PRECISION);
 
         // Forbid 0 payout (covers side_pct>0 but tiny amounts).
         if collateral_to_return == 0 {
             panic_with_error!(&e, LongShortPairError::InvalidInput);
         }
 
-        let total_collateral = crate::storage::get_total_collateral(&e);
+        let total_collateral = crate::storage::get_collateral_balance(&e, &collateral_token);
 
         if collateral_to_return > total_collateral {
             panic_with_error!(&e, LongShortPairError::InsufficientInventory);
         }
 
         // Pay collateral out to the user.
-        SorobanTokenClient::new(&e, &crate::storage::get_collateral_token(&e)).transfer(
+        SorobanTokenClient::new(&e, &collateral_config.token).transfer(
             &e.current_contract_address(),
             &user,
             &collateral_to_return.safe_to_i128(&e),
@@ -323,11 +370,12 @@ impl LongShortPairTrait for LongShortPair {
 
         // Decrement total collateral accounting.
         let new_total_collateral = total_collateral.safe_sub(&e, collateral_to_return);
-        crate::storage::set_total_collateral(&e, &new_total_collateral);
+        crate::storage::set_collateral_balance(&e, &collateral_token, &new_total_collateral);
 
         Events::new(&e).redemption(
             user,
             e.current_contract_address(),
+            collateral_token,
             collateral_to_return,
             tokens_to_redeem,
             e.ledger().timestamp(),
@@ -358,7 +406,6 @@ impl LongShortPairTrait for LongShortPair {
         PairTokens {
             long: token_pair::get_token_long(&e),
             short: token_pair::get_token_short(&e),
-            collateral: crate::storage::get_collateral_token(&e),
         }
     }
 
@@ -388,16 +435,27 @@ impl LongShortPairTrait for LongShortPair {
         }
     }
 
+    fn get_collateral_config(e: Env, token: Address) -> CollateralConfig {
+        crate::storage::get_collateral_config(&e, &token)
+    }
+
     /// Returns current collateral configuration and settlement information.
     ///
     /// `collateral_percent_long` is the settlement allocation to LONG in `PRICE_PRECISION` units.
     /// SHORT receives `PRICE_PRECISION - collateral_percent_long`.
     fn get_collateral_info(e: Env) -> CollateralInfo {
+        let tokens = crate::storage::get_collateral_tokens(&e);
+        let mut collateral_configs = Vec::new(&e);
+        for i in 0..tokens.len() {
+            let token = tokens.get_unchecked(i);
+            let config = crate::storage::get_collateral_config(&e, &token);
+            collateral_configs.push_back(config);
+        }
+
         CollateralInfo {
-            collateral_token: crate::storage::get_collateral_token(&e),
-            total_collateral: crate::storage::get_total_collateral(&e),
             collateral_per_pair: crate::storage::get_collateral_per_pair(&e),
             collateral_percent_long: crate::storage::get_collateral_percent_long(&e),
+            collateral_configs,
         }
     }
 
@@ -412,7 +470,6 @@ impl LongShortPairTrait for LongShortPair {
             tokens: PairTokens {
                 long: token_pair::get_token_long(&e),
                 short: token_pair::get_token_short(&e),
-                collateral: crate::storage::get_collateral_token(&e),
             },
             price_bounds: PairPriceBounds {
                 lower: crate::storage::get_lower_bound(&e),
@@ -517,6 +574,18 @@ impl AdminInterfaceTrait for LongShortPair {
         require_operations_admin_or_owner(&e, &admin);
 
         crate::storage::set_oracle(&e, &oracle);
+    }
+
+    /// Updates the config for a collateral type used by this Pair.
+    ///
+    /// ### Reverts
+    /// - Reverts if `admin` is not authorized.
+    fn set_collateral_config(e: Env, admin: Address, config: CollateralConfig) {
+        admin.require_auth();
+        require_operations_admin_or_owner(&e, &admin);
+
+        crate::storage::set_collateral_config(&e, &config.token, &config);
+        crate::storage::add_collateral_token(&e, &config.token);
     }
 
     // Stops the pair mints instantly.

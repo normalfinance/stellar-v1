@@ -112,42 +112,66 @@ impl LongShortPairFactoryTrait for LongShortPairFactory {
 
 #[contractimpl]
 impl PairInterfaceTrait for LongShortPairFactory {
-    fn mint(e: Env, user: Address, asset: Symbol, tokens_to_mint: u128) -> u128 {
+    fn mint(
+        e: Env,
+        user: Address,
+        asset: Symbol,
+        collateral_token: Address,
+        tokens_to_mint: u128,
+    ) -> u128 {
         user.require_auth();
 
         let salt = crate::pair_utils::get_pair_salt(&e, &asset);
         let pair_address = crate::storage::get_pair(&e, salt);
 
-        let minted_tokens: u128 = e.invoke_contract(
+        let collateral_used: u128 = e.invoke_contract(
             &pair_address,
             &symbol_short!("mint"),
-            Vec::from_array(&e, [user.clone().into_val(&e), tokens_to_mint.into_val(&e)]),
+            Vec::from_array(
+                &e,
+                [
+                    user.clone().into_val(&e),
+                    collateral_token.clone().into_val(&e),
+                    tokens_to_mint.into_val(&e),
+                ],
+            ),
         );
 
         Events::new(&e).mint(
             user,
             asset,
             pair_address,
-            0,
+            collateral_token,
+            collateral_used,
             tokens_to_mint,
             e.ledger().timestamp(),
         );
 
-        minted_tokens
+        collateral_used
     }
 
-    fn redeem(e: Env, user: Address, asset: Symbol, tokens_to_redeem: u128) -> u128 {
+    fn redeem(
+        e: Env,
+        user: Address,
+        asset: Symbol,
+        collateral_token: Address,
+        tokens_to_redeem: u128,
+    ) -> u128 {
         user.require_auth();
 
         let salt = crate::pair_utils::get_pair_salt(&e, &asset);
         let pair_address = crate::storage::get_pair(&e, salt);
 
-        let collateral: u128 = e.invoke_contract(
+        let collateral_returned: u128 = e.invoke_contract(
             &pair_address,
             &symbol_short!("redeem"),
             Vec::from_array(
                 &e,
-                [user.clone().into_val(&e), tokens_to_redeem.into_val(&e)],
+                [
+                    user.clone().into_val(&e),
+                    collateral_token.clone().into_val(&e),
+                    tokens_to_redeem.into_val(&e),
+                ],
             ),
         );
 
@@ -155,11 +179,12 @@ impl PairInterfaceTrait for LongShortPairFactory {
             user,
             asset,
             pair_address,
-            collateral,
+            collateral_token,
+            collateral_returned,
             e.ledger().timestamp(),
         );
 
-        collateral
+        collateral_returned
     }
 
     fn redeem_one(

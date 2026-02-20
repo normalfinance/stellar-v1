@@ -25,8 +25,6 @@ pub struct PairConfig {
     pub long: Address,
     /// SHORT token contract address.
     pub short: Address,
-    /// Collateral token contract address (USDC).
-    pub usdc: Address,
 }
 
 /// Convenient aggregation used by frontend/indexers.
@@ -88,6 +86,7 @@ pub struct TreasuryRiskParameters {
 /********** Storage Key Types **********/
 
 // Instance (non-pair-specific) keys.
+const KEY_USDC_TOKEN: &str = "UsdcToken";
 const KEY_USDC_FLOOR_FRACTION: &str = "UsdcFloorFraction";
 const KEY_ORACLE: &str = "Oracle";
 const KEY_IS_KILLED_DEPOSIT: &str = "IsKilledDeposit";
@@ -130,6 +129,7 @@ pub enum TreasuryDataKey {
 
 /********** Storage **********/
 
+generate_instance_storage_getter_and_setter!(usdc_token, KEY_USDC_TOKEN, Address);
 generate_instance_storage_getter_and_setter!(usdc_oracle, KEY_ORACLE, Address);
 generate_instance_storage_getter_and_setter_with_default!(
     usdc_floor_fraction,

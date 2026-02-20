@@ -11,7 +11,7 @@ use soroban_sdk::token::{
 use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Symbol, Vec};
 use std::vec;
 use token_pair::token_contract::WASM;
-use types::pair::PairParams;
+use types::pair::{CollateralConfig, PairParams};
 use utils::test_utils::jump;
 
 pub mod long_short_pair_calculator {
@@ -124,6 +124,7 @@ impl Setup<'_> {
         let operations_admin = Address::generate(&e);
         let pause_admin = Address::generate(&e);
         let emergency_pause_admin = Address::generate(&e);
+        let system_fee_admin = Address::generate(&e);
 
         // Tokens
         let token_usdc = create_token_contract(&e, &admin);
@@ -132,15 +133,13 @@ impl Setup<'_> {
         // Setup Oracle
         let sol_symbol = Symbol::new(&e, "SOL");
         let solana = MockAsset::Other(sol_symbol.clone());
+        let usdc_symbol = Symbol::new(&e, "USDC");
 
         let (reflector_addr, reflector_client) = setup_reflector_price_feed_oracle(
             &e,
             &admin,
             &MockAsset::Other(Symbol::new(&e, "USD")),
-            &Vec::from_array(
-                &e,
-                [solana.clone(), MockAsset::Other(Symbol::new(&e, "USDC"))],
-            ),
+            &Vec::from_array(&e, [solana.clone(), MockAsset::Other(usdc_symbol.clone())]),
             14,
             300,
         );
@@ -159,6 +158,13 @@ impl Setup<'_> {
             &e,
             &admin,
             &sol_symbol.clone(),
+            &OracleSource::Reflector,
+            &reflector_addr,
+        );
+        let usdc_oracle = create_normal_oracle_contract(
+            &e,
+            &admin,
+            &usdc_symbol,
             &OracleSource::Reflector,
             &reflector_addr,
         );
@@ -182,10 +188,18 @@ impl Setup<'_> {
                 emergency_pause_admins: Vec::from_array(&e, [emergency_pause_admin.clone()]),
                 operations_admin: operations_admin.clone(),
                 rewards_admin: rewards_admin.clone(),
+                system_fee_admin: system_fee_admin.clone(),
 
                 asset: sol_symbol.clone(),
-
-                collateral_token: token_usdc.address.clone(),
+                collateral_configs: Vec::from_array(
+                    &e,
+                    [CollateralConfig {
+                        token: token_usdc.address.clone(),
+                        oracle: usdc_oracle.address.clone(),
+                        mint_enabled: true,
+                        redeem_enabled: true,
+                    }],
+                ),
                 calculator: pair_calculator.address.clone(),
                 collateral_per_pair: 100_0000000,
 
