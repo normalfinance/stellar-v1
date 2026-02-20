@@ -22,7 +22,7 @@ pub trait LongShortPairTrait {
     fn redeem_one(
         e: Env,
         user: Address,
-        token: Address,
+        collateral_token: Address,
         side: Side,
         tokens_to_redeem: u128,
     ) -> u128;

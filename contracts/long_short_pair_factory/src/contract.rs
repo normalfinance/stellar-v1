@@ -8,7 +8,7 @@ use soroban_sdk::{
     Map, Symbol, Vec,
 };
 use soroban_sdk::{symbol_short, IntoVal};
-use types::pair::PairParams;
+use types::pair::{PairParams, Side};
 
 // Access control
 use access_control::access::{AccessControl, AccessControlTrait};
@@ -181,6 +181,7 @@ impl PairInterfaceTrait for LongShortPairFactory {
             pair_address,
             collateral_token,
             collateral_returned,
+            tokens_to_redeem,
             e.ledger().timestamp(),
         );
 
@@ -191,7 +192,8 @@ impl PairInterfaceTrait for LongShortPairFactory {
         e: Env,
         user: Address,
         asset: Symbol,
-        token: Address,
+        collateral_token: Address,
+        side: Side,
         tokens_to_redeem: u128,
     ) -> u128 {
         user.require_auth();
@@ -199,14 +201,15 @@ impl PairInterfaceTrait for LongShortPairFactory {
         let salt = crate::pair_utils::get_pair_salt(&e, &asset);
         let pair_address = crate::storage::get_pair(&e, salt);
 
-        let collateral: u128 = e.invoke_contract(
+        let collateral_returned: u128 = e.invoke_contract(
             &pair_address,
             &Symbol::new(&e, "redeem_one"),
             Vec::from_array(
                 &e,
                 [
                     user.clone().into_val(&e),
-                    token.into_val(&e),
+                    collateral_token.into_val(&e),
+                    side.into_val(&e),
                     tokens_to_redeem.into_val(&e),
                 ],
             ),
@@ -216,12 +219,14 @@ impl PairInterfaceTrait for LongShortPairFactory {
             user,
             asset,
             pair_address,
-            token,
+            collateral_token,
+            side,
+            collateral_returned,
             tokens_to_redeem,
             e.ledger().timestamp(),
         );
 
-        collateral
+        collateral_returned
     }
 }
 

@@ -1,4 +1,5 @@
 use soroban_sdk::{Address, Env, Symbol};
+use types::pair::Side;
 
 #[derive(Clone)]
 pub(crate) struct Events(Env);
@@ -44,6 +45,17 @@ pub(crate) trait LongShortPairEvents {
         ts: u64,
     );
 
+    fn single_redemption(
+        &self,
+        user: Address,
+        pair: Address,
+        collateral_token: Address,
+        side: Side,
+        collateral: u128,
+        tokens_redeemed: u128,
+        ts: u64,
+    );
+
     // Paused Ops
     fn kill_mint(&self);
 
@@ -82,6 +94,22 @@ impl LongShortPairEvents for Events {
         self.env().events().publish(
             (Symbol::new(self.env(), "redemption"), user, pair),
             (collateral_token, collateral, tokens_redeemed, ts),
+        );
+    }
+
+    fn single_redemption(
+        &self,
+        user: Address,
+        pair: Address,
+        collateral_token: Address,
+        side: Side,
+        collateral: u128,
+        tokens_redeemed: u128,
+        ts: u64,
+    ) {
+        self.env().events().publish(
+            (Symbol::new(self.env(), "single_redemption"), user, pair),
+            (collateral_token, side, collateral, tokens_redeemed, ts),
         );
     }
 

@@ -1,4 +1,5 @@
 use soroban_sdk::{Address, Env, Symbol};
+use types::pair::Side;
 
 pub trait PairInterfaceTrait {
     fn mint(
@@ -21,7 +22,8 @@ pub trait PairInterfaceTrait {
         e: Env,
         user: Address,
         asset: Symbol,
-        token: Address,
+        collateral_token: Address,
+        side: Side,
         tokens_to_redeem: u128,
     ) -> u128;
 }

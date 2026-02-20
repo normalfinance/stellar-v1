@@ -372,10 +372,11 @@ impl LongShortPairTrait for LongShortPair {
         let new_total_collateral = total_collateral.safe_sub(&e, collateral_to_return);
         crate::storage::set_collateral_balance(&e, &collateral_token, &new_total_collateral);
 
-        Events::new(&e).redemption(
+        Events::new(&e).single_redemption(
             user,
             e.current_contract_address(),
             collateral_token,
+            side,
             collateral_to_return,
             tokens_to_redeem,
             e.ledger().timestamp(),
