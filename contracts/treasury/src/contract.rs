@@ -6,7 +6,7 @@ use crate::storage::{
 };
 use soroban_sdk::token::TokenClient as SorobanTokenClient;
 use soroban_sdk::{
-    contract, contractimpl, contractmeta, panic_with_error, Address, BytesN, Env, Symbol, Vec,
+    contract, contractimpl, contractmeta, panic_with_error, Address, BytesN, Env, Map, Symbol, Vec,
 };
 use types::pair::{Direction, PairAmountsWithUSDC, Side};
 use utils::constant::{MAX_BASE_FEE, PRICE_PRECISION};
@@ -18,9 +18,13 @@ use access_control::emergency::{get_emergency_mode, set_emergency_mode};
 use access_control::errors::AccessControlError;
 use access_control::events::Events as AccessControlEvents;
 use access_control::interface::TransferableContract;
-use access_control::management::SingleAddressManagementTrait;
+use access_control::management::{MultipleAddressesManagementTrait, SingleAddressManagementTrait};
 use access_control::role::{Role, SymbolRepresentation};
 use access_control::transfer::TransferOwnershipTrait;
+use access_control::utils::{
+    require_operations_admin_or_owner, require_pause_or_emergency_pause_admin_or_owner,
+    require_system_fee_admin_or_owner,
+};
 
 // Upgrade
 use upgrade::events::Events as UpgradeEvents;
@@ -49,16 +53,35 @@ impl Treasury {
     /// ### Arguments
     /// - `e`: Soroban environment.
     /// - `admin`: Address to assign administrative roles to.
+    /// - `rewards_admin` - The address of the rewards admin.
+    /// - `operations_admin` - The address of the operations admin.
+    /// - `pause_admin` - The address of the pause admin.
+    /// - `emergency_pause_admin` - The addresses of the emergency pause admins.
+    /// - `system_fee_admin` - The address of the fee admin.
     /// - `usdc_oracle`: Address of the Normal Oracle contract used for USDC pricing.
-    pub fn __constructor(e: Env, admin: Address, usdc_oracle: Address) {
+    pub fn __constructor(
+        e: Env,
+        admin: Address,
+        emergency_admin: Address,
+        rewards_admin: Address,
+        operations_admin: Address,
+        pause_admin: Address,
+        emergency_pause_admins: Vec<Address>,
+        system_fee_admin: Address,
+        usdc_oracle: Address,
+    ) {
         let access_control = AccessControl::new(&e);
         if access_control.get_role_safe(&Role::Admin).is_some() {
             panic_with_error!(&e, TreasuryError::AlreadyInitialized);
         }
 
         access_control.set_role_address(&Role::Admin, &admin);
-        access_control.set_role_address(&Role::PauseAdmin, &admin);
-        access_control.set_role_address(&Role::EmergencyAdmin, &admin);
+        access_control.set_role_address(&Role::EmergencyAdmin, &emergency_admin);
+        access_control.set_role_address(&Role::RewardsAdmin, &rewards_admin);
+        access_control.set_role_address(&Role::OperationsAdmin, &operations_admin);
+        access_control.set_role_address(&Role::PauseAdmin, &pause_admin);
+        access_control.set_role_addresses(&Role::EmergencyPauseAdmin, &emergency_pause_admins);
+        access_control.set_role_address(&Role::SystemFeeAdmin, &system_fee_admin);
 
         crate::storage::set_usdc_oracle(&e, &usdc_oracle);
     }
@@ -1007,6 +1030,76 @@ impl TradingTrait for Treasury {
 
 #[contractimpl]
 impl AdminInterfaceTrait for Treasury {
+    // Sets the privileged addresses.
+    //
+    // # Arguments
+    //
+    // * `admin` - The address of the admin.
+    // * `rewards_admin` - The address of the rewards admin.
+    // * `operations_admin` - The address of the operations admin.
+    // * `pause_admin` - The address of the pause admin.
+    // * `emergency_pause_admin` - The addresses of the emergency pause admins.
+    // * `system_fee_admin` - The address of the system fee admin.
+    fn set_privileged_addrs(
+        e: Env,
+        admin: Address,
+        rewards_admin: Address,
+        operations_admin: Address,
+        pause_admin: Address,
+        emergency_pause_admins: Vec<Address>,
+        system_fee_admin: Address,
+    ) {
+        admin.require_auth();
+        let access_control = AccessControl::new(&e);
+        access_control.assert_address_has_role(&admin, &Role::Admin);
+
+        access_control.set_role_address(&Role::RewardsAdmin, &rewards_admin);
+        access_control.set_role_address(&Role::OperationsAdmin, &operations_admin);
+        access_control.set_role_address(&Role::PauseAdmin, &pause_admin);
+        access_control.set_role_addresses(&Role::EmergencyPauseAdmin, &emergency_pause_admins);
+        access_control.set_role_address(&Role::SystemFeeAdmin, &system_fee_admin);
+        AccessControlEvents::new(&e).set_privileged_addrs(
+            rewards_admin,
+            operations_admin,
+            pause_admin,
+            emergency_pause_admins,
+            system_fee_admin,
+        );
+    }
+
+    // Returns a map of privileged roles.
+    //
+    // # Returns
+    //
+    // A map of privileged roles to their respective addresses.
+    fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>> {
+        let access_control = AccessControl::new(&e);
+        let mut result: Map<Symbol, Vec<Address>> = Map::new(&e);
+        for role in [
+            Role::Admin,
+            Role::EmergencyAdmin,
+            Role::RewardsAdmin,
+            Role::OperationsAdmin,
+            Role::PauseAdmin,
+            Role::SystemFeeAdmin,
+        ] {
+            result.set(
+                role.as_symbol(&e),
+                match access_control.get_role_safe(&role) {
+                    Some(v) => Vec::from_array(&e, [v]),
+                    None => Vec::new(&e),
+                },
+            );
+        }
+
+        result.set(
+            Role::EmergencyPauseAdmin.as_symbol(&e),
+            access_control.get_role_addresses(&Role::EmergencyPauseAdmin),
+        );
+
+        result
+    }
+
     /// Registers a new Pair with the Treasury and initializes its state.
     ///
     /// This call:
@@ -1017,7 +1110,7 @@ impl AdminInterfaceTrait for Treasury {
     /// - [`TreasuryError::InvalidInput`] if fee fields are out of range.
     fn add_pair(e: Env, admin: Address, pair: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_operations_admin_or_owner(&e, &admin);
 
         let tokens = crate::pair::get_pair_tokens(&e, &pair);
 
@@ -1064,7 +1157,7 @@ impl AdminInterfaceTrait for Treasury {
     /// - [`TreasuryError::InvalidInput`] if any configured fee exceeds its maximum bound.
     fn set_fee_config(e: Env, admin: Address, pair: Address, config: TreasuryFeeConfig) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_system_fee_admin_or_owner(&e, &admin);
 
         if config.base_fee > MAX_BASE_FEE {
             panic_with_error!(&e, TreasuryError::InvalidInput);
@@ -1084,7 +1177,7 @@ impl AdminInterfaceTrait for Treasury {
         parameters: TreasuryRiskParameters,
     ) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_operations_admin_or_owner(&e, &admin);
 
         if parameters.toxic_threshold > PRICE_PRECISION
             || parameters.imbalance_fee_max > PRICE_PRECISION
@@ -1103,7 +1196,7 @@ impl AdminInterfaceTrait for Treasury {
     /// - [`TreasuryError::InvalidInput`] if `floor_fraction` is zero or below the minimum allowed.
     fn set_usdc_floor(e: Env, admin: Address, floor_fraction: u128) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_operations_admin_or_owner(&e, &admin);
 
         if floor_fraction > PRICE_PRECISION {
             panic_with_error!(&e, TreasuryError::InvalidInput);
@@ -1126,7 +1219,7 @@ impl AdminInterfaceTrait for Treasury {
     /// Returns the amount of fees transferred.
     fn claim_protocol_fees(e: Env, admin: Address, pair: Address, destination: Address) -> u128 {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_system_fee_admin_or_owner(&e, &admin);
 
         let config = crate::storage::get_config(&e, &pair);
         let fee = crate::storage::get_protocol_fees(&e, &pair);
@@ -1154,7 +1247,7 @@ impl AdminInterfaceTrait for Treasury {
     // * `admin` - The address of the admin.
     fn kill_deposit(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_deposit(&e, &true);
         Events::new(&e).kill_deposit();
@@ -1167,7 +1260,7 @@ impl AdminInterfaceTrait for Treasury {
     // * `admin` - The address of the admin.
     fn kill_withdraw(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_withdraw(&e, &true);
         Events::new(&e).kill_withdraw();
@@ -1175,7 +1268,7 @@ impl AdminInterfaceTrait for Treasury {
 
     fn kill_trade(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_trade(&e, &true);
         Events::new(&e).kill_trade();
@@ -1183,7 +1276,7 @@ impl AdminInterfaceTrait for Treasury {
 
     fn kill_withdraw_floor(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_withdraw_floor(&e, &true);
         Events::new(&e).kill_withdraw_floor();
@@ -1196,7 +1289,7 @@ impl AdminInterfaceTrait for Treasury {
     // * `admin` - The address of the admin.
     fn unkill_deposit(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_deposit(&e, &false);
         Events::new(&e).unkill_deposit();
@@ -1209,7 +1302,7 @@ impl AdminInterfaceTrait for Treasury {
     // * `admin` - The address of the admin.
     fn unkill_withdraw(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_withdraw(&e, &false);
         Events::new(&e).unkill_withdraw();
@@ -1217,7 +1310,7 @@ impl AdminInterfaceTrait for Treasury {
 
     fn unkill_trade(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_trade(&e, &false);
         Events::new(&e).unkill_trade();
@@ -1225,7 +1318,7 @@ impl AdminInterfaceTrait for Treasury {
 
     fn unkill_withdraw_floor(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_withdraw_floor(&e, &false);
         Events::new(&e).unkill_withdraw_floor();

@@ -21,11 +21,23 @@ impl Default for TestConfig {
 
 pub(crate) struct Setup<'a> {
     pub(crate) env: Env,
-    pub(crate) users: vec::Vec<Address>,
+
+    // Contracts
     pub(crate) normal_oracle: NormalOracleClient<'a>,
+
+    // Oracle
     pub(crate) reflector_addr: Address,
     pub(crate) reflector_client: MockPriceOracleClient<'a>,
+
+    // Addresses
+    pub(crate) users: vec::Vec<Address>,
     pub(crate) admin: Address,
+    pub(crate) emergency_admin: Address,
+    pub(crate) operations_admin: Address,
+    pub(crate) pause_admin: Address,
+    pub(crate) emergency_pause_admin: Address,
+
+    // Other
     pub(crate) initial_asset_price: i128,
 }
 
@@ -54,6 +66,10 @@ impl Setup<'_> {
 
         let users = Self::generate_random_users(&e, config.users_count);
         let admin = users[0].clone();
+        let emergency_admin = Address::generate(&e);
+        let operations_admin = Address::generate(&e);
+        let pause_admin = Address::generate(&e);
+        let emergency_pause_admin = Address::generate(&e);
 
         // Setup oracle
         let asset_symbol = Symbol::new(&e, "SOL");
@@ -79,6 +95,10 @@ impl Setup<'_> {
         let normal_oracle = create_normal_oracle_contract(
             &e,
             &admin,
+            &emergency_admin,
+            &operations_admin,
+            &pause_admin,
+            &Vec::from_array(&e, [emergency_pause_admin.clone()]),
             &asset_symbol,
             &OracleSource::Reflector,
             &reflector_addr,
@@ -86,11 +106,23 @@ impl Setup<'_> {
 
         Self {
             env: e,
-            users,
+
+            // Contracts
             normal_oracle,
+
+            // Oracle
             reflector_addr,
             reflector_client,
+
+            // Addresses
+            users,
             admin,
+            emergency_admin,
+            operations_admin,
+            pause_admin,
+            emergency_pause_admin,
+
+            // Other
             initial_asset_price,
         }
     }
@@ -107,6 +139,10 @@ impl Setup<'_> {
 pub fn create_normal_oracle_contract<'a>(
     e: &Env,
     admin: &Address,
+    emergency_admin: &Address,
+    operations_admin: &Address,
+    pause_admin: &Address,
+    emergency_pause_admins: &Vec<Address>,
     asset: &Symbol,
     oracle_source: &OracleSource,
     oracle_addr: &Address,
@@ -115,7 +151,16 @@ pub fn create_normal_oracle_contract<'a>(
         e,
         &e.register(
             crate::NormalOracle {},
-            (admin, asset, oracle_source.clone(), oracle_addr),
+            (
+                admin,
+                emergency_admin,
+                operations_admin,
+                pause_admin,
+                emergency_pause_admins.clone(),
+                asset,
+                oracle_source.clone(),
+                oracle_addr,
+            ),
         ),
     );
     normal_oracle

@@ -4,7 +4,7 @@ use crate::interface::{AdminInterfaceTrait, LongShortPairTrait, OracleInterfaceT
 use crate::storage::{get_is_killed_mint, get_is_killed_redeem};
 use soroban_sdk::token::TokenClient as SorobanTokenClient;
 use soroban_sdk::{
-    contract, contractimpl, contractmeta, panic_with_error, Address, BytesN, Env, Symbol, Vec,
+    contract, contractimpl, contractmeta, panic_with_error, Address, BytesN, Env, Map, Symbol, Vec,
 };
 use types::pair::{
     CollateralInfo, PairAmounts, PairParams, PairPriceBounds, PairStatus, PairSummary, PairTokens,
@@ -19,9 +19,12 @@ use access_control::emergency::{get_emergency_mode, set_emergency_mode};
 use access_control::errors::AccessControlError;
 use access_control::events::Events as AccessControlEvents;
 use access_control::interface::TransferableContract;
-use access_control::management::SingleAddressManagementTrait;
+use access_control::management::{MultipleAddressesManagementTrait, SingleAddressManagementTrait};
 use access_control::role::{Role, SymbolRepresentation};
 use access_control::transfer::TransferOwnershipTrait;
+use access_control::utils::{
+    require_operations_admin_or_owner, require_pause_or_emergency_pause_admin_or_owner,
+};
 
 // Upgrade
 use upgrade::events::Events as UpgradeEvents;
@@ -61,8 +64,12 @@ impl LongShortPair {
         }
 
         access_control.set_role_address(&Role::Admin, &params.admin);
-        access_control.set_role_address(&Role::PauseAdmin, &params.admin);
-        access_control.set_role_address(&Role::EmergencyAdmin, &params.admin);
+        access_control.set_role_address(&Role::EmergencyAdmin, &params.emergency_admin);
+        access_control.set_role_address(&Role::PauseAdmin, &params.pause_admin);
+        access_control
+            .set_role_addresses(&Role::EmergencyPauseAdmin, &params.emergency_pause_admins);
+        access_control.set_role_address(&Role::OperationsAdmin, &params.operations_admin);
+        access_control.set_role_address(&Role::RewardsAdmin, &params.rewards_admin);
 
         crate::storage::set_asset(&e, &params.asset);
         crate::storage::set_status(&e, &PairStatus::Active);
@@ -424,13 +431,79 @@ impl LongShortPairTrait for LongShortPair {
 
 #[contractimpl]
 impl AdminInterfaceTrait for LongShortPair {
+    // Sets the privileged addresses.
+    //
+    // # Arguments
+    //
+    // * `admin` - The address of the admin.
+    // * `rewards_admin` - The address of the rewards admin.
+    // * `operations_admin` - The address of the operations admin.
+    // * `pause_admin` - The address of the pause admin.
+    // * `emergency_pause_admin` - The addresses of the emergency pause admins.
+    fn set_privileged_addrs(
+        e: Env,
+        admin: Address,
+        rewards_admin: Address,
+        operations_admin: Address,
+        pause_admin: Address,
+        emergency_pause_admins: Vec<Address>,
+    ) {
+        admin.require_auth();
+        let access_control = AccessControl::new(&e);
+        access_control.assert_address_has_role(&admin, &Role::Admin);
+
+        access_control.set_role_address(&Role::RewardsAdmin, &rewards_admin);
+        access_control.set_role_address(&Role::OperationsAdmin, &operations_admin);
+        access_control.set_role_address(&Role::PauseAdmin, &pause_admin);
+        access_control.set_role_addresses(&Role::EmergencyPauseAdmin, &emergency_pause_admins);
+        AccessControlEvents::new(&e).set_privileged_addrs(
+            rewards_admin,
+            operations_admin,
+            pause_admin,
+            emergency_pause_admins,
+            admin,
+        );
+    }
+
+    // Returns a map of privileged roles.
+    //
+    // # Returns
+    //
+    // A map of privileged roles to their respective addresses.
+    fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>> {
+        let access_control = AccessControl::new(&e);
+        let mut result: Map<Symbol, Vec<Address>> = Map::new(&e);
+        for role in [
+            Role::Admin,
+            Role::EmergencyAdmin,
+            Role::RewardsAdmin,
+            Role::OperationsAdmin,
+            Role::PauseAdmin,
+        ] {
+            result.set(
+                role.as_symbol(&e),
+                match access_control.get_role_safe(&role) {
+                    Some(v) => Vec::from_array(&e, [v]),
+                    None => Vec::new(&e),
+                },
+            );
+        }
+
+        result.set(
+            Role::EmergencyPauseAdmin.as_symbol(&e),
+            access_control.get_role_addresses(&Role::EmergencyPauseAdmin),
+        );
+
+        result
+    }
+
     /// Updates the calculator address used by this Pair.
     ///
     /// ### Reverts
     /// - Reverts if `admin` is not authorized.
     fn set_calculator(e: Env, admin: Address, calculator: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_operations_admin_or_owner(&e, &admin);
 
         crate::storage::set_calculator(&e, &calculator);
     }
@@ -441,7 +514,7 @@ impl AdminInterfaceTrait for LongShortPair {
     /// - Reverts if `admin` is not authorized.
     fn set_oracle(e: Env, admin: Address, oracle: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_operations_admin_or_owner(&e, &admin);
 
         crate::storage::set_oracle(&e, &oracle);
     }
@@ -453,7 +526,7 @@ impl AdminInterfaceTrait for LongShortPair {
     // * `admin` - The address of the admin.
     fn kill_mint(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_mint(&e, &true);
         Events::new(&e).kill_mint();
@@ -466,7 +539,7 @@ impl AdminInterfaceTrait for LongShortPair {
     // * `admin` - The address of the admin.
     fn kill_redeem(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_redeem(&e, &true);
         Events::new(&e).kill_redeem();
@@ -479,7 +552,7 @@ impl AdminInterfaceTrait for LongShortPair {
     // * `admin` - The address of the admin.
     fn unkill_mint(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_mint(&e, &false);
         Events::new(&e).unkill_mint();
@@ -492,7 +565,7 @@ impl AdminInterfaceTrait for LongShortPair {
     // * `admin` - The address of the admin.
     fn unkill_redeem(e: Env, admin: Address) {
         admin.require_auth();
-        AccessControl::new(&e).assert_address_has_role(&admin, &Role::Admin);
+        require_pause_or_emergency_pause_admin_or_owner(&e, &admin);
 
         crate::storage::set_is_killed_redeem(&e, &false);
         Events::new(&e).unkill_redeem();

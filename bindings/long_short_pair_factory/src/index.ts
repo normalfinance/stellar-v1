@@ -79,10 +79,16 @@ export interface PairParams {
   calculator: string;
   collateral_per_pair: u128;
   collateral_token: string;
+  emergency_admin: string;
+  emergency_pause_admins: Array<string>;
   long_token: string;
   lower_bound: u128;
+  operations_admin: string;
   oracle: string;
+  pause_admin: string;
+  rewards_admin: string;
   short_token: string;
+  system_fee_admin: string;
   upper_bound: u128;
 }
 
@@ -291,6 +297,46 @@ export interface Client {
   }) => Promise<AssembledTransaction<u128>>
 
   /**
+   * Construct and simulate a set_privileged_addrs transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  set_privileged_addrs: ({admin, rewards_admin, operations_admin, system_fee_admin}: {admin: string, rewards_admin: string, operations_admin: string, system_fee_admin: string}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a get_privileged_addrs transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_privileged_addrs: (options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Map<string, Array<string>>>>
+
+  /**
    * Construct and simulate a get_factory_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   get_factory_config: (options?: {
@@ -409,66 +455,6 @@ export interface Client {
      */
     simulate?: boolean;
   }) => Promise<AssembledTransaction<null>>
-
-  /**
-   * Construct and simulate a kill_create transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  kill_create: ({admin}: {admin: string}, options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<null>>
-
-  /**
-   * Construct and simulate a unkill_create transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  unkill_create: ({admin}: {admin: string}, options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<null>>
-
-  /**
-   * Construct and simulate a get_is_killed_create transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  get_is_killed_create: (options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<boolean>>
 
   /**
    * Construct and simulate a version transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -694,7 +680,7 @@ export interface Client {
 export class Client extends ContractClient {
   static async deploy<T = Client>(
         /** Constructor/Initialization Args for the contract's `__constructor` method */
-        {admin, pair_contract_wasm}: {admin: string, pair_contract_wasm: Buffer},
+        {admin, emergency_admin, rewards_admin, operations_admin, system_fee_admin, pair_contract_wasm}: {admin: string, emergency_admin: string, rewards_admin: string, operations_admin: string, system_fee_admin: string, pair_contract_wasm: Buffer},
     /** Options for initializing a Client as well as for calling a method, with extras specific to deploying. */
     options: MethodOptions &
       Omit<ContractClientOptions, "contractId"> & {
@@ -706,25 +692,24 @@ export class Client extends ContractClient {
         format?: "hex" | "base64";
       }
   ): Promise<AssembledTransaction<T>> {
-    return ContractClient.deploy({admin, pair_contract_wasm}, options)
+    return ContractClient.deploy({admin, emergency_admin, rewards_admin, operations_admin, system_fee_admin, pair_contract_wasm}, options)
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
       new ContractSpec([ "AAAAAQAAAAAAAAAAAAAADUZhY3RvcnlDb25maWcAAAAAAAABAAAAAAAAABJwYWlyX2NvbnRyYWN0X3dhc20AAAAAA+4AAAAg",
-        "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAScGFpcl9jb250cmFjdF93YXNtAAAAAAPuAAAAIAAAAAA=",
+        "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAYAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAPZW1lcmdlbmN5X2FkbWluAAAAABMAAAAAAAAADXJld2FyZHNfYWRtaW4AAAAAAAATAAAAAAAAABBvcGVyYXRpb25zX2FkbWluAAAAEwAAAAAAAAAQc3lzdGVtX2ZlZV9hZG1pbgAAABMAAAAAAAAAEnBhaXJfY29udHJhY3Rfd2FzbQAAAAAD7gAAACAAAAAA",
         "AAAAAAAAAR9Abm90aWNlIENyZWF0ZXMgYSBMb25nIFNob3J0IFBhaXIgY29udHJhY3QuCkBwYXJhbSBwYXJhbXMgQ29uc3RydWN0b3IgcGFyYW1zIHVzZWQgdG8gaW5pdGlhbGl6ZSB0aGUgTFNQOgotIGBhZG1pbmA6IEFkZHJlc3Mgb2YgdGhlIEZhY3RvcnkgYWRtaW4uCi0gYHBhcmFtc2A6IENvbmZpZyBwYXJhbWV0ZXJzIG9mIHRoZSBMb25nIFNob3J0IFBhaXIgY29udHJhY3QuCkByZXR1cm4gcGFpcl9hZGRyZXNzIHRoZSBkZXBsb3llZCBhZGRyZXNzIG9mIHRoZSBuZXcgTG9uZyBTaG9ydCBQYWlyIGNvbnRyYWN0LgAAAAAUZGVwbG95X3BhaXJfY29udHJhY3QAAAACAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAABnBhcmFtcwAAAAAH0AAAAApQYWlyUGFyYW1zAAAAAAABAAAAEw==",
         "AAAAAAAAAAAAAAAEbWludAAAAAMAAAAAAAAABHVzZXIAAAATAAAAAAAAAAVhc3NldAAAAAAAABEAAAAAAAAADnRva2Vuc190b19taW50AAAAAAAKAAAAAQAAAAo=",
         "AAAAAAAAAAAAAAAGcmVkZWVtAAAAAAADAAAAAAAAAAR1c2VyAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAABB0b2tlbnNfdG9fcmVkZWVtAAAACgAAAAEAAAAK",
         "AAAAAAAAAAAAAAAKcmVkZWVtX29uZQAAAAAABAAAAAAAAAAEdXNlcgAAABMAAAAAAAAABWFzc2V0AAAAAAAAEQAAAAAAAAAFdG9rZW4AAAAAAAATAAAAAAAAABB0b2tlbnNfdG9fcmVkZWVtAAAACgAAAAEAAAAK",
+        "AAAAAAAAAAAAAAAUc2V0X3ByaXZpbGVnZWRfYWRkcnMAAAAEAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAADXJld2FyZHNfYWRtaW4AAAAAAAATAAAAAAAAABBvcGVyYXRpb25zX2FkbWluAAAAEwAAAAAAAAAQc3lzdGVtX2ZlZV9hZG1pbgAAABMAAAAA",
+        "AAAAAAAAAAAAAAAUZ2V0X3ByaXZpbGVnZWRfYWRkcnMAAAAAAAAAAQAAA+wAAAARAAAD6gAAABM=",
         "AAAAAAAAAAAAAAASZ2V0X2ZhY3RvcnlfY29uZmlnAAAAAAAAAAAAAQAAB9AAAAANRmFjdG9yeUNvbmZpZwAAAA==",
         "AAAAAAAAAAAAAAAWZ2V0X3BhaXJfY29udHJhY3Rfd2FzbQAAAAAAAAAAAAEAAAPuAAAAIA==",
         "AAAAAAAAAAAAAAAWZ2V0X2FsbF9kZXBsb3llZF9wYWlycwAAAAAAAAAAAAEAAAPqAAAAEw==",
         "AAAAAAAAAAAAAAAUZ2V0X3RvdGFsX3BhaXJfY291bnQAAAAAAAAAAQAAAAQ=",
         "AAAAAAAAAAAAAAARZ2V0X3BhaXJfYnlfYXNzZXQAAAAAAAABAAAAAAAAAAVhc3NldAAAAAAAABEAAAABAAAAEw==",
         "AAAAAAAAAAAAAAAWc2V0X3BhaXJfY29udHJhY3Rfd2FzbQAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAABJwYWlyX2NvbnRyYWN0X3dhc20AAAAAA+4AAAAgAAAAAA==",
-        "AAAAAAAAAAAAAAALa2lsbF9jcmVhdGUAAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
-        "AAAAAAAAAAAAAAANdW5raWxsX2NyZWF0ZQAAAAAAAAEAAAAAAAAABWFkbWluAAAAAAAAEwAAAAA=",
-        "AAAAAAAAAAAAAAAUZ2V0X2lzX2tpbGxlZF9jcmVhdGUAAAAAAAAAAQAAAAE=",
         "AAAAAAAAAAAAAAAHdmVyc2lvbgAAAAAAAAAAAQAAAAQ=",
         "AAAAAAAAAAAAAAANY29udHJhY3RfbmFtZQAAAAAAAAAAAAABAAAAEQ==",
         "AAAAAAAAAAAAAAAOY29tbWl0X3VwZ3JhZGUAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAANbmV3X3dhc21faGFzaAAAAAAAA+4AAAAgAAAAAA==",
@@ -741,7 +726,7 @@ export class Client extends ContractClient {
         "AAAABAAAAAAAAAAAAAAAEkFjY2Vzc0NvbnRyb2xFcnJvcgAAAAAABwAAAAAAAAAMUm9sZU5vdEZvdW5kAAAAZQAAAAAAAAAMVW5hdXRob3JpemVkAAAAZgAAAAAAAAAPQWRtaW5BbHJlYWR5U2V0AAAAAGcAAAAAAAAADEJhZFJvbGVVc2FnZQAAAGgAAAAAAAAAE0Fub3RoZXJBY3Rpb25BY3RpdmUAAAALWgAAAAAAAAAOTm9BY3Rpb25BY3RpdmUAAAAAC1sAAAAAAAAAEUFjdGlvbk5vdFJlYWR5WWV0AAAAAAALXA==",
         "AAAAAQAAAAAAAAAAAAAAD09yYWNsZVByaWNlRGF0YQAAAAACAAAAAAAAAAVkZWxheQAAAAAAB9AAAAAFRGVsYXkAAAAAAAAAAAAABXByaWNlAAAAAAAACg==",
         "AAAAAgAAAAAAAAAAAAAADE9yYWNsZVNvdXJjZQAAAAEAAAAAAAAAAAAAAAlSZWZsZWN0b3IAAAA=",
-        "AAAAAQAAAAAAAAAAAAAAClBhaXJQYXJhbXMAAAAAAAoAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAAApjYWxjdWxhdG9yAAAAAAATAAAAAAAAABNjb2xsYXRlcmFsX3Blcl9wYWlyAAAAAAoAAAAAAAAAEGNvbGxhdGVyYWxfdG9rZW4AAAATAAAAAAAAAApsb25nX3Rva2VuAAAAAAATAAAAAAAAAAtsb3dlcl9ib3VuZAAAAAAKAAAAAAAAAAZvcmFjbGUAAAAAABMAAAAAAAAAC3Nob3J0X3Rva2VuAAAAABMAAAAAAAAAC3VwcGVyX2JvdW5kAAAAAAo=",
+        "AAAAAQAAAAAAAAAAAAAAClBhaXJQYXJhbXMAAAAAABAAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAAApjYWxjdWxhdG9yAAAAAAATAAAAAAAAABNjb2xsYXRlcmFsX3Blcl9wYWlyAAAAAAoAAAAAAAAAEGNvbGxhdGVyYWxfdG9rZW4AAAATAAAAAAAAAA9lbWVyZ2VuY3lfYWRtaW4AAAAAEwAAAAAAAAAWZW1lcmdlbmN5X3BhdXNlX2FkbWlucwAAAAAD6gAAABMAAAAAAAAACmxvbmdfdG9rZW4AAAAAABMAAAAAAAAAC2xvd2VyX2JvdW5kAAAAAAoAAAAAAAAAEG9wZXJhdGlvbnNfYWRtaW4AAAATAAAAAAAAAAZvcmFjbGUAAAAAABMAAAAAAAAAC3BhdXNlX2FkbWluAAAAABMAAAAAAAAADXJld2FyZHNfYWRtaW4AAAAAAAATAAAAAAAAAAtzaG9ydF90b2tlbgAAAAATAAAAAAAAABBzeXN0ZW1fZmVlX2FkbWluAAAAEwAAAAAAAAALdXBwZXJfYm91bmQAAAAACg==",
         "AAAAAgAAAAAAAAAAAAAABFNpZGUAAAACAAAAAAAAAAAAAAAETG9uZwAAAAAAAAAAAAAABVNob3J0AAAA",
         "AAAAAgAAAAAAAAAAAAAACURpcmVjdGlvbgAAAAAAAAIAAAAAAAAAAAAAAANCdXkAAAAAAAAAAAAAAAAEU2VsbA==",
         "AAAAAQAAAAAAAAAAAAAAD1BhaXJQcmljZUJvdW5kcwAAAAACAAAAAAAAAAVsb3dlcgAAAAAAAAoAAAAAAAAABXVwcGVyAAAAAAAACg==",
@@ -764,15 +749,14 @@ export class Client extends ContractClient {
         mint: this.txFromJSON<u128>,
         redeem: this.txFromJSON<u128>,
         redeem_one: this.txFromJSON<u128>,
+        set_privileged_addrs: this.txFromJSON<null>,
+        get_privileged_addrs: this.txFromJSON<Map<string, Array<string>>>,
         get_factory_config: this.txFromJSON<FactoryConfig>,
         get_pair_contract_wasm: this.txFromJSON<Buffer>,
         get_all_deployed_pairs: this.txFromJSON<Array<string>>,
         get_total_pair_count: this.txFromJSON<u32>,
         get_pair_by_asset: this.txFromJSON<string>,
         set_pair_contract_wasm: this.txFromJSON<null>,
-        kill_create: this.txFromJSON<null>,
-        unkill_create: this.txFromJSON<null>,
-        get_is_killed_create: this.txFromJSON<boolean>,
         version: this.txFromJSON<u32>,
         contract_name: this.txFromJSON<string>,
         commit_upgrade: this.txFromJSON<null>,

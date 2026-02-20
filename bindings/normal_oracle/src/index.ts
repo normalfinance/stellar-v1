@@ -147,10 +147,16 @@ export interface PairParams {
   calculator: string;
   collateral_per_pair: u128;
   collateral_token: string;
+  emergency_admin: string;
+  emergency_pause_admins: Array<string>;
   long_token: string;
   lower_bound: u128;
+  operations_admin: string;
   oracle: string;
+  pause_admin: string;
+  rewards_admin: string;
   short_token: string;
+  system_fee_admin: string;
   upper_bound: u128;
 }
 
@@ -334,6 +340,26 @@ export interface Client {
   }) => Promise<AssembledTransaction<GuardRails>>
 
   /**
+   * Construct and simulate a get_privileged_addrs transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_privileged_addrs: (options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Map<string, Array<string>>>>
+
+  /**
    * Construct and simulate a update_price transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   update_price: (options?: {
@@ -397,6 +423,26 @@ export interface Client {
    * Construct and simulate a set_sanitize_clamp_denominator transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   set_sanitize_clamp_denominator: ({admin, sanitize_clamp_denominator}: {admin: string, sanitize_clamp_denominator: u128}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a set_privileged_addrs transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  set_privileged_addrs: ({admin, operations_admin, pause_admin, emergency_pause_admins}: {admin: string, operations_admin: string, pause_admin: string, emergency_pause_admins: Array<string>}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -637,7 +683,7 @@ export interface Client {
 export class Client extends ContractClient {
   static async deploy<T = Client>(
         /** Constructor/Initialization Args for the contract's `__constructor` method */
-        {admin, asset, oracle_source, oracle_addr}: {admin: string, asset: string, oracle_source: OracleSource, oracle_addr: string},
+        {admin, emergency_admin, operations_admin, pause_admin, emergency_pause_admins, asset, oracle_source, oracle_addr}: {admin: string, emergency_admin: string, operations_admin: string, pause_admin: string, emergency_pause_admins: Array<string>, asset: string, oracle_source: OracleSource, oracle_addr: string},
     /** Options for initializing a Client as well as for calling a method, with extras specific to deploying. */
     options: MethodOptions &
       Omit<ContractClientOptions, "contractId"> & {
@@ -649,18 +695,20 @@ export class Client extends ContractClient {
         format?: "hex" | "base64";
       }
   ): Promise<AssembledTransaction<T>> {
-    return ContractClient.deploy({admin, asset, oracle_source, oracle_addr}, options)
+    return ContractClient.deploy({admin, emergency_admin, operations_admin, pause_admin, emergency_pause_admins, asset, oracle_source, oracle_addr}, options)
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAQAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAAA1vcmFjbGVfc291cmNlAAAAAAAH0AAAAAxPcmFjbGVTb3VyY2UAAAAAAAAAC29yYWNsZV9hZGRyAAAAABMAAAAA",
+      new ContractSpec([ "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAgAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAPZW1lcmdlbmN5X2FkbWluAAAAABMAAAAAAAAAEG9wZXJhdGlvbnNfYWRtaW4AAAATAAAAAAAAAAtwYXVzZV9hZG1pbgAAAAATAAAAAAAAABZlbWVyZ2VuY3lfcGF1c2VfYWRtaW5zAAAAAAPqAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAAA1vcmFjbGVfc291cmNlAAAAAAAH0AAAAAxPcmFjbGVTb3VyY2UAAAAAAAAAC29yYWNsZV9hZGRyAAAAABMAAAAA",
         "AAAAAAAAAAAAAAAQZ2V0X29yYWNsZV9wcmljZQAAAAAAAAABAAAH0AAAAA9PcmFjbGVQcmljZURhdGEA",
         "AAAAAAAAAAAAAAAJZ2V0X3ByaWNlAAAAAAAAAAAAAAEAAAfQAAAAFEhpc3RvcmljYWxPcmFjbGVEYXRh",
         "AAAAAAAAAAAAAAAPZ2V0X2d1YXJkX3JhaWxzAAAAAAAAAAABAAAH0AAAAApHdWFyZFJhaWxzAAA=",
+        "AAAAAAAAAAAAAAAUZ2V0X3ByaXZpbGVnZWRfYWRkcnMAAAAAAAAAAQAAA+wAAAARAAAD6gAAABM=",
         "AAAAAAAAAAAAAAAMdXBkYXRlX3ByaWNlAAAAAAAAAAEAAAfQAAAAFEhpc3RvcmljYWxPcmFjbGVEYXRh",
         "AAAAAAAAAAAAAAAYc2V0X3NlY29uZHNfYmVmb3JlX3N0YWxlAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAtzdGFsZV9saW1pdAAAAAAGAAAAAA==",
         "AAAAAAAAAAAAAAAWc2V0X3Rvb192b2xhdGlsZV9yYXRpbwAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAABJ0b29fdm9sYXRpbGVfcmF0aW8AAAAAAAYAAAAA",
         "AAAAAAAAAAAAAAAec2V0X3Nhbml0aXplX2NsYW1wX2Rlbm9taW5hdG9yAAAAAAACAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAAGnNhbml0aXplX2NsYW1wX2Rlbm9taW5hdG9yAAAAAAAKAAAAAA==",
+        "AAAAAAAAAAAAAAAUc2V0X3ByaXZpbGVnZWRfYWRkcnMAAAAEAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAAEG9wZXJhdGlvbnNfYWRtaW4AAAATAAAAAAAAAAtwYXVzZV9hZG1pbgAAAAATAAAAAAAAABZlbWVyZ2VuY3lfcGF1c2VfYWRtaW5zAAAAAAPqAAAAEwAAAAA=",
         "AAAAAAAAAAAAAAAHdmVyc2lvbgAAAAAAAAAAAQAAAAQ=",
         "AAAAAAAAAAAAAAANY29udHJhY3RfbmFtZQAAAAAAAAAAAAABAAAAEQ==",
         "AAAAAAAAAAAAAAAOY29tbWl0X3VwZ3JhZGUAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAANbmV3X3dhc21faGFzaAAAAAAAA+4AAAAgAAAAAA==",
@@ -683,7 +731,7 @@ export class Client extends ContractClient {
         "AAAAAgAAAApBc3NldCB0eXBlAAAAAAAAAAAABUFzc2V0AAAAAAAAAgAAAAEAAAAAAAAAB1N0ZWxsYXIAAAAAAQAAABMAAAABAAAAAAAAAAVPdGhlcgAAAAAAAAEAAAAR",
         "AAAAAQAAAAAAAAAAAAAAD09yYWNsZVByaWNlRGF0YQAAAAACAAAAAAAAAAVkZWxheQAAAAAAB9AAAAAFRGVsYXkAAAAAAAAAAAAABXByaWNlAAAAAAAACg==",
         "AAAAAgAAAAAAAAAAAAAADE9yYWNsZVNvdXJjZQAAAAEAAAAAAAAAAAAAAAlSZWZsZWN0b3IAAAA=",
-        "AAAAAQAAAAAAAAAAAAAAClBhaXJQYXJhbXMAAAAAAAoAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAAApjYWxjdWxhdG9yAAAAAAATAAAAAAAAABNjb2xsYXRlcmFsX3Blcl9wYWlyAAAAAAoAAAAAAAAAEGNvbGxhdGVyYWxfdG9rZW4AAAATAAAAAAAAAApsb25nX3Rva2VuAAAAAAATAAAAAAAAAAtsb3dlcl9ib3VuZAAAAAAKAAAAAAAAAAZvcmFjbGUAAAAAABMAAAAAAAAAC3Nob3J0X3Rva2VuAAAAABMAAAAAAAAAC3VwcGVyX2JvdW5kAAAAAAo=",
+        "AAAAAQAAAAAAAAAAAAAAClBhaXJQYXJhbXMAAAAAABAAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAAApjYWxjdWxhdG9yAAAAAAATAAAAAAAAABNjb2xsYXRlcmFsX3Blcl9wYWlyAAAAAAoAAAAAAAAAEGNvbGxhdGVyYWxfdG9rZW4AAAATAAAAAAAAAA9lbWVyZ2VuY3lfYWRtaW4AAAAAEwAAAAAAAAAWZW1lcmdlbmN5X3BhdXNlX2FkbWlucwAAAAAD6gAAABMAAAAAAAAACmxvbmdfdG9rZW4AAAAAABMAAAAAAAAAC2xvd2VyX2JvdW5kAAAAAAoAAAAAAAAAEG9wZXJhdGlvbnNfYWRtaW4AAAATAAAAAAAAAAZvcmFjbGUAAAAAABMAAAAAAAAAC3BhdXNlX2FkbWluAAAAABMAAAAAAAAADXJld2FyZHNfYWRtaW4AAAAAAAATAAAAAAAAAAtzaG9ydF90b2tlbgAAAAATAAAAAAAAABBzeXN0ZW1fZmVlX2FkbWluAAAAEwAAAAAAAAALdXBwZXJfYm91bmQAAAAACg==",
         "AAAAAgAAAAAAAAAAAAAABFNpZGUAAAACAAAAAAAAAAAAAAAETG9uZwAAAAAAAAAAAAAABVNob3J0AAAA",
         "AAAAAgAAAAAAAAAAAAAACURpcmVjdGlvbgAAAAAAAAIAAAAAAAAAAAAAAANCdXkAAAAAAAAAAAAAAAAEU2VsbA==",
         "AAAAAQAAAAAAAAAAAAAAD1BhaXJQcmljZUJvdW5kcwAAAAACAAAAAAAAAAVsb3dlcgAAAAAAAAoAAAAAAAAABXVwcGVyAAAAAAAACg==",
@@ -705,10 +753,12 @@ export class Client extends ContractClient {
     get_oracle_price: this.txFromJSON<OraclePriceData>,
         get_price: this.txFromJSON<HistoricalOracleData>,
         get_guard_rails: this.txFromJSON<GuardRails>,
+        get_privileged_addrs: this.txFromJSON<Map<string, Array<string>>>,
         update_price: this.txFromJSON<HistoricalOracleData>,
         set_seconds_before_stale: this.txFromJSON<null>,
         set_too_volatile_ratio: this.txFromJSON<null>,
         set_sanitize_clamp_denominator: this.txFromJSON<null>,
+        set_privileged_addrs: this.txFromJSON<null>,
         version: this.txFromJSON<u32>,
         contract_name: this.txFromJSON<string>,
         commit_upgrade: this.txFromJSON<null>,

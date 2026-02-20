@@ -1,10 +1,18 @@
-use soroban_sdk::{contracttype, Address, Symbol};
+use soroban_sdk::{contracttype, Address, Symbol, Vec};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PairParams {
-    // Config
+    // Access control
     pub admin: Address,
+    pub emergency_admin: Address,
+    pub operations_admin: Address,
+    pub pause_admin: Address,
+    pub emergency_pause_admins: Vec<Address>,
+    pub rewards_admin: Address,
+    pub system_fee_admin: Address,
+
+    // Config
     pub asset: Symbol,
     pub oracle: Address,
 
