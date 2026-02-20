@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, BytesN, Env, Symbol};
+use soroban_sdk::{Address, BytesN, Env, Map, Symbol, Vec};
 use types::pair::{Direction, PairAmountsWithUSDC, Side};
 
 use crate::storage::{
@@ -67,6 +67,20 @@ pub trait TradingTrait {
 }
 
 pub trait AdminInterfaceTrait {
+    // Set privileged addresses
+    fn set_privileged_addrs(
+        e: Env,
+        admin: Address,
+        rewards_admin: Address,
+        operations_admin: Address,
+        pause_admin: Address,
+        emergency_pause_admins: Vec<Address>,
+        system_fee_admin: Address,
+    );
+
+    // Get map of privileged roles
+    fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>>;
+
     fn add_pair(e: Env, admin: Address, pair: Address);
 
     fn set_fee_config(e: Env, admin: Address, pair: Address, config: TreasuryFeeConfig);

@@ -54,9 +54,30 @@ pub fn create_long_short_pair_contract<'a>(
 pub fn create_treasury_contract<'a>(
     e: &Env,
     admin: &Address,
-    oracle: &Address,
+    emergency_admin: &Address,
+    rewards_admin: &Address,
+    operations_admin: &Address,
+    pause_admin: &Address,
+    emergency_pause_admins: &Vec<Address>,
+    system_fee_admin: &Address,
+    usdc_oracle: &Address,
 ) -> TreasuryClient<'a> {
-    TreasuryClient::new(e, &e.register(crate::Treasury {}, (admin, oracle)))
+    TreasuryClient::new(
+        e,
+        &e.register(
+            crate::Treasury {},
+            (
+                admin,
+                emergency_admin,
+                rewards_admin,
+                operations_admin,
+                pause_admin,
+                emergency_pause_admins.clone(),
+                system_fee_admin,
+                usdc_oracle,
+            ),
+        ),
+    )
 }
 
 // Setup
@@ -95,6 +116,11 @@ pub(crate) struct Setup<'a> {
     pub(crate) users: vec::Vec<Address>,
     pub(crate) admin: Address,
     pub(crate) emergency_admin: Address,
+    pub(crate) rewards_admin: Address,
+    pub(crate) operations_admin: Address,
+    pub(crate) pause_admin: Address,
+    pub(crate) emergency_pause_admin: Address,
+    pub(crate) system_fee_admin: Address,
 
     // Other
     pub(crate) solana: Symbol,
@@ -129,6 +155,12 @@ impl Setup<'_> {
         // Addresses
         let users = Self::generate_random_users(&e, config.users_count);
         let admin = users[0].clone();
+        let emergency_admin = Address::generate(&e);
+        let rewards_admin = Address::generate(&e);
+        let operations_admin = Address::generate(&e);
+        let pause_admin = Address::generate(&e);
+        let emergency_pause_admin = Address::generate(&e);
+        let system_fee_admin = Address::generate(&e);
 
         // Tokens
         let token_usdc = create_token_contract(&e, &admin);
@@ -189,6 +221,12 @@ impl Setup<'_> {
             &e,
             &(PairParams {
                 admin: admin.clone(),
+                emergency_admin: emergency_admin.clone(),
+                pause_admin: pause_admin.clone(),
+                emergency_pause_admins: Vec::from_array(&e, [emergency_pause_admin.clone()]),
+                operations_admin: operations_admin.clone(),
+                rewards_admin: rewards_admin.clone(),
+
                 asset: sol_symbol.clone(),
                 collateral_token: token_usdc.address.clone(),
                 oracle: oracle.address.clone(),
@@ -205,9 +243,17 @@ impl Setup<'_> {
         token_short_admin_client.set_admin(&pair.address);
 
         // Setup Treasury
-        let treasury = create_treasury_contract(&e, &admin, &usdc_oracle.address);
-
-        let emergency_admin = admin.clone();
+        let treasury = create_treasury_contract(
+            &e,
+            &admin,
+            &emergency_admin,
+            &rewards_admin,
+            &operations_admin,
+            &pause_admin,
+            &Vec::from_array(&e, [emergency_pause_admin.clone()]),
+            &system_fee_admin,
+            &usdc_oracle.address,
+        );
 
         treasury.add_pair(&admin, &pair.address);
 
@@ -233,9 +279,14 @@ impl Setup<'_> {
             reflector_client,
 
             // Addresses
+            users,
             admin,
             emergency_admin,
-            users,
+            rewards_admin,
+            operations_admin,
+            pause_admin,
+            emergency_pause_admin,
+            system_fee_admin,
 
             // Other
             solana: sol_symbol,

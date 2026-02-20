@@ -121,7 +121,7 @@ pub fn create_factory_contract<'a>(
                 rewards_admin,
                 operations_admin,
                 pause_admin,
-                emergency_pause_admins,
+                emergency_pause_admins.clone(),
                 pair_contract_wasm,
             ),
         ),

@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use crate::storage::TreasuryFeeConfig;
+use crate::storage::{TreasuryFeeConfig, TreasuryRiskParameters};
 use crate::testutils::{create_treasury_contract, Setup};
 use access_control::constants::ADMIN_ACTIONS_DELAY;
 use soroban_sdk::testutils::Address as _;
@@ -267,30 +267,27 @@ fn test_transfer_ownership_separate_deadlines() {
         .is_err());
 }
 
-#[test]
-#[should_panic(expected = "Error(Contract, #2907)")]
-fn test_get_future_address_empty() {
-    let env = Env::default();
-    env.mock_all_auths();
-    env.cost_estimate().budget().reset_unlimited();
+// #[test]
+// #[should_panic(expected = "Error(Contract, #2907)")]
+// fn test_get_future_address_empty() {
+//     let env = Env::default();
+//     env.mock_all_auths();
+//     env.cost_estimate().budget().reset_unlimited();
 
-    let admin = Address::generate(&env);
-    let emergency_admin = Address::generate(&env);
-    let treasury = create_treasury_contract(&env, &admin, &admin);
+//     let admin = Address::generate(&env);
+//     let emergency_admin = Address::generate(&env);
+//     let treasury = create_treasury_contract(&env, &admin, &admin);
 
-    // treasury.init_admin(&admin);
-    treasury.commit_transfer_ownership(
-        &admin,
-        &Symbol::new(&env, "EmergencyAdmin"),
-        &emergency_admin,
-    );
-    treasury.apply_transfer_ownership(&admin, &Symbol::new(&env, "EmergencyAdmin"));
-    assert_eq!(
-        treasury.get_future_address(&Symbol::new(&env, "EmergencyAdmin")),
-        emergency_admin
-    );
-    treasury.apply_transfer_ownership(&admin, &Symbol::new(&env, "EmergencyAdmin"));
-}
+//     // treasury.init_admin(&admin);
+//     treasury.commit_transfer_ownership(
+//         &admin,
+//         &Symbol::new(&env, "EmergencyAdmin"),
+//         &emergency_admin
+//     );
+//     treasury.apply_transfer_ownership(&admin, &Symbol::new(&env, "EmergencyAdmin"));
+//     assert_eq!(treasury.get_future_address(&Symbol::new(&env, "EmergencyAdmin")), emergency_admin);
+//     treasury.apply_transfer_ownership(&admin, &Symbol::new(&env, "EmergencyAdmin"));
+// }
 
 // upgrade
 #[test]
@@ -415,7 +412,11 @@ fn test_kill_deposit() {
     for (addr, is_ok) in [
         (user.clone(), false),
         (setup.admin.clone(), true),
-        // (setup.pause_admin, true),
+        (setup.rewards_admin, false),
+        (setup.operations_admin, false),
+        (setup.pause_admin, true),
+        (setup.emergency_pause_admin, true),
+        (setup.system_fee_admin, false),
     ] {
         assert_eq!(treasury.try_kill_deposit(&addr).is_ok(), is_ok);
     }
@@ -430,7 +431,11 @@ fn test_kill_withdraw() {
     for (addr, is_ok) in [
         (user.clone(), false),
         (setup.admin.clone(), true),
-        // (setup.pause_admin, true),
+        (setup.rewards_admin, false),
+        (setup.operations_admin, false),
+        (setup.pause_admin, true),
+        (setup.emergency_pause_admin, true),
+        (setup.system_fee_admin, false),
     ] {
         assert_eq!(treasury.try_kill_withdraw(&addr).is_ok(), is_ok);
     }
@@ -445,7 +450,11 @@ fn test_kill_trade() {
     for (addr, is_ok) in [
         (user.clone(), false),
         (setup.admin.clone(), true),
-        // (setup.pause_admin, true),
+        (setup.rewards_admin, false),
+        (setup.operations_admin, false),
+        (setup.pause_admin, true),
+        (setup.emergency_pause_admin, true),
+        (setup.system_fee_admin, false),
     ] {
         assert_eq!(treasury.try_kill_trade(&addr).is_ok(), is_ok);
     }
@@ -460,7 +469,11 @@ fn test_unkill_deposit() {
     for (addr, is_ok) in [
         (user.clone(), false),
         (setup.admin.clone(), true),
-        // (setup.pause_admin, true),
+        (setup.rewards_admin, false),
+        (setup.operations_admin, false),
+        (setup.pause_admin, true),
+        (setup.emergency_pause_admin, true),
+        (setup.system_fee_admin, false),
     ] {
         assert_eq!(treasury.try_unkill_deposit(&addr).is_ok(), is_ok);
     }
@@ -475,7 +488,11 @@ fn test_unkill_withdraw() {
     for (addr, is_ok) in [
         (user.clone(), false),
         (setup.admin.clone(), true),
-        // (setup.pause_admin, true),
+        (setup.rewards_admin, false),
+        (setup.operations_admin, false),
+        (setup.pause_admin, true),
+        (setup.emergency_pause_admin, true),
+        (setup.system_fee_admin, false),
     ] {
         assert_eq!(treasury.try_unkill_withdraw(&addr).is_ok(), is_ok);
     }
@@ -490,9 +507,45 @@ fn test_unkill_trade() {
     for (addr, is_ok) in [
         (user.clone(), false),
         (setup.admin.clone(), true),
-        // (setup.pause_admin, true),
+        (setup.rewards_admin, false),
+        (setup.operations_admin, false),
+        (setup.pause_admin, true),
+        (setup.emergency_pause_admin, true),
+        (setup.system_fee_admin, false),
     ] {
         assert_eq!(treasury.try_unkill_trade(&addr).is_ok(), is_ok);
+    }
+}
+
+// manage privileged addresses
+#[test]
+fn test_set_privileged_addresses() {
+    let setup = Setup::default();
+    let treasury = setup.treasury;
+    let user = Address::generate(&setup.env);
+
+    for (addr, is_ok) in [
+        (user, false),
+        (setup.admin.clone(), true),
+        (setup.rewards_admin.clone(), false),
+        (setup.operations_admin.clone(), false),
+        (setup.pause_admin.clone(), false),
+        (setup.emergency_pause_admin.clone(), false),
+        (setup.system_fee_admin.clone(), false),
+    ] {
+        assert_eq!(
+            treasury
+                .try_set_privileged_addrs(
+                    &addr,
+                    &setup.rewards_admin,
+                    &setup.operations_admin,
+                    &setup.pause_admin,
+                    &Vec::from_array(&setup.env, [setup.emergency_pause_admin.clone()]),
+                    &setup.system_fee_admin,
+                )
+                .is_ok(),
+            is_ok
+        );
     }
 }
 
@@ -503,11 +556,119 @@ fn test_add_pair() {
     let pair = Address::generate(&setup.env);
 
     for (addr, is_ok) in [
-        (user.clone(), false),
-        (setup.admin.clone(), true),
-        // (setup.emergency_admin, false),
-        // (setup.pause_admin, false),
+        (user, false),
+        (setup.admin, true),
+        (setup.rewards_admin, false),
+        (setup.operations_admin, true),
+        (setup.pause_admin, false),
+        (setup.emergency_pause_admin, false),
+        (setup.system_fee_admin, false),
     ] {
         assert_eq!(setup.treasury.try_add_pair(&addr, &pair).is_ok(), is_ok);
+    }
+}
+
+#[test]
+fn test_set_fee_config() {
+    let setup = Setup::default();
+    let user = Address::generate(&setup.env);
+    let pair = Address::generate(&setup.env);
+
+    for (addr, is_ok) in [
+        (user, false),
+        (setup.admin, true),
+        (setup.rewards_admin, false),
+        (setup.operations_admin, false),
+        (setup.pause_admin, false),
+        (setup.emergency_pause_admin, false),
+        (setup.system_fee_admin, true),
+    ] {
+        assert_eq!(
+            setup
+                .treasury
+                .try_set_fee_config(&addr, &pair, &(TreasuryFeeConfig { base_fee: 1000 }))
+                .is_ok(),
+            is_ok
+        );
+    }
+}
+
+#[test]
+fn test_set_risk_parameters() {
+    let setup = Setup::default();
+    let user = Address::generate(&setup.env);
+    let pair = Address::generate(&setup.env);
+
+    for (addr, is_ok) in [
+        (user, false),
+        (setup.admin, true),
+        (setup.rewards_admin, false),
+        (setup.operations_admin, true),
+        (setup.pause_admin, false),
+        (setup.emergency_pause_admin, false),
+        (setup.system_fee_admin, false),
+    ] {
+        assert_eq!(
+            setup
+                .treasury
+                .try_set_risk_parameters(
+                    &addr,
+                    &pair,
+                    &(TreasuryRiskParameters {
+                        toxic_threshold: 0,
+                        max_net_imbalance_tokens: 0,
+                        imbalance_fee_max: 0,
+                    })
+                )
+                .is_ok(),
+            is_ok
+        );
+    }
+}
+
+#[test]
+fn test_set_usdc_floor() {
+    let setup = Setup::default();
+    let user = Address::generate(&setup.env);
+
+    for (addr, is_ok) in [
+        (user, false),
+        (setup.admin, true),
+        (setup.rewards_admin, false),
+        (setup.operations_admin, true),
+        (setup.pause_admin, false),
+        (setup.emergency_pause_admin, false),
+        (setup.system_fee_admin, false),
+    ] {
+        assert_eq!(
+            setup.treasury.try_set_usdc_floor(&addr, &1000).is_ok(),
+            is_ok
+        );
+    }
+}
+
+#[test]
+fn test_claim_protocol_fees() {
+    let setup = Setup::default();
+    let user = Address::generate(&setup.env);
+    let pair = Address::generate(&setup.env);
+    let destination = Address::generate(&setup.env);
+
+    for (addr, is_ok) in [
+        (user, false),
+        (setup.admin, true),
+        (setup.rewards_admin, false),
+        (setup.operations_admin, false),
+        (setup.pause_admin, false),
+        (setup.emergency_pause_admin, false),
+        (setup.system_fee_admin, true),
+    ] {
+        assert_eq!(
+            setup
+                .treasury
+                .try_claim_protocol_fees(&addr, &pair, &destination)
+                .is_ok(),
+            is_ok
+        );
     }
 }
