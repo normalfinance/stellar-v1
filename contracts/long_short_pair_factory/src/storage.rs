@@ -13,6 +13,8 @@ use crate::errors::LongShortPairFactoryError;
 // Instance-scoped WASM hash used when deploying new Pair contracts.
 const KEY_PAIR_CONTRACT_WASM: &str = "PairContractWASM";
 
+// const KEY_IS_KILLED_CREATE: &str = "IsKilledCreate";
+
 /// Persistent storage keys for factory-managed data.
 ///
 /// We store:
