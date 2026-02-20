@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 #![cfg(test)]
 extern crate std;
-use crate::testutils::long_short_pair::PairParams;
+use crate::testutils::long_short_pair::{CollateralConfig, PairParams};
 use crate::testutils::normal_oracle::OracleSource;
 use crate::TreasuryClient;
 
@@ -227,7 +227,15 @@ impl Setup<'_> {
                 system_fee_admin: system_fee_admin.clone(),
 
                 asset: sol_symbol.clone(),
-                collateral_token: token_usdc.address.clone(),
+                collateral_configs: Vec::from_array(
+                    &e,
+                    [CollateralConfig {
+                        token: token_usdc.address.clone(),
+                        oracle: usdc_oracle.address.clone(),
+                        mint_enabled: true,
+                        redeem_enabled: true,
+                    }],
+                ),
                 oracle: oracle.address.clone(),
                 calculator: pair_calculator.address.clone(),
                 collateral_per_pair,

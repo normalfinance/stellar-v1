@@ -34,7 +34,9 @@ fn bootstrap_with_liquidity(
     mint_user_usdc(setup, &admin, init_admin_usdc);
 
     // Mint pair
-    setup.pair.mint(&admin, &pair_tokens_to_mint);
+    setup
+        .pair
+        .mint(&admin, &setup.token_usdc.address, &pair_tokens_to_mint);
 
     // Deposit
     setup
@@ -511,7 +513,9 @@ fn sell_long_slippage() {
     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
 
     // Mint the user some pair tokens
-    setup.pair.mint(&user, &1_0000000);
+    setup
+        .pair
+        .mint(&user, &setup.token_usdc.address, &1_0000000);
 
     setup
         .treasury
@@ -535,7 +539,9 @@ fn sell_long_toxic() {
 
     // Mint the user some pair tokens
     mint_user_usdc(&setup, &user, 100_0000000);
-    setup.pair.mint(&user, &1_0000000);
+    setup
+        .pair
+        .mint(&user, &setup.token_usdc.address, &1_0000000);
 
     jump(&setup.env, ONE_HOUR);
     set_pair_price(&setup, 9_00000000000000, setup.env.ledger().timestamp());
@@ -564,7 +570,9 @@ fn sell_long_usdc_floor() {
 
     // Mint the user some pair tokens
     mint_user_usdc(&setup, &user, 2000_0000000);
-    setup.pair.mint(&user, &20_0000000);
+    setup
+        .pair
+        .mint(&user, &setup.token_usdc.address, &20_0000000);
 
     setup
         .treasury
@@ -589,7 +597,9 @@ fn sell_long_usdc_floor_zero_works() {
 
     // Mint the user some pair tokens
     mint_user_usdc(&setup, &user, 2000_0000000);
-    setup.pair.mint(&user, &20_0000000);
+    setup
+        .pair
+        .mint(&user, &setup.token_usdc.address, &20_0000000);
 
     setup
         .treasury
@@ -626,7 +636,9 @@ fn sell_long_happy_path() {
 
     // Mint the user some pair tokens
     mint_user_usdc(&setup, &user, 100_0000000);
-    setup.pair.mint(&user, &1_0000000);
+    setup
+        .pair
+        .mint(&user, &setup.token_usdc.address, &1_0000000);
 
     let (out, fee) = setup
         .treasury
@@ -744,7 +756,9 @@ fn sell_short_slippage() {
     set_risk_params_for_pair(&setup, TOXIC_THRESHOLD, 0, 0);
 
     // Mint the user some pair tokens
-    setup.pair.mint(&user, &1_0000000);
+    setup
+        .pair
+        .mint(&user, &setup.token_usdc.address, &1_0000000);
 
     setup
         .treasury
@@ -768,7 +782,9 @@ fn sell_short_toxic() {
 
     // Mint the user some pair tokens
     mint_user_usdc(&setup, &user, 100_0000000);
-    setup.pair.mint(&user, &1_0000000);
+    setup
+        .pair
+        .mint(&user, &setup.token_usdc.address, &1_0000000);
 
     jump(&setup.env, ONE_HOUR);
     set_pair_price(&setup, 191_00000000000000, setup.env.ledger().timestamp());
@@ -798,7 +814,9 @@ fn sell_short_usdc_floor() {
 
     // Mint the user some pair tokens
     mint_user_usdc(&setup, &user, 2000_0000000);
-    setup.pair.mint(&user, &20_0000000);
+    setup
+        .pair
+        .mint(&user, &setup.token_usdc.address, &20_0000000);
 
     setup
         .treasury
@@ -823,7 +841,9 @@ fn sell_short_usdc_floor_zero_works() {
 
     // Mint the user some pair tokens
     mint_user_usdc(&setup, &user, 2000_0000000);
-    setup.pair.mint(&user, &20_0000000);
+    setup
+        .pair
+        .mint(&user, &setup.token_usdc.address, &20_0000000);
 
     setup
         .treasury
@@ -860,7 +880,9 @@ fn sell_short_happy_path() {
 
     // Mint the user some pair tokens
     mint_user_usdc(&setup, &user, 100_0000000);
-    setup.pair.mint(&user, &1_0000000);
+    setup
+        .pair
+        .mint(&user, &setup.token_usdc.address, &1_0000000);
 
     let (out, fee) = setup
         .treasury
