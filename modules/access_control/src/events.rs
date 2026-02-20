@@ -65,6 +65,18 @@ impl Events {
         )
     }
 
+    pub fn set_factory_privileged_addrs(
+        &self,
+        rewards_admin: Address,
+        operations_admin: Address,
+        system_fee_admin: Address,
+    ) {
+        self.env().events().publish(
+            (Symbol::new(self.env(), "set_factory_privileged_addrs"),),
+            (rewards_admin, operations_admin, system_fee_admin),
+        )
+    }
+
     pub fn set_emergency_mode(&self, emergency_mode: bool) {
         self.env().events().publish(
             match emergency_mode {

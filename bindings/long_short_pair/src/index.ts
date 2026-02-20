@@ -98,10 +98,16 @@ export interface PairParams {
   calculator: string;
   collateral_per_pair: u128;
   collateral_token: string;
+  emergency_admin: string;
+  emergency_pause_admins: Array<string>;
   long_token: string;
   lower_bound: u128;
+  operations_admin: string;
   oracle: string;
+  pause_admin: string;
+  rewards_admin: string;
   short_token: string;
+  system_fee_admin: string;
   upper_bound: u128;
 }
 
@@ -528,6 +534,46 @@ export interface Client {
      */
     simulate?: boolean;
   }) => Promise<AssembledTransaction<PairStatus>>
+
+  /**
+   * Construct and simulate a set_privileged_addrs transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  set_privileged_addrs: ({admin, rewards_admin, operations_admin, pause_admin, emergency_pause_admins}: {admin: string, rewards_admin: string, operations_admin: string, pause_admin: string, emergency_pause_admins: Array<string>}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a get_privileged_addrs transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_privileged_addrs: (options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Map<string, Array<string>>>>
 
   /**
    * Construct and simulate a set_calculator transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -1002,6 +1048,8 @@ export class Client extends ContractClient {
         "AAAAAAAAANxSZXR1cm5zIGN1cnJlbnQgY29sbGF0ZXJhbCBjb25maWd1cmF0aW9uIGFuZCBzZXR0bGVtZW50IGluZm9ybWF0aW9uLgoKYGNvbGxhdGVyYWxfcGVyY2VudF9sb25nYCBpcyB0aGUgc2V0dGxlbWVudCBhbGxvY2F0aW9uIHRvIExPTkcgaW4gYFBSSUNFX1BSRUNJU0lPTmAgdW5pdHMuClNIT1JUIHJlY2VpdmVzIGBQUklDRV9QUkVDSVNJT04gLSBjb2xsYXRlcmFsX3BlcmNlbnRfbG9uZ2AuAAAAE2dldF9jb2xsYXRlcmFsX2luZm8AAAAAAAAAAAEAAAfQAAAADkNvbGxhdGVyYWxJbmZvAAA=",
         "AAAAAAAAAIVSZXR1cm5zIGFuIGFnZ3JlZ2F0ZWQgc25hcHNob3Qgb2YgdGhlIFBhaXIgc3RhdGUuCgpUaGlzIGlzIGEgY29udmVuaWVuY2UgbWV0aG9kIGZvciBmcm9udGVuZHMvaW5kZXhlcnMgdG8gYXZvaWQgbXVsdGlwbGUgcm91bmQtdHJpcHMuAAAAAAAAC2dldF9zdW1tYXJ5AAAAAAAAAAABAAAH0AAAAAtQYWlyU3VtbWFyeQA=",
         "AAAAAAAAACBSZXR1cm5zIHRoZSBjdXJyZW50IHBhaXIgc3RhdHVzLgAAAApnZXRfc3RhdHVzAAAAAAAAAAAAAQAAB9AAAAAKUGFpclN0YXR1cwAA",
+        "AAAAAAAAAAAAAAAUc2V0X3ByaXZpbGVnZWRfYWRkcnMAAAAFAAAAAAAAAAVhZG1pbgAAAAAAABMAAAAAAAAADXJld2FyZHNfYWRtaW4AAAAAAAATAAAAAAAAABBvcGVyYXRpb25zX2FkbWluAAAAEwAAAAAAAAALcGF1c2VfYWRtaW4AAAAAEwAAAAAAAAAWZW1lcmdlbmN5X3BhdXNlX2FkbWlucwAAAAAD6gAAABMAAAAA",
+        "AAAAAAAAAAAAAAAUZ2V0X3ByaXZpbGVnZWRfYWRkcnMAAAAAAAAAAQAAA+wAAAARAAAD6gAAABM=",
         "AAAAAAAAAGZVcGRhdGVzIHRoZSBjYWxjdWxhdG9yIGFkZHJlc3MgdXNlZCBieSB0aGlzIFBhaXIuCgojIyMgUmV2ZXJ0cwotIFJldmVydHMgaWYgYGFkbWluYCBpcyBub3QgYXV0aG9yaXplZC4AAAAAAA5zZXRfY2FsY3VsYXRvcgAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAApjYWxjdWxhdG9yAAAAAAATAAAAAA==",
         "AAAAAAAAAGJVcGRhdGVzIHRoZSBvcmFjbGUgYWRkcmVzcyB1c2VkIGJ5IHRoaXMgUGFpci4KCiMjIyBSZXZlcnRzCi0gUmV2ZXJ0cyBpZiBgYWRtaW5gIGlzIG5vdCBhdXRob3JpemVkLgAAAAAACnNldF9vcmFjbGUAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAGb3JhY2xlAAAAAAATAAAAAA==",
         "AAAAAAAAAAAAAAAJa2lsbF9taW50AAAAAAAAAQAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAA==",
@@ -1030,7 +1078,7 @@ export class Client extends ContractClient {
         "AAAAAQAAAAAAAAAAAAAAFEhpc3RvcmljYWxPcmFjbGVEYXRhAAAABAAAAAAAAAANbGFzdF9kZWxheV90cwAAAAAAAAYAAAAAAAAACmxhc3RfcHJpY2UAAAAAAAoAAAAAAAAAD2xhc3RfcHJpY2VfdHdhcAAAAAAKAAAAAAAAAA5sYXN0X3VwZGF0ZV90cwAAAAAABg==",
         "AAAAAQAAAAAAAAAAAAAAD09yYWNsZVByaWNlRGF0YQAAAAACAAAAAAAAAAVkZWxheQAAAAAAB9AAAAAFRGVsYXkAAAAAAAAAAAAABXByaWNlAAAAAAAACg==",
         "AAAAAgAAAAAAAAAAAAAADE9yYWNsZVNvdXJjZQAAAAEAAAAAAAAAAAAAAAlSZWZsZWN0b3IAAAA=",
-        "AAAAAQAAAAAAAAAAAAAAClBhaXJQYXJhbXMAAAAAAAoAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAAApjYWxjdWxhdG9yAAAAAAATAAAAAAAAABNjb2xsYXRlcmFsX3Blcl9wYWlyAAAAAAoAAAAAAAAAEGNvbGxhdGVyYWxfdG9rZW4AAAATAAAAAAAAAApsb25nX3Rva2VuAAAAAAATAAAAAAAAAAtsb3dlcl9ib3VuZAAAAAAKAAAAAAAAAAZvcmFjbGUAAAAAABMAAAAAAAAAC3Nob3J0X3Rva2VuAAAAABMAAAAAAAAAC3VwcGVyX2JvdW5kAAAAAAo=",
+        "AAAAAQAAAAAAAAAAAAAAClBhaXJQYXJhbXMAAAAAABAAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAFYXNzZXQAAAAAAAARAAAAAAAAAApjYWxjdWxhdG9yAAAAAAATAAAAAAAAABNjb2xsYXRlcmFsX3Blcl9wYWlyAAAAAAoAAAAAAAAAEGNvbGxhdGVyYWxfdG9rZW4AAAATAAAAAAAAAA9lbWVyZ2VuY3lfYWRtaW4AAAAAEwAAAAAAAAAWZW1lcmdlbmN5X3BhdXNlX2FkbWlucwAAAAAD6gAAABMAAAAAAAAACmxvbmdfdG9rZW4AAAAAABMAAAAAAAAAC2xvd2VyX2JvdW5kAAAAAAoAAAAAAAAAEG9wZXJhdGlvbnNfYWRtaW4AAAATAAAAAAAAAAZvcmFjbGUAAAAAABMAAAAAAAAAC3BhdXNlX2FkbWluAAAAABMAAAAAAAAADXJld2FyZHNfYWRtaW4AAAAAAAATAAAAAAAAAAtzaG9ydF90b2tlbgAAAAATAAAAAAAAABBzeXN0ZW1fZmVlX2FkbWluAAAAEwAAAAAAAAALdXBwZXJfYm91bmQAAAAACg==",
         "AAAAAgAAAAAAAAAAAAAABFNpZGUAAAACAAAAAAAAAAAAAAAETG9uZwAAAAAAAAAAAAAABVNob3J0AAAA",
         "AAAAAgAAAAAAAAAAAAAACURpcmVjdGlvbgAAAAAAAAIAAAAAAAAAAAAAAANCdXkAAAAAAAAAAAAAAAAEU2VsbA==",
         "AAAAAQAAAAAAAAAAAAAAD1BhaXJQcmljZUJvdW5kcwAAAAACAAAAAAAAAAVsb3dlcgAAAAAAAAoAAAAAAAAABXVwcGVyAAAAAAAACg==",
@@ -1060,6 +1108,8 @@ export class Client extends ContractClient {
         get_collateral_info: this.txFromJSON<CollateralInfo>,
         get_summary: this.txFromJSON<PairSummary>,
         get_status: this.txFromJSON<PairStatus>,
+        set_privileged_addrs: this.txFromJSON<null>,
+        get_privileged_addrs: this.txFromJSON<Map<string, Array<string>>>,
         set_calculator: this.txFromJSON<null>,
         set_oracle: this.txFromJSON<null>,
         kill_mint: this.txFromJSON<null>,

@@ -14,8 +14,7 @@ pub trait AdminInterface {
         admin: Address,
         rewards_admin: Address,
         operations_admin: Address,
-        pause_admin: Address,
-        emergency_pause_admins: Vec<Address>,
+        system_fee_admin: Address,
     );
 
     // Get map of privileged roles
@@ -32,13 +31,4 @@ pub trait AdminInterface {
     fn get_pair_by_asset(e: Env, asset: Symbol) -> Address;
 
     fn set_pair_contract_wasm(e: Env, admin: Address, pair_contract_wasm: BytesN<32>);
-
-    // Stop pair creation instantly
-    fn kill_create(e: Env, admin: Address);
-
-    // Resume pair creation
-    fn unkill_create(e: Env, admin: Address);
-
-    // Get killswitch status
-    fn get_is_killed_create(e: Env) -> bool;
 }

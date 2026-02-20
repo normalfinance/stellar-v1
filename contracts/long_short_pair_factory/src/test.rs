@@ -28,6 +28,7 @@ fn test_deploy_contract() {
         emergency_pause_admins: Vec::from_array(&setup.env, [setup.emergency_pause_admin.clone()]),
         operations_admin: setup.operations_admin.clone(),
         rewards_admin: setup.rewards_admin.clone(),
+        system_fee_admin: setup.system_fee_admin.clone(),
 
         asset: Symbol::new(&setup.env, "Solana"),
 

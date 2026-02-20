@@ -3,7 +3,7 @@
 use crate::testutils::Setup;
 use access_control::constants::ADMIN_ACTIONS_DELAY;
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Vec};
+use soroban_sdk::Address;
 use utils::test_utils::{install_dummy_wasm, jump};
 
 #[test]
@@ -19,8 +19,7 @@ fn test_commit_upgrade() {
         (setup.emergency_admin, false),
         (setup.rewards_admin, false),
         (setup.operations_admin, false),
-        (setup.pause_admin, false),
-        (setup.emergency_pause_admin, false),
+        (setup.system_fee_admin, false),
     ] {
         assert_eq!(factory.try_commit_upgrade(&addr, &new_wasm).is_ok(), is_ok);
     }
@@ -88,43 +87,6 @@ fn test_set_emergency_mode_emergency_admin() {
         .is_ok());
 }
 
-// kill switches
-#[test]
-fn test_kill_create() {
-    let setup = Setup::default();
-    let factory = setup.factory;
-    let user = Address::generate(&setup.env);
-
-    for (addr, is_ok) in [
-        (user.clone(), false),
-        (setup.admin.clone(), true),
-        (setup.rewards_admin, false),
-        (setup.operations_admin, false),
-        (setup.pause_admin, true),
-        (setup.emergency_pause_admin, true),
-    ] {
-        assert_eq!(factory.try_kill_create(&addr).is_ok(), is_ok);
-    }
-}
-
-#[test]
-fn test_unkill_create() {
-    let setup = Setup::default();
-    let factory = setup.factory;
-    let user = Address::generate(&setup.env);
-
-    for (addr, is_ok) in [
-        (user.clone(), false),
-        (setup.admin.clone(), true),
-        (setup.rewards_admin, false),
-        (setup.operations_admin, false),
-        (setup.pause_admin, true),
-        (setup.emergency_pause_admin, true),
-    ] {
-        assert_eq!(factory.try_unkill_create(&addr).is_ok(), is_ok);
-    }
-}
-
 // manage privileged addresses
 #[test]
 fn test_set_privileged_addresses() {
@@ -137,8 +99,7 @@ fn test_set_privileged_addresses() {
         (setup.admin.clone(), true),
         (setup.rewards_admin.clone(), false),
         (setup.operations_admin.clone(), false),
-        (setup.pause_admin.clone(), false),
-        (setup.emergency_pause_admin.clone(), false),
+        (setup.system_fee_admin.clone(), false),
     ] {
         assert_eq!(
             factory
@@ -146,8 +107,7 @@ fn test_set_privileged_addresses() {
                     &addr,
                     &setup.rewards_admin,
                     &setup.operations_admin,
-                    &setup.pause_admin,
-                    &Vec::from_array(&setup.env, [setup.emergency_pause_admin.clone()])
+                    &setup.system_fee_admin,
                 )
                 .is_ok(),
             is_ok
@@ -166,8 +126,7 @@ fn test_set_pair_contract_wasm() {
         (setup.admin, true),
         (setup.rewards_admin, false),
         (setup.operations_admin, true),
-        (setup.pause_admin, false),
-        (setup.emergency_pause_admin, false),
+        (setup.system_fee_admin, false),
     ] {
         assert_eq!(
             setup

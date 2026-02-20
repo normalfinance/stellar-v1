@@ -3,16 +3,12 @@ use soroban_sdk::{contracttype, panic_with_error, Address, BytesN, Env, Symbol, 
 use utils::bump::{bump_instance, bump_persistent};
 use utils::{
     errors::storage_errors::StorageError, generate_instance_storage_getter,
-    generate_instance_storage_getter_and_setter,
-    generate_instance_storage_getter_and_setter_with_default,
-    generate_instance_storage_getter_with_default, generate_instance_storage_setter,
+    generate_instance_storage_getter_and_setter, generate_instance_storage_setter,
 };
 
 use crate::errors::LongShortPairFactoryError;
 
 /********** Storage Key Types **********/
-// Instance-scoped killswitch for pair creation (global to this factory instance).
-const KEY_IS_KILLED_CREATE: &str = "IsKilledCreate";
 
 // Instance-scoped WASM hash used when deploying new Pair contracts.
 const KEY_PAIR_CONTRACT_WASM: &str = "PairContractWASM";
@@ -48,17 +44,6 @@ generate_instance_storage_getter_and_setter!(
     pair_contract_wasm,
     KEY_PAIR_CONTRACT_WASM,
     BytesN<32>
-);
-
-// Killswitch for creating new pairs.
-//
-// When `true`, the factory should reject pair creation requests (but existing
-// pairs remain unaffected).
-generate_instance_storage_getter_and_setter_with_default!(
-    is_killed_create,
-    KEY_IS_KILLED_CREATE,
-    bool,
-    false
 );
 
 /// Fetches the deployed pair address for a given `salt`.

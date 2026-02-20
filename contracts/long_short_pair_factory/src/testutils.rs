@@ -36,6 +36,7 @@ pub(crate) struct Setup<'a> {
     pub(crate) operations_admin: Address,
     pub(crate) pause_admin: Address,
     pub(crate) emergency_pause_admin: Address,
+    pub(crate) system_fee_admin: Address,
 }
 
 impl Default for Setup<'_> {
@@ -65,6 +66,7 @@ impl Setup<'_> {
         let operations_admin = Address::generate(&e);
         let pause_admin = Address::generate(&e);
         let emergency_pause_admin = Address::generate(&e);
+        let system_fee_admin = Address::generate(&e);
 
         let pair_hash = install_pair_hash(&e);
 
@@ -74,8 +76,7 @@ impl Setup<'_> {
             &emergency_admin,
             &rewards_admin,
             &operations_admin,
-            &pause_admin,
-            &Vec::from_array(&e, [emergency_pause_admin.clone()]),
+            &system_fee_admin,
             &pair_hash,
         );
 
@@ -89,6 +90,7 @@ impl Setup<'_> {
             operations_admin,
             pause_admin,
             emergency_pause_admin,
+            system_fee_admin,
         }
     }
 
@@ -107,8 +109,7 @@ pub fn create_factory_contract<'a>(
     emergency_admin: &Address,
     rewards_admin: &Address,
     operations_admin: &Address,
-    pause_admin: &Address,
-    emergency_pause_admins: &Vec<Address>,
+    system_fee_admin: &Address,
     pair_contract_wasm: &BytesN<32>,
 ) -> LongShortPairFactoryClient<'a> {
     let factory = LongShortPairFactoryClient::new(
@@ -120,8 +121,7 @@ pub fn create_factory_contract<'a>(
                 emergency_admin,
                 rewards_admin,
                 operations_admin,
-                pause_admin,
-                emergency_pause_admins.clone(),
+                system_fee_admin,
                 pair_contract_wasm,
             ),
         ),

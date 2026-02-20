@@ -10,6 +10,7 @@ pub struct PairParams {
     pub pause_admin: Address,
     pub emergency_pause_admins: Vec<Address>,
     pub rewards_admin: Address,
+    pub system_fee_admin: Address,
 
     // Config
     pub asset: Symbol,
