@@ -4,6 +4,7 @@ use crate::testutils::Setup;
 use access_control::constants::ADMIN_ACTIONS_DELAY;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{symbol_short, Address, Symbol, Vec};
+use types::pair::CollateralConfig;
 use utils::test_utils::{install_dummy_wasm, jump};
 
 // test admin transfer ownership
@@ -479,5 +480,38 @@ fn test_update_oracle() {
         (setup.emergency_pause_admin, false),
     ] {
         assert_eq!(setup.pair.try_set_oracle(&addr, &oracle).is_ok(), is_ok);
+    }
+}
+
+#[test]
+fn test_update_collateral_config() {
+    let setup = Setup::default();
+    let user = Address::generate(&setup.env);
+    let token = Address::generate(&setup.env);
+    let oracle = Address::generate(&setup.env);
+
+    for (addr, is_ok) in [
+        (user, false),
+        (setup.admin, true),
+        (setup.rewards_admin, false),
+        (setup.operations_admin, true),
+        (setup.pause_admin, false),
+        (setup.emergency_pause_admin, false),
+    ] {
+        assert_eq!(
+            setup
+                .pair
+                .try_set_collateral_config(
+                    &addr,
+                    &(CollateralConfig {
+                        token: token.clone(),
+                        oracle: oracle.clone(),
+                        mint_enabled: true,
+                        redeem_enabled: true,
+                    })
+                )
+                .is_ok(),
+            is_ok
+        );
     }
 }

@@ -156,7 +156,7 @@ impl TreasuryTrait for Treasury {
             collateral_info.collateral_per_pair,
             PRICE_PRECISION,
         );
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
+        SorobanTokenClient::new(&e, &crate::storage::get_usdc_token(&e)).transfer(
             &user,
             &treasury,
             &required_usdc.safe_to_i128(&e),
@@ -246,7 +246,7 @@ impl TreasuryTrait for Treasury {
         // Transfers happen after checks but before balance writes for correctness.
         let treasury = e.current_contract_address();
 
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
+        SorobanTokenClient::new(&e, &crate::storage::get_usdc_token(&e)).transfer(
             &treasury,
             &user,
             &tokens_out.usdc.safe_to_i128(&e),
@@ -578,7 +578,7 @@ impl TradingTrait for Treasury {
         }
 
         // Token movements first (atomic execution ensures revert on failure).
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
+        SorobanTokenClient::new(&e, &crate::storage::get_usdc_token(&e)).transfer(
             &user,
             &treasury,
             &usdc_in.safe_to_i128(&e),
@@ -718,7 +718,7 @@ impl TradingTrait for Treasury {
             &treasury,
             &long_in.safe_to_i128(&e),
         );
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
+        SorobanTokenClient::new(&e, &crate::storage::get_usdc_token(&e)).transfer(
             &treasury,
             &user,
             &usdc_out.safe_to_i128(&e),
@@ -849,7 +849,7 @@ impl TradingTrait for Treasury {
         }
 
         // Token movements first.
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
+        SorobanTokenClient::new(&e, &crate::storage::get_usdc_token(&e)).transfer(
             &user,
             &treasury,
             &usdc_in.safe_to_i128(&e),
@@ -989,7 +989,7 @@ impl TradingTrait for Treasury {
             &treasury,
             &short_in.safe_to_i128(&e),
         );
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
+        SorobanTokenClient::new(&e, &crate::storage::get_usdc_token(&e)).transfer(
             &treasury,
             &user,
             &usdc_out.safe_to_i128(&e),
@@ -1123,7 +1123,6 @@ impl AdminInterfaceTrait for Treasury {
                 pair: pair.clone(),
                 long: tokens.long,
                 short: tokens.short,
-                usdc: tokens.collateral,
             }),
         );
 
@@ -1228,14 +1227,19 @@ impl AdminInterfaceTrait for Treasury {
             return 0;
         }
 
-        SorobanTokenClient::new(&e, &config.usdc).transfer(
+        SorobanTokenClient::new(&e, &crate::storage::get_usdc_token(&e)).transfer(
             &e.current_contract_address(),
             &destination,
             &fee.safe_to_i128(&e),
         );
 
         crate::storage::set_protocol_fees(&e, &pair, &0);
-        Events::new(&e).claim_protocol_fee(pair, config.usdc, destination.clone(), fee);
+        Events::new(&e).claim_protocol_fee(
+            pair,
+            crate::storage::get_usdc_token(&e),
+            destination.clone(),
+            fee,
+        );
 
         fee
     }

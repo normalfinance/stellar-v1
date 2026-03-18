@@ -1,4 +1,5 @@
 use soroban_sdk::{Address, BytesN, Env, Symbol};
+use types::pair::Side;
 
 #[derive(Clone)]
 pub(crate) struct Events(Env);
@@ -39,19 +40,31 @@ pub(crate) trait FactoryEvents {
         user: Address,
         asset: Symbol,
         pair: Address,
+        collateral_token: Address,
         collateral: u128,
         tokens_minted: u128,
         ts: u64,
     );
 
-    fn redeem(&self, user: Address, asset: Symbol, pair: Address, tokens_redeemed: u128, ts: u64);
+    fn redeem(
+        &self,
+        user: Address,
+        asset: Symbol,
+        pair: Address,
+        collateral_token: Address,
+        collateral: u128,
+        tokens_redeemed: u128,
+        ts: u64,
+    );
 
     fn redeem_one(
         &self,
         user: Address,
         asset: Symbol,
         pair: Address,
-        token: Address,
+        collateral_token: Address,
+        side: Side,
+        collateral: u128,
         tokens_redeemed: u128,
         ts: u64,
     );
@@ -112,20 +125,30 @@ impl FactoryEvents for Events {
         user: Address,
         asset: Symbol,
         pair: Address,
+        collateral_token: Address,
         collateral: u128,
         tokens_minted: u128,
         ts: u64,
     ) {
         self.env().events().publish(
             (Symbol::new(self.env(), "mint"), user, pair, asset),
-            (collateral, tokens_minted, ts),
+            (collateral_token, collateral, tokens_minted, ts),
         );
     }
 
-    fn redeem(&self, user: Address, asset: Symbol, pair: Address, tokens_redeemed: u128, ts: u64) {
+    fn redeem(
+        &self,
+        user: Address,
+        asset: Symbol,
+        pair: Address,
+        collateral_token: Address,
+        collateral: u128,
+        tokens_redeemed: u128,
+        ts: u64,
+    ) {
         self.env().events().publish(
             (Symbol::new(self.env(), "redeem"), user, pair, asset),
-            (tokens_redeemed, ts),
+            (collateral_token, collateral, tokens_redeemed, ts),
         );
     }
 
@@ -134,13 +157,15 @@ impl FactoryEvents for Events {
         user: Address,
         asset: Symbol,
         pair: Address,
-        token: Address,
+        collateral_token: Address,
+        side: Side,
+        collateral: u128,
         tokens_redeemed: u128,
         ts: u64,
     ) {
         self.env().events().publish(
             (Symbol::new(self.env(), "redeem_one"), user, pair, asset),
-            (token, tokens_redeemed, ts),
+            (collateral_token, side, collateral, tokens_redeemed, ts),
         );
     }
 }

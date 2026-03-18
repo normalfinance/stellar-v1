@@ -19,4 +19,5 @@ pub enum LongShortPairError {
     InsufficientInventory = 215,
     ActionPaused = 216,
     PairExpired = 217,
+    CollateralTypeDisabled = 218,
 }

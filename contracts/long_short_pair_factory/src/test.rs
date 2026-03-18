@@ -6,7 +6,7 @@ use crate::testutils::long_short_pair::PairTokens;
 use crate::testutils::Setup;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Symbol, Vec};
-use types::pair::PairParams;
+use types::pair::{CollateralConfig, PairParams};
 
 #[test]
 fn test_deploy_contract() {
@@ -31,8 +31,15 @@ fn test_deploy_contract() {
         system_fee_admin: setup.system_fee_admin.clone(),
 
         asset: Symbol::new(&setup.env, "Solana"),
-
-        collateral_token: collateral_token.clone(),
+        collateral_configs: Vec::from_array(
+            &setup.env,
+            [CollateralConfig {
+                token: collateral_token.clone(),
+                oracle: oracle.clone(),
+                mint_enabled: true,
+                redeem_enabled: true,
+            }],
+        ),
         calculator,
         collateral_per_pair: 100_0000000,
 
@@ -55,7 +62,6 @@ fn test_deploy_contract() {
         PairTokens {
             long: long_token,
             short: short_token,
-            collateral: collateral_token,
         }
     );
 }

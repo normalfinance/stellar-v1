@@ -84,7 +84,9 @@ fn test_deposit_bootstrap_mints_shares_equal_to_deposit_nav_and_updates_state() 
     let pairs_to_deposit = 10_0000000u128;
 
     // Mint pairs to admin (long+short) by locking USDC into Pair
-    setup.pair.mint(&admin, &pairs_to_mint);
+    setup
+        .pair
+        .mint(&admin, &setup.token_usdc.address, &pairs_to_mint);
 
     // Compute required collateral and ensure admin has long/short
     let collateral_info = setup.pair.get_collateral_info();
@@ -168,14 +170,14 @@ fn test_deposit_second_deposit_mints_pro_rata_shares() {
 
     // Admin mints + deposits 10 pairs
     let pairs_a = 10_0000000u128;
-    setup.pair.mint(&admin, &pairs_a);
+    setup.pair.mint(&admin, &setup.token_usdc.address, &pairs_a);
     let shares_a = setup
         .treasury
         .deposit(&admin, &setup.pair.address, &pairs_a);
 
     // User1 mints + deposits 5 pairs
     let pairs_b = 5_0000000u128;
-    setup.pair.mint(&user1, &pairs_b);
+    setup.pair.mint(&user1, &setup.token_usdc.address, &pairs_b);
     let shares_b = setup
         .treasury
         .deposit(&user1, &setup.pair.address, &pairs_b);
@@ -255,7 +257,7 @@ fn test_withdraw_reverts_if_withdraw_more_than_user_shares() {
         .token_usdc_admin_client
         .mint(&admin, &10_000_0000000i128);
     let pairs = 10_0000000u128;
-    setup.pair.mint(&admin, &pairs);
+    setup.pair.mint(&admin, &setup.token_usdc.address, &pairs);
 
     let shares = setup.treasury.deposit(&admin, &setup.pair.address, &pairs);
     setup
@@ -274,7 +276,7 @@ fn test_withdraw_happy_path_returns_pro_rata_tokens_and_updates_shares_and_balan
         .mint(&admin, &50_000_0000000i128);
 
     let pairs = 10_0000000u128;
-    setup.pair.mint(&admin, &pairs);
+    setup.pair.mint(&admin, &setup.token_usdc.address, &pairs);
 
     let shares_minted = setup.treasury.deposit(&admin, &setup.pair.address, &pairs);
 
@@ -331,7 +333,7 @@ fn test_withdraw_reverts_if_usdc_floor_violated() {
         .token_usdc_admin_client
         .mint(&admin, &50_000_0000000i128);
     let pairs = 10_0000000u128;
-    setup.pair.mint(&admin, &pairs);
+    setup.pair.mint(&admin, &setup.token_usdc.address, &pairs);
     let shares = setup.treasury.deposit(&admin, &setup.pair.address, &pairs);
 
     // Try to withdraw a big portion which would take USDC below floor.
@@ -352,7 +354,7 @@ fn test_withdraw_allows_when_remaining_equals_usdc_floor() {
         .token_usdc_admin_client
         .mint(&admin, &50_000_0000000i128);
     let pairs = 10_0000000u128;
-    setup.pair.mint(&admin, &pairs);
+    setup.pair.mint(&admin, &setup.token_usdc.address, &pairs);
     let shares = setup.treasury.deposit(&admin, &setup.pair.address, &pairs);
 
     // Withdraw 50% shares: remaining USDC should equal floor => allowed

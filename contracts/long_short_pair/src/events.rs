@@ -1,4 +1,5 @@
 use soroban_sdk::{Address, Env, Symbol};
+use types::pair::Side;
 
 #[derive(Clone)]
 pub(crate) struct Events(Env);
@@ -24,12 +25,32 @@ impl Events {
 // |___|\__/|___|(___/    \___)(__\_|_)\___|\____\)
 
 pub(crate) trait LongShortPairEvents {
-    fn mint(&self, user: Address, pair: Address, collateral: u128, tokens_minted: u128, ts: u64);
+    fn mint(
+        &self,
+        user: Address,
+        pair: Address,
+        collateral_token: Address,
+        collateral: u128,
+        tokens_minted: u128,
+        ts: u64,
+    );
 
     fn redemption(
         &self,
         user: Address,
         pair: Address,
+        collateral_token: Address,
+        collateral: u128,
+        tokens_redeemed: u128,
+        ts: u64,
+    );
+
+    fn single_redemption(
+        &self,
+        user: Address,
+        pair: Address,
+        collateral_token: Address,
+        side: Side,
         collateral: u128,
         tokens_redeemed: u128,
         ts: u64,
@@ -46,10 +67,18 @@ pub(crate) trait LongShortPairEvents {
 }
 
 impl LongShortPairEvents for Events {
-    fn mint(&self, user: Address, pair: Address, collateral: u128, tokens_minted: u128, ts: u64) {
+    fn mint(
+        &self,
+        user: Address,
+        pair: Address,
+        collateral_token: Address,
+        collateral: u128,
+        tokens_minted: u128,
+        ts: u64,
+    ) {
         self.env().events().publish(
             (Symbol::new(self.env(), "mint"), user, pair),
-            (collateral, tokens_minted, ts),
+            (collateral_token, collateral, tokens_minted, ts),
         );
     }
 
@@ -57,13 +86,30 @@ impl LongShortPairEvents for Events {
         &self,
         user: Address,
         pair: Address,
+        collateral_token: Address,
         collateral: u128,
         tokens_redeemed: u128,
         ts: u64,
     ) {
         self.env().events().publish(
             (Symbol::new(self.env(), "redemption"), user, pair),
-            (collateral, tokens_redeemed, ts),
+            (collateral_token, collateral, tokens_redeemed, ts),
+        );
+    }
+
+    fn single_redemption(
+        &self,
+        user: Address,
+        pair: Address,
+        collateral_token: Address,
+        side: Side,
+        collateral: u128,
+        tokens_redeemed: u128,
+        ts: u64,
+    ) {
+        self.env().events().publish(
+            (Symbol::new(self.env(), "single_redemption"), user, pair),
+            (collateral_token, side, collateral, tokens_redeemed, ts),
         );
     }
 

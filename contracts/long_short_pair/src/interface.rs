@@ -1,6 +1,7 @@
 use soroban_sdk::{Address, Env, Map, Symbol, Vec};
 use types::pair::{
-    CollateralInfo, PairAmounts, PairPriceBounds, PairStatus, PairSummary, PairTokens, Side,
+    CollateralConfig, CollateralInfo, PairAmounts, PairPriceBounds, PairStatus, PairSummary,
+    PairTokens, Side,
 };
 
 pub trait LongShortPairTrait {
@@ -8,7 +9,7 @@ pub trait LongShortPairTrait {
     /// amount into this contract, defined by the collateral_per_pair value.
     /// @param tokens_to_mint number of long and short synthetic tokens to create.
     /// @return collateral_used total collateral used to mint the synthetics.
-    fn mint(e: Env, user: Address, tokens_to_mint: u128) -> u128;
+    fn mint(e: Env, user: Address, collateral_token: Address, tokens_to_mint: u128) -> u128;
 
     /// Redeems a pair of long and short tokens equal in number to tokens_to_redeem. Returns the commensurate
     /// amount of collateral to the caller for the pair of tokens, defined by the collateral_per_pair value.
@@ -16,9 +17,15 @@ pub trait LongShortPairTrait {
     /// @dev This method can be called either pre or post expiration.
     /// @param tokens_to_redeem number of long and short synthetic tokens to redeem.
     /// @return collateral_returned total collateral returned in exchange for the pair of synthetics.
-    fn redeem(e: Env, user: Address, tokens_to_redeem: u128) -> u128;
+    fn redeem(e: Env, user: Address, collateral_token: Address, tokens_to_redeem: u128) -> u128;
 
-    fn redeem_one(e: Env, user: Address, side: Side, tokens_to_redeem: u128) -> u128;
+    fn redeem_one(
+        e: Env,
+        user: Address,
+        collateral_token: Address,
+        side: Side,
+        tokens_to_redeem: u128,
+    ) -> u128;
 
     fn sync_collateral_with_price(e: Env) -> u128;
 
@@ -30,6 +37,8 @@ pub trait LongShortPairTrait {
 
     fn get_total_token_supplies(e: Env) -> PairAmounts;
 
+    fn get_collateral_config(e: Env, token: Address) -> CollateralConfig;
+
     fn get_collateral_info(e: Env) -> CollateralInfo;
 
     fn get_summary(e: Env) -> PairSummary;
@@ -38,7 +47,8 @@ pub trait LongShortPairTrait {
 }
 
 pub trait AdminInterfaceTrait {
-    // Set privileged addresses
+    fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>>;
+
     fn set_privileged_addrs(
         e: Env,
         admin: Address,
@@ -47,12 +57,9 @@ pub trait AdminInterfaceTrait {
         pause_admin: Address,
         emergency_pause_admins: Vec<Address>,
     );
-
-    // Get map of privileged roles
-    fn get_privileged_addrs(e: Env) -> Map<Symbol, Vec<Address>>;
-
     fn set_oracle(e: Env, admin: Address, oracle: Address);
     fn set_calculator(e: Env, admin: Address, calculator: Address);
+    fn set_collateral_config(e: Env, admin: Address, config: CollateralConfig);
 
     // Stop pair instantly
     fn kill_mint(e: Env, admin: Address);

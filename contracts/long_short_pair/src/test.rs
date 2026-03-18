@@ -6,7 +6,7 @@ use crate::testutils::Setup;
 
 use soroban_sdk::{testutils::Address as _, Address, Vec};
 use token_pair::{get_total_long_shares, get_total_short_shares};
-use types::pair::{PairParams, PairStatus, Side};
+use types::pair::{CollateralConfig, PairStatus, Side};
 use utils::constant::{ONE_HOUR, PRICE_PRECISION};
 use utils::test_utils::jump;
 
@@ -17,7 +17,9 @@ use utils::test_utils::jump;
 fn test_mint_invalid_amount() {
     let setup = Setup::default();
 
-    setup.pair.mint(&setup.users[1], &0);
+    setup
+        .pair
+        .mint(&setup.users[1], &setup.token_usdc.address, &0);
 }
 
 #[test]
@@ -31,7 +33,29 @@ fn test_mint_invalid_status() {
         set_status(&setup.env, &PairStatus::Expired);
     });
 
-    setup.pair.mint(&setup.users[1], &tokens_to_mint);
+    setup
+        .pair
+        .mint(&setup.users[1], &setup.token_usdc.address, &tokens_to_mint);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #218)")]
+fn test_mint_disabled_collateral_type() {
+    let setup = Setup::default();
+    let token = Address::generate(&setup.env);
+    let tokens_to_mint = 1_0000000;
+
+    setup.pair.set_collateral_config(
+        &setup.admin,
+        &(CollateralConfig {
+            token: token.clone(),
+            oracle: Address::generate(&setup.env),
+            mint_enabled: false,
+            redeem_enabled: true,
+        }),
+    );
+
+    setup.pair.mint(&setup.users[1], &token, &tokens_to_mint);
 }
 
 #[test]
@@ -58,7 +82,9 @@ fn test_mint() {
     // Test
     // ================================================================================
 
-    let collateral_used = setup.pair.mint(&user1, &tokens_to_mint);
+    let collateral_used = setup
+        .pair
+        .mint(&user1, &setup.token_usdc.address, &tokens_to_mint);
     assert_eq!(collateral_used, collateral_required);
 
     // Assertions
@@ -90,7 +116,27 @@ fn test_redeem_invalid_amount() {
     let setup = Setup::default();
     let user1 = setup.users[1].clone();
 
-    setup.pair.redeem(&user1, &0);
+    setup.pair.redeem(&user1, &setup.token_usdc.address, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #218)")]
+fn test_redeem_disabled_collateral_type() {
+    let setup = Setup::default();
+    let token = Address::generate(&setup.env);
+    let tokens_to_mint = 1_0000000;
+
+    setup.pair.set_collateral_config(
+        &setup.admin,
+        &(CollateralConfig {
+            token: token.clone(),
+            oracle: Address::generate(&setup.env),
+            mint_enabled: true,
+            redeem_enabled: false,
+        }),
+    );
+
+    setup.pair.mint(&setup.users[1], &token, &tokens_to_mint);
 }
 
 #[test]
@@ -116,14 +162,18 @@ fn test_redeem() {
     );
 
     // Mint pair tokens
-    setup.pair.mint(&user1, &tokens_to_mint);
+    setup
+        .pair
+        .mint(&user1, &setup.token_usdc.address, &tokens_to_mint);
     assert_eq!(setup.token_long.balance(&user1) as u128, tokens_to_mint);
     assert_eq!(setup.token_short.balance(&user1) as u128, tokens_to_mint);
 
     // Test
     // ================================================================================
 
-    let collateral_used = setup.pair.redeem(&user1, &tokens_to_redeem);
+    let collateral_used = setup
+        .pair
+        .redeem(&user1, &setup.token_usdc.address, &tokens_to_redeem);
     assert_eq!(collateral_used, collateral_required);
 
     // Assertions
@@ -167,7 +217,9 @@ fn test_redeem_after_price_change() {
     );
 
     // Mint pair tokens
-    setup.pair.mint(&user1, &tokens_to_mint);
+    setup
+        .pair
+        .mint(&user1, &setup.token_usdc.address, &tokens_to_mint);
     assert_eq!(setup.token_long.balance(&user1) as u128, tokens_to_mint);
     assert_eq!(setup.token_short.balance(&user1) as u128, tokens_to_mint);
 
@@ -181,7 +233,9 @@ fn test_redeem_after_price_change() {
         .reflector_client
         .set_price(&new_prices, &(setup.start_time + ONE_HOUR));
 
-    let collateral_used = setup.pair.redeem(&user1, &tokens_to_redeem);
+    let collateral_used = setup
+        .pair
+        .redeem(&user1, &setup.token_usdc.address, &tokens_to_redeem);
     assert_eq!(collateral_used, collateral_required);
 
     // Assertions
@@ -215,7 +269,9 @@ fn test_redeem_one_invalid_amount() {
     let setup = Setup::default();
     let user1 = setup.users[1].clone();
 
-    setup.pair.redeem_one(&user1, &Side::Long, &0);
+    setup
+        .pair
+        .redeem_one(&user1, &setup.token_usdc.address, &Side::Long, &0);
 }
 
 #[test]
@@ -224,7 +280,29 @@ fn test_redeem_one_invalid_status() {
     let setup = Setup::default();
     let user1 = setup.users[1].clone();
 
-    setup.pair.redeem_one(&user1, &Side::Long, &1_0000000);
+    setup
+        .pair
+        .redeem_one(&user1, &setup.token_usdc.address, &Side::Long, &1_0000000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #218)")]
+fn test_redeem_one_disabled_collateral_type() {
+    let setup = Setup::default();
+    let token = Address::generate(&setup.env);
+    let tokens_to_mint = 1_0000000;
+
+    setup.pair.set_collateral_config(
+        &setup.admin,
+        &(CollateralConfig {
+            token: token.clone(),
+            oracle: Address::generate(&setup.env),
+            mint_enabled: true,
+            redeem_enabled: false,
+        }),
+    );
+
+    setup.pair.mint(&setup.users[1], &token, &tokens_to_mint);
 }
 
 #[test]
@@ -250,7 +328,9 @@ fn test_redeem_one_long_when_price_at_upper_bound() {
     );
 
     // Mint pair tokens
-    setup.pair.mint(&user1, &tokens_to_mint);
+    setup
+        .pair
+        .mint(&user1, &setup.token_usdc.address, &tokens_to_mint);
     assert_eq!(setup.token_long.balance(&user1) as u128, tokens_to_mint);
     assert_eq!(setup.token_short.balance(&user1) as u128, tokens_to_mint);
 
@@ -264,9 +344,12 @@ fn test_redeem_one_long_when_price_at_upper_bound() {
     // Test
     // ================================================================================
 
-    let collateral_returned = setup
-        .pair
-        .redeem_one(&user1, &Side::Long, &tokens_to_redeem);
+    let collateral_returned = setup.pair.redeem_one(
+        &user1,
+        &setup.token_usdc.address,
+        &Side::Long,
+        &tokens_to_redeem,
+    );
 
     // Assertions
     // ================================================================================
